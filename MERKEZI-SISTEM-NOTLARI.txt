@@ -1,0 +1,12 @@
+AKCAN GROUP OTOMOTİV — V8 MERKEZİ VERİ
+Mevcut App.tsx üzerine merkezi veri katmanı eklendi; modül/iş mantığı korunmuştur.
+- Supabase merkezi veri yükleme/kaydetme
+- Merkezi oturum tokenı
+- 2 saniyelik değişiklik kontrolü
+- localStorage çevrimdışı tampon/yedek
+- İlk açılışta zengin yerel verinin güvenli merkeze aktarımı
+- İşlem/giriş geçmişi mevcut yapıda korunur
+- Merkezi yedek tablosu hazırdır
+
+Vercel'e yeni Production Deployment olarak yükle.
+Mevcut çalışan deployment'ı silme.

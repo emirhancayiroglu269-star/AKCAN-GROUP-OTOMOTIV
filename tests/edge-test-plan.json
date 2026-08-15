@@ -1,0 +1,37 @@
+{
+  "name": "AKCAN ERP Edge Safe Test Plan",
+  "mode": "dry-run",
+  "production_write": false,
+  "cases": [
+    {
+      "id": "EDGE-001",
+      "operation": "satis",
+      "expected": "reject_without_dryrun"
+    },
+    {
+      "id": "EDGE-002",
+      "operation": "alis",
+      "expected": "reject_without_dryrun"
+    },
+    {
+      "id": "EDGE-003",
+      "operation": "iade",
+      "expected": "reject_without_dryrun"
+    },
+    {
+      "id": "EDGE-004",
+      "operation": "iptal",
+      "expected": "reject_without_dryrun"
+    },
+    {
+      "id": "EDGE-005",
+      "operation": "satis",
+      "expected": "idempotency_key_required"
+    },
+    {
+      "id": "EDGE-006",
+      "operation": "satis",
+      "expected": "test_reference_required"
+    }
+  ]
+}

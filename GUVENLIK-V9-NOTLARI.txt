@@ -1,0 +1,8 @@
+AKCAN GROUP OTOMOTİV V9 — PERSONEL / YETKİ / DENETİM
+
+- Mevcut kullanıcı, rol ve yetki sistemi korunmuştur.
+- Mevcut kritik işlem geçmişi korunmuştur.
+- Supabase tarafında merkezi audit_logs tablosu ve rol_permissions tablosu oluşturulmuştur.
+- app_state güncellemeleri sunucu tarafında audit kaydı üretir.
+- Mevcut stok, satış, kasa, cari ve diğer modüllerin işleyişi değiştirilmemiştir.
+- Kullanıcı yönetimi ekranına merkezi güvenlik durum özeti eklenmiştir.

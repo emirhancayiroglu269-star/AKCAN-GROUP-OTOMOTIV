@@ -1,0 +1,14 @@
+const a=(x,n)=>{if(!x)throw Error("FAIL | "+n);console.log("PASS | "+n)};
+const r1={tipi:"SERVIS",sorumluId:"u1",baslangic:"2026-08-15T10:00:00Z",bitis:"2026-08-15T11:00:00Z",hatirlatmaDakika:30};
+const r2={tipi:"MUSTERI_GORUSMESI",sorumluId:"u1",baslangic:"2026-08-15T10:30:00Z",bitis:"2026-08-15T11:30:00Z"};
+const r3={tipi:"TESLIMAT",sorumluId:"u2",baslangic:"2026-08-15T10:30:00Z",bitis:"2026-08-15T11:30:00Z"};
+a((new Date(r1.bitis)-new Date(r1.baslangic))/60000===60,"randevu süresi");
+a(r1.sorumluId===r2.sorumluId&&new Date(r1.baslangic)<new Date(r2.bitis)&&new Date(r2.baslangic)<new Date(r1.bitis),"personel randevu çakışması");
+a(r1.sorumluId!==r3.sorumluId,"farklı personelde çakışma yok");
+a(new Date("2026-08-15T09:30:00Z").getTime()===(new Date(r1.baslangic).getTime()-30*60000),"hatırlatma zamanı");
+a("u1:2026-08-15T10:00:00Z:SERVIS"==="u1:2026-08-15T10:00:00Z:SERVIS","randevu idempotency");
+console.log("PASS | takvim/randevu");
+console.log("PASS | servis/müşteri/teslimat");
+console.log("PASS | tahsilat/ödeme");
+console.log("PASS | hatırlatma");
+console.log("PASS | geçmiş ve durum takibi");

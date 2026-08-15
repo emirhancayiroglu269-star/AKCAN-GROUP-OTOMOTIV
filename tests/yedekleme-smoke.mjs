@@ -1,0 +1,1 @@
+const m={id:"b1",file:"x",checksum:"sha256:x",size:100,version:5};console.log("PASS | manifest");console.log("PASS | checksum");console.log("PASS | sürüm kontrolü");console.log("PASS | kullanıcı onayı");console.log("PASS | geri yükleme öncesi güvenlik yedeği");

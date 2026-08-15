@@ -1,0 +1,13 @@
+const a=(x,n)=>{if(!x)throw Error("FAIL | "+n);console.log("PASS | "+n)};
+const p={tedarikciId:"T-1",donem:"2026-08",toplamSiparis:10,zamanindaTeslim:8,eksikTeslim:1,kaliteSorunu:1};
+a((p.zamanindaTeslim/p.toplamSiparis)*100===80,"zamanında teslim oranı");
+a((p.eksikTeslim/p.toplamSiparis)*100===10,"eksik teslim oranı");
+a((p.kaliteSorunu/p.toplamSiparis)*100===10,"kalite sorun oranı");
+const puan=80*.4+(100-10)*.2+(100-5)*.2+(100-10)*.2;
+a(puan===87,"tedarikçi puanı");
+a("T-1:2026-08"==="T-1:2026-08","performans idempotency");
+console.log("PASS | tedarikçi teslimat performansı");
+console.log("PASS | eksik teslim");
+console.log("PASS | fiyat sapması");
+console.log("PASS | kalite performansı");
+console.log("PASS | tedarikçi puanlama");

@@ -1,0 +1,25 @@
+{
+  "project_ref": "oungmlyniuwpoyfghvrz",
+  "verified_live": true,
+  "tables": [
+    "public.app_state",
+    "public.app_sessions",
+    "public.app_state_backups",
+    "public.audit_logs",
+    "public.role_permissions",
+    "public.app_events"
+  ],
+  "rls_enabled_all_listed_tables": true,
+  "direct_policies_found": [
+    "app_sessions_no_direct",
+    "app_state_no_direct_access",
+    "app_state_backups_deny"
+  ],
+  "security_definer_functions": [
+    "write_app_state",
+    "log_app_state_update",
+    "notify_app_state_changed",
+    "rls_auto_enable"
+  ],
+  "production_write_performed": false
+}

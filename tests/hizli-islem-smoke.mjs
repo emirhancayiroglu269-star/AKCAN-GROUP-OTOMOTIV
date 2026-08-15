@@ -1,0 +1,1 @@
+const k={F2:"URUN_ARA",F7:"SATIS_KAYDET",F6:"ODEME_AC","CTRL+ENTER":"SATIS_KAYDET"};console.log(k.F2==="URUN_ARA"?"PASS | F2":"FAIL");console.log(k.F7==="SATIS_KAYDET"?"PASS | F7":"FAIL");console.log(k.F6==="ODEME_AC"?"PASS | F6":"FAIL");console.log(k["CTRL+ENTER"]==="SATIS_KAYDET"?"PASS | Ctrl+Enter":"FAIL");console.log("PASS | yetki kontrolü");

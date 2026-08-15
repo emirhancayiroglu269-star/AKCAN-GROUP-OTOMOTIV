@@ -1,0 +1,17 @@
+AKCAN GROUP OTOMOTIV - GERCEK ZAMANLI VERI
+
+Bu surumde arayuz ve mevcut moduller korunmustur.
+
+Yapilanlar:
+- Supabase app_events tablosu ve Realtime yayini eklendi.
+- app_state degistiginde otomatik realtime olay uretiliyor.
+- Vite uygulamasi app_events kanalini dinliyor.
+- Degisiklik geldiginde guncel merkezi veri Edge Function uzerinden tekrar yukleniyor.
+- WebSocket baglantisi koparsa 15 saniyelik guvenli yedek kontrol devam ediyor.
+- app_state versiyonu her kayitta atomik olarak artiyor.
+- localStorage sadece yerel tampon/yedek olarak kalmaya devam ediyor.
+
+Vercel:
+- Bu ZIP'in icindeki dosyalar proje kokune yuklenmelidir.
+- Framework: Vite
+- Build Command: vite build

@@ -1,0 +1,21 @@
+AKCAN GROUP OTOMOTİV V14
+
+İşlem yapan personel artık giriş yapan aktif kullanıcının ad soyadından otomatik alınır.
+- Satış
+- Mal alış
+- Stok giriş/çıkış/düzeltme
+- İade
+- Tahsilat/ödeme
+- Sayım
+- Toplu fiyat işlemleri
+- Gider
+- Satın alma siparişi
+- Stok transferi
+- Müşteri siparişi
+- Kasa/vardiya işlemleri
+- Teklif
+- Müşteri/tedarikçi notları
+
+Bu alanlar kullanıcı tarafından elle değiştirilemez (read-only).
+Kullanıcı değişirse alan otomatik olarak yeni aktif kullanıcıya güncellenir.
+Onaylayan/yönetici kimlik doğrulaması gibi ayrı güvenlik alanları manuel doğrulama için korunur.

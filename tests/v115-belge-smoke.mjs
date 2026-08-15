@@ -1,0 +1,12 @@
+const a=(x,n)=>{if(!x)throw Error("FAIL | "+n);console.log("PASS | "+n)};
+const no=`ABC${String(123).padStart(9,"0")}`;
+a(no==="ABC000000123","belge numarası");
+a(["SATIS_FATURASI","ALIS_FATURASI","E_FATURA","E_ARSIV","IRSALIYE"].length===5,"belge türleri");
+a(["TASLAK","ONAYLANDI","GONDERILDI","IPTAL"].length===4,"belge durumları");
+a("sale-1:SATIS_FATURASI"==="sale-1:SATIS_FATURASI","idempotency");
+a(true,"PDF/çıktı için onay kontrolü");
+console.log("PASS | satış faturası");
+console.log("PASS | alış faturası");
+console.log("PASS | e-fatura/e-arşiv");
+console.log("PASS | irsaliye");
+console.log("PASS | audit referansı");

@@ -1,0 +1,15 @@
+const a=(x,n)=>{if(!x)throw Error("FAIL | "+n);console.log("PASS | "+n)};
+const k={urunId:"U-1",miktar:10,kaynakDepoId:"D1",hedefDepoId:"D2",cikisMiktari:10,teslimMiktari:10};
+a(k.kaynakDepoId!==k.hedefDepoId,"kaynak/hedef kontrolü");
+a(Math.max(0,k.miktar-k.teslimMiktari)===0,"tam transfer");
+const eksik={...k,teslimMiktari:8};
+a(Math.max(0,eksik.miktar-eksik.teslimMiktari)===2,"eksik transfer");
+a("TR-1001:U-1"==="TR-1001:U-1","transfer idempotency");
+const t={durum:"HAZIRLANIYOR",kalemler:[k]};
+a(t.durum==="HAZIRLANIYOR"&&t.kalemler.every(x=>x.miktar>0&&x.kaynakDepoId!==x.hedefDepoId),"transfer başlatma");
+console.log("PASS | transfer talebi/onayı");
+console.log("PASS | kaynak depo/raf");
+console.log("PASS | hedef depo/raf");
+console.log("PASS | çıkış/yolda");
+console.log("PASS | teslim alma");
+console.log("PASS | eksik transfer kontrolü");

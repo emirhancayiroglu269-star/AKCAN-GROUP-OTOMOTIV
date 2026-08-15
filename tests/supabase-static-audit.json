@@ -1,0 +1,15 @@
+{
+  "production_calls_made": false,
+  "supabase_related_files": [
+    "MODULARIZASYON-RAPORU.json",
+    "package-lock.json",
+    "package.json",
+    "src/App.tsx",
+    "src/core/akcan-runtime.tsx",
+    "src/lib/domain/finans-test-runner.ts",
+    "src/lib/guvenlik-politikasi.ts",
+    "src/lib/supabase.ts"
+  ],
+  "tables_seen_in_source": [],
+  "rpc_names_seen_in_source": []
+}

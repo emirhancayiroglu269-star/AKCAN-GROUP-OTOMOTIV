@@ -1,0 +1,42 @@
+{
+  "code_file_count": 151,
+  "file_count": 288,
+  "signals": {
+    "direct_supabase_calls": [
+      "src/lib/veri-dogrulama.ts",
+      "src/modules/Stok.tsx",
+      "src/modules/raporlar/RaporSatis.tsx"
+    ],
+    "auth_calls": [],
+    "write_state_calls": [
+      "src/lib/domain/atomic-write-adapter.ts",
+      "supabase/migrations/20260813_faz42_atomic_write_app_state.sql",
+      "supabase/migrations/20260813_faz45_atomic_rpc_test.sql"
+    ],
+    "dangerous_local_storage": [
+      "src/App.tsx",
+      "src/lib/guvenlik.ts",
+      "src/lib/kullanici-hooks.ts",
+      "src/lib/yonetici-onay.ts"
+    ],
+    "console_logs": [
+      "tests/rpc-e2e-contract.mjs",
+      "tests/edge-test-contract.mjs",
+      "tests/menu-yetki-smoke.mjs",
+      "tests/yetki-kapi-smoke.mjs",
+      "tests/edge-safe-smoke.mjs",
+      "tests/finans-senaryo-runner.mjs",
+      "tests/atomik-finans-smoke.mjs",
+      "tests/login-auth-smoke.mjs",
+      "tests/islem-guard-smoke.mjs",
+      "tests/write-app-state-contract.mjs",
+      "tests/session-guard-smoke.mjs",
+      "tests/finans-yetki-smoke.mjs",
+      "tests/v45-isolated-rpc-matrix.mjs",
+      "tests/atomic-adapter-smoke.mjs"
+    ]
+  },
+  "production_write": false,
+  "paid_service_added": false,
+  "next_priority": "single-write-gateway-and-stock-integrity"
+}

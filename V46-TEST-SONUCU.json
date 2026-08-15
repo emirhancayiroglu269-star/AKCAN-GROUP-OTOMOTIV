@@ -1,0 +1,8 @@
+{
+  "phase": 46,
+  "test_command": "node tests/v45-isolated-rpc-matrix.mjs",
+  "return_code": 0,
+  "passed_cases": 5,
+  "production_changed": false,
+  "real_supabase_rpc_called": false
+}

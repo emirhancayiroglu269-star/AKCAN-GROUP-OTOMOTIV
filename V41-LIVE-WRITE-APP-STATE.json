@@ -1,0 +1,16 @@
+{
+  "function": "public.write_app_state(jsonb,text)",
+  "security_definer": true,
+  "search_path": "public",
+  "updates": [
+    "data",
+    "updated_at",
+    "updated_by",
+    "version=version+1"
+  ],
+  "has_idempotency_key": false,
+  "has_expected_version": false,
+  "anon_execute": false,
+  "authenticated_execute": false,
+  "production_function_modified": false
+}

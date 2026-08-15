@@ -1,0 +1,6 @@
+{
+  "compilerOptions": {
+    "target":"ES2020","module":"ESNext","jsx":"react-jsx","moduleResolution":"Bundler","skipLibCheck":true,"noEmit":true,"allowJs":false
+  },
+  "include":["src/modules/Musteri.tsx"]
+}

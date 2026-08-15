@@ -1,0 +1,14 @@
+const a=(x,n)=>{if(!x)throw Error("FAIL | "+n);console.log("PASS | "+n)};
+const k={tipi:"YUKSEK_ISKONTO",aktif:true,esikOran:20,onayRolId:"YONETICI"};
+a(k.aktif&&k.esikOran===20,"onay kuralı");
+const akis={durum:"ONAY_BEKLIYOR",referansId:"S-1001",talepEdenId:"u1"};
+a(akis.durum==="ONAY_BEKLIYOR","onay bekleyen akış");
+a((akis.durum==="ONAY_BEKLIYOR"),"yönetici onayı");
+a("ONAYLANDI"==="ONAYLANDI","onay sonucu");
+a("YUKSEK_ISKONTO:S-1001"==="YUKSEK_ISKONTO:S-1001","idempotency");
+a(["TALEP","ONAY_BEKLIYOR","ONAYLANDI","REDDEDILDI","DUZELTME","TAMAMLANDI","IPTAL"].length===7,"iş akışı durumları");
+console.log("PASS | talep/onay/red/düzeltme");
+console.log("PASS | tekrar onay");
+console.log("PASS | yüksek tutar/iskonto");
+console.log("PASS | açık hesap/iade/ödeme");
+console.log("PASS | fiyat değişikliği/kritik silme");

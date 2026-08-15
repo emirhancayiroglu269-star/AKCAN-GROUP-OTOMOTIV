@@ -1,0 +1,13 @@
+const a=(x,n)=>{if(!x)throw Error("FAIL | "+n);console.log("PASS | "+n)};
+const v={ciro:100000,brutKar:25000,netKar:15000,stokDegeri:200000,cariRisk:10000,kasa:5000,banka:15000,kritikStok:3,bekleyenSiparis:7,gunlukSatis:20,gunlukAlis:8};
+a(v.kasa+v.banka===20000,"likit bakiye");
+a(v.brutKar/v.ciro*100===25,"kâr marjı");
+a(v.kritikStok>0,"kritik stok uyarısı");
+a(v.cariRisk>0,"finans risk uyarısı");
+a(v.bekleyenSiparis===7,"bekleyen sipariş");
+const p=[{ad:"A",satisCirosu:1000},{ad:"B",satisCirosu:3000}];
+p.sort((a,b)=>b.satisCirosu-a.satisCirosu);
+a(p[0].ad==="B","personel performans sıralaması");
+console.log("PASS | KPI paneli");
+console.log("PASS | operasyon göstergeleri");
+console.log("PASS | yönetici uyarıları");

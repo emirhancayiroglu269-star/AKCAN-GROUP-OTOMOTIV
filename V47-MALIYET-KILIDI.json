@@ -1,0 +1,19 @@
+{
+  "cost_policy": {
+    "max_new_monthly_cost_usd": 0,
+    "max_new_hourly_cost_usd": 0,
+    "allow_paid_service": false,
+    "allow_paid_supabase_branch": false,
+    "allow_paid_supabase_project": false
+  },
+  "testing": {
+    "production_write": false,
+    "prefer_local_mock": true,
+    "isolated_branch": false
+  },
+  "architecture": {
+    "keep_existing_supabase": true,
+    "keep_app_state_jsonb": true,
+    "avoid_unnecessary_migrations": true
+  }
+}

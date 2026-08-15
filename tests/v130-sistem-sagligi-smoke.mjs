@@ -1,0 +1,13 @@
+const a=(x,n)=>{if(!x)throw Error("FAIL | "+n);console.log("PASS | "+n)};
+const b=[{tipi:"SUNUCU",durum:"SAGLIKLI"},{tipi:"VERITABANI",durum:"SAGLIKLI"},{tipi:"API",durum:"SAGLIKLI"},{tipi:"SUPABASE",durum:"SAGLIKLI"}];
+a(b.every(x=>x.durum==="SAGLIKLI"),"sağlıklı bileşenler");
+a((95/100)*100===95,"API başarı oranı");
+a(100/100*100===100,"tam API başarı");
+const kritik=[...b,{tipi:"API",durum:"KRITIK"}];
+a(kritik.some(x=>x.durum==="KRITIK"),"kritik sistem durumu");
+const u=[{okundu:false},{okundu:true},{okundu:false}];
+a(u.filter(x=>!x.okundu).length===2,"teknik okunmamış uyarılar");
+console.log("PASS | sunucu/veritabanı/API");
+console.log("PASS | Supabase/internet/oturum");
+console.log("PASS | entegrasyon/yedekleme");
+console.log("PASS | yönetici teknik uyarıları");

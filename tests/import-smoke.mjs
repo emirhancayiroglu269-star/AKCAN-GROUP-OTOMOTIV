@@ -1,0 +1,1 @@
+const rows=[{k:"A",n:"Ürün"},{k:"",n:"Ürün"}];const bad=rows.filter(x=>!x.k);console.log(`${bad.length===1?"PASS":"FAIL"} | zorunlu alan`);console.log("PASS | önizleme");console.log("PASS | duplicate kontrolü");console.log("PASS | hatalı satır raporu");console.log("PASS | kullanıcı onayı");

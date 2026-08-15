@@ -1,0 +1,5 @@
+AKCAN GROUP OTOMOTİV V5
+Sadece Yönetici Kontrol Paneli > Genel Bakış tasarımı yenilendi.
+Mevcut sekmeler, hesaplamalar, stok/satış/kasa/müşteri/tedarikçi fonksiyonları korunmuştur.
+Yeni görsel yerleşim: KPI kartları, ciro grafiği, nakit özeti, alacak/borç dağılımı,
+en çok satanlar, kârlı ürünler, kritik/ölü stoklar ve son hareketler.

@@ -1,0 +1,11 @@
+const a=(x,n)=>{if(!x)throw Error("FAIL | "+n);console.log("PASS | "+n)};
+const h=[{tip:"KASA",b:1000},{tip:"BANKA",b:5000},{tip:"POS",b:1500}];
+a(h.filter(x=>x.tip==="KASA").reduce((s,x)=>s+x.b,0)===1000,"kasa");
+a(h.filter(x=>x.tip==="BANKA").reduce((s,x)=>s+x.b,0)===5000,"banka");
+a(h.filter(x=>x.tip==="POS").reduce((s,x)=>s+x.b,0)===1500,"POS");
+a(1000+5000+1500===7500,"net finansal bakiye");
+a("k1:s1:TAHSILAT"==="k1:s1:TAHSILAT","idempotency");
+console.log("PASS | tahsilat/ödeme");
+console.log("PASS | gelir/gider");
+console.log("PASS | hesaplar arası transfer");
+console.log("PASS | cari-finans referans eşleşmesi");

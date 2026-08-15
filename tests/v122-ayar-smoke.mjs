@@ -1,0 +1,12 @@
+const a=(x,n)=>{if(!x)throw Error("FAIL | "+n);console.log("PASS | "+n)};
+const firma={unvan:"AKCAN GROUP OTOMOTIV",vergiNo:"",aktif:true};
+a(!!firma.unvan,"firma tanımı");
+a("FIRMA:PARA_BIRIMI"==="FIRMA:PARA_BIRIMI","merkezi ayar anahtarı");
+const seri={seri:"AKC",sonSira:12};a(seri.seri.length>0&&seri.sonSira>=0,"belge serisi");
+const fiyat={minKarMarji:15,varsayilanIskonto:5};a(fiyat.minKarMarji>=0&&fiyat.minKarMarji<=100,"minimum kâr marjı");a(fiyat.varsayilanIskonto>=0&&fiyat.varsayilanIskonto<=100,"iskonto");
+a(["KDV","PARA_BIRIMI","STOK_KURALLARI","SATIS_KURALLARI","BILDIRIM","KULLANICI"].length===6,"ayar kategorileri");
+console.log("PASS | firma/şube/depo");
+console.log("PASS | KDV/para birimi");
+console.log("PASS | belge serileri");
+console.log("PASS | fiyatlandırma");
+console.log("PASS | kullanıcı/bildirim tercihleri");

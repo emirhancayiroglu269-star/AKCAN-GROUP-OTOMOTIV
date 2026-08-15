@@ -1,0 +1,7 @@
+AKCAN GROUP OTOMOTİV V13
+- Merkezi veri açılışta otoritedir; localStorage artık merkezi veriyi ezemez.
+- Uzak bilgisayardan gelen veri tekrar sunucuya yazılmaz.
+- Realtime app_events INSERT dinleyicisi filtresiz ve daha sağlam hale getirildi.
+- Realtime koparsa 2 saniyelik fallback kontrolü vardır.
+- Yerel kayıt devam ederken gelen uzak değişiklik kayıt tamamlandıktan sonra uygulanır.
+- Mevcut modüller ve tasarım korunmuştur.

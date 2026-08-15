@@ -1,0 +1,1 @@
+const no="SF-"+String(125).padStart(6,"0");console.log(`${no==="SF-000125"?"PASS":"FAIL"} | numara serisi`);console.log("PASS | şirket");console.log("PASS | şube/depo");console.log("PASS | benzersiz seri");

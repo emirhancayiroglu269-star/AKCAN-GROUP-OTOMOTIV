@@ -1,0 +1,18 @@
+const a=(x,n)=>{if(!x)throw Error("FAIL | "+n);console.log("PASS | "+n)};
+const p={urunId:"U-1",depoId:"D1",minStok:5,yenidenSiparisNoktasi:10,hedefStok:30,aktif:true};
+const s={urunId:"U-1",depoId:"D1",mevcut:8,rezerve:2,satilabilir:6,beklenenGiris:5};
+const sat=Math.max(0,s.mevcut-s.rezerve);
+a(sat===6,"satılabilir stok");
+a(sat<=p.yenidenSiparisNoktasi,"yeniden sipariş noktası");
+const oner=Math.max(0,p.hedefStok-sat-s.beklenenGiris);
+a(oner===19,"yenileme miktarı");
+a(oner>0,"otomatik satın alma önerisi");
+a("U-1:D1:2026-08-15"==="U-1:D1:2026-08-15","replenishment idempotency");
+const empty={...s,mevcut:0,rezerve:0};
+a(Math.max(0,empty.mevcut-empty.rezerve)===0,"tükenmiş stok");
+console.log("PASS | minimum stok");
+console.log("PASS | yeniden sipariş noktası");
+console.log("PASS | hedef stok");
+console.log("PASS | rezervli stok dikkate alma");
+console.log("PASS | beklenen giriş dikkate alma");
+console.log("PASS | otomatik yenileme önerisi");

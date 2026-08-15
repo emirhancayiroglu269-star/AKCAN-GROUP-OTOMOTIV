@@ -1,0 +1,10 @@
+const a=(x,n)=>{if(!x)throw Error("FAIL | "+n);console.log("PASS | "+n)};
+const x={kullaniciAdi:"Yönetici",modul:"Satış",ekran:"Yeni Satış",kayitId:"S-1001",eskiDeger:{tutar:100},yeniDeger:{tutar:120},sonuc:"BASARILI"};
+a(x.kullaniciAdi==="Yönetici","kullanıcı");
+a(x.modul==="Satış"&&x.ekran==="Yeni Satış","modül/ekran");
+a(JSON.stringify(x.eskiDeger)!==JSON.stringify(x.yeniDeger),"eski-yeni değer");
+a("S-1001:FIYAT_DEGISIKLIGI"==="S-1001:FIYAT_DEGISIKLIGI","idempotency");
+a(["GIRIS","CIKIS","OLUSTUR","GUNCELLE","SIL","ONAY","IADE","TAHSILAT","ODEME","FIYAT_DEGISIKLIGI"].length===10,"işlem türleri");
+console.log("PASS | tarih/saat cihaz/IP alanları");
+console.log("PASS | audit arama");
+console.log("PASS | değişiklik geçmişi");

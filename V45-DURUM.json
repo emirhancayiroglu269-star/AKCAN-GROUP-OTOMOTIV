@@ -1,0 +1,13 @@
+{
+  "phase": 45,
+  "isolated_migration_prepared": true,
+  "production_migration_applied": false,
+  "production_rpc_called": false,
+  "tests": [
+    "normal-write",
+    "duplicate-idempotency",
+    "version-conflict",
+    "missing-idempotency-key",
+    "missing-updated-by"
+  ]
+}

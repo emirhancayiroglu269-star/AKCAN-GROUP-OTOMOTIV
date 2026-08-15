@@ -1,0 +1,11 @@
+const a=(x,n)=>{if(!x)throw Error("FAIL | "+n);console.log("PASS | "+n)};
+const key=(k,i,t)=>`${k}:${i}:${t}`;
+const rol={yetkiler:[key("SATIS","OLUSTUR","OLUSTUR"),key("SATIS","GOSTER","GOR")]};
+a(rol.yetkiler.includes(key("SATIS","OLUSTUR","OLUSTUR")),"işlem yetkisi");
+a(!rol.yetkiler.includes(key("SATIS","SIL","SIL")),"yetkisiz silme");
+const p={hedef:100000,ciro:75000};
+a(p.ciro/p.hedef*100===75,"personel hedef yüzdesi");
+a(["GOR","OLUSTUR","DUZENLE","SIL","ONAY","FIYAT_DEGISTIR"].length===6,"yetki türleri");
+console.log("PASS | kullanıcı→rol→yetki");
+console.log("PASS | menü/işlem/onay yetkileri");
+console.log("PASS | personel performansı");

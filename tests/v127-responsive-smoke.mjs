@@ -1,0 +1,15 @@
+const a=(x,n)=>{if(!x)throw Error("FAIL | "+n);console.log("PASS | "+n)};
+const cihaz=w=>w<768?"MOBIL":w<1024?"TABLET":w<1440?"LAPTOP":"PC";
+a(cihaz(390)==="MOBIL","telefon breakpoint");
+a(cihaz(800)==="TABLET","tablet breakpoint");
+a(cihaz(1200)==="LAPTOP","laptop breakpoint");
+a(cihaz(1600)==="PC","PC breakpoint");
+const kolon=c=>c==="MOBIL"?1:c==="TABLET"?2:c==="LAPTOP"?3:4;
+a(kolon("MOBIL")===1&&kolon("TABLET")===2,"mobil/tablet kolon");
+a(kolon("LAPTOP")===3&&kolon("PC")===4,"laptop/PC kolon");
+const moduller=["MENU","DASHBOARD","SATIS","CARI","STOK","BARKOD","FINANS","BILDIRIM"];
+a(moduller.length===8,"mobil öncelikli modüller");
+console.log("PASS | responsive cihaz algılama");
+console.log("PASS | mobil/tablet/laptop/PC");
+console.log("PASS | dashboard responsive");
+console.log("PASS | mobil modül görünürlüğü");

@@ -1,0 +1,8 @@
+{
+  "password_import": "forbidden",
+  "password_reset_required": true,
+  "legacy_user_id_preserved": true,
+  "role_id_preserved": true,
+  "production_auth_changes_performed": false,
+  "production_database_writes_performed": false
+}

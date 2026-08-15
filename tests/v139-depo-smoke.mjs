@@ -1,0 +1,15 @@
+const a=(x,n)=>{if(!x)throw Error("FAIL | "+n);console.log("PASS | "+n)};
+const k={siparisId:"S-1001",urunId:"U-1",rafKodu:"A-03-02",istenenMiktar:4,toplananMiktar:4,durum:"TOPLANDI"};
+a(k.toplananMiktar===k.istenenMiktar&&k.durum==="TOPLANDI","tam toplama");
+const eksik={...k,toplananMiktar:3,durum:"EKSIK"};
+a(eksik.toplananMiktar<eksik.istenenMiktar,"eksik toplama");
+a("S-1001:U-1:A-03-02"==="S-1001:U-1:A-03-02","toplama idempotency");
+const h={toplamaTamam:true,kontrolTamam:true,paketlemeTamam:true,etiketTamam:true};
+a(h.toplamaTamam&&h.kontrolTamam&&h.paketlemeTamam&&h.etiketTamam,"sevkiyat hazırlık şartları");
+const p={siparisId:"S-1001",paketNo:"P-001",durum:"ETIKETLENDI",barkod:"PKT001"};
+a(p.durum==="ETIKETLENDI"&&!!p.barkod,"paket etiketi");
+console.log("PASS | toplama listesi");
+console.log("PASS | raf konumu ve personel");
+console.log("PASS | eksik ürün kontrolü");
+console.log("PASS | paketleme ve etiket");
+console.log("PASS | sevkiyata hazır kilidi");

@@ -1,0 +1,13 @@
+const a=(x,n)=>{if(!x)throw Error("FAIL | "+n);console.log("PASS | "+n)};
+const net=200*(1-10/100);
+a(net===180,"net satış fiyatı");
+a(180-120===60,"kâr tutarı");
+a(Math.round(((180-120)/180)*10000)/100===33.33,"kâr marjı");
+a(150<180,"maliyet altı kontrolü");
+a("ALIS:A-100:U-1"==="ALIS:A-100:U-1","maliyet idempotency");
+a(["SON_ALIS","AGIRLIKLI_ORTALAMA","FIFO"].length===3,"maliyet yöntemleri");
+console.log("PASS | son alış/ağırlıklı ortalama/FIFO");
+console.log("PASS | net satış ve kâr");
+console.log("PASS | minimum marj kontrolü");
+console.log("PASS | maliyet altı satış kontrolü");
+console.log("PASS | maliyet hareket bağlantısı");

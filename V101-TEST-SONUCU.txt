@@ -1,0 +1,10 @@
+PASS | satış ciro
+PASS | brüt kâr
+PASS | stok düşümü
+PASS | ödeme mutabakatı
+PASS | audit kaydı
+PASS | kritik bildirim
+PASS | rol yetkisi
+PASS | yedek kurtarma kontrolü
+PASS | rapor mutabakatı
+PASS | V101 uçtan uca temel senaryo

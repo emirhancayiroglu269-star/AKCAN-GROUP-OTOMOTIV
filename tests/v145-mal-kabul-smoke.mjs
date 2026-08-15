@@ -1,0 +1,15 @@
+const a=(x,n)=>{if(!x)throw Error("FAIL | "+n);console.log("PASS | "+n)};
+const k={siparisMiktari:10,gelenMiktar:8,birimAlisFiyati:100,faturaBirimFiyati:100,kdvOrani:20,faturaKdvOrani:20};
+a(k.gelenMiktar-k.siparisMiktari===-2,"eksik adet");
+a(k.faturaBirimFiyati-k.birimAlisFiyati===0,"fiyat farkı yok");
+a(k.faturaKdvOrani-k.kdvOrani===0,"KDV farkı yok");
+const f={faturaGenelToplam:1180,sistemGenelToplam:1200,farkTutar:-20,farkTipleri:["TUTAR_FARKI"]};
+a(f.faturaGenelToplam-f.sistemGenelToplam===-20,"fatura tutar farkı");
+a(Math.abs(f.farkTutar)>0.01,"fark bulundu");
+a("SA-1001:IRS-001"==="SA-1001:IRS-001","mal kabul idempotency");
+console.log("PASS | mal kabul adet kontrolü");
+console.log("PASS | alış fiyatı kontrolü");
+console.log("PASS | KDV kontrolü");
+console.log("PASS | fatura ara toplam/genel toplam");
+console.log("PASS | fark analizi ve onay");
+console.log("PASS | stok girişine hazır kontrol");

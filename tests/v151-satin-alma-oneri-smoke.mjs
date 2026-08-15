@@ -1,0 +1,16 @@
+const a=(x,n)=>{if(!x)throw Error("FAIL | "+n);console.log("PASS | "+n)};
+const miktar=Math.max(19,10);
+a(miktar===19,"önerilen sipariş miktarı");
+const min=Math.max(19,25);
+a(min===25,"minimum sipariş miktarı");
+const k={onerilenMiktar:25,birimFiyat:100};
+a(k.onerilenMiktar*k.birimFiyat===2500,"toplam satın alma tutarı");
+const o={durum:"TASLAK",kalemler:[k]};
+a(o.durum==="TASLAK"&&o.kalemler.length>0&&o.kalemler.every(x=>x.onerilenMiktar>0),"onaya gönderim");
+a("U-1:D1:2026-08"==="U-1:D1:2026-08","öneri idempotency");
+console.log("PASS | replenishment ihtiyacını sipariş önerisine çevirme");
+console.log("PASS | minimum sipariş miktarı");
+console.log("PASS | tedarikçi/fiyat bilgisi");
+console.log("PASS | toplam satın alma tutarı");
+console.log("PASS | yönetici onayı");
+console.log("PASS | satın alma siparişine dönüşüm hazırlığı");

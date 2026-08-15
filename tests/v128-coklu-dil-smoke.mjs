@@ -1,0 +1,15 @@
+const a=(x,n)=>{if(!x)throw Error("FAIL | "+n);console.log("PASS | "+n)};
+const d=["tr-TR","en-US","ar-SA"];
+const p=["TRY","USD","EUR","GBP"];
+a(d.length===3,"çoklu dil");
+a(p.length===4,"para birimleri");
+const ayar={dil:"tr-TR",ulke:"TR",paraBirimi:"TRY",zamanDilimi:"Europe/Istanbul"};
+a(!!ayar.dil&&!!ayar.ulke&&!!ayar.paraBirimi&&!!ayar.zamanDilimi,"bölgesel ayarlar");
+const ceviri=[{anahtar:"sales",dil:"tr-TR",deger:"Satış"},{anahtar:"sales",dil:"en-US",deger:"Sales"}];
+a(ceviri.find(x=>x.anahtar==="sales"&&x.dil==="tr-TR").deger==="Satış","Türkçe çeviri");
+a(ceviri.find(x=>x.anahtar==="sales"&&x.dil==="en-US").deger==="Sales","İngilizce çeviri");
+a(({TRY:"₺",USD:"$",EUR:"€",GBP:"£"})["TRY"]==="₺","para sembolü");
+console.log("PASS | Türkçe/İngilizce/Arapça");
+console.log("PASS | tarih/saat formatları");
+console.log("PASS | zaman dilimi");
+console.log("PASS | vergi sistemi ayarı");

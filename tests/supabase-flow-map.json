@@ -1,0 +1,115 @@
+[
+  {
+    "file": "src/App.tsx",
+    "supabase_signals": [
+      {
+        "line": 49,
+        "code": "const raw = localStorage.getItem(R.STORAGE_KEY);"
+      },
+      {
+        "line": 92,
+        "code": "try { localStorage.setItem(R.STORAGE_KEY, JSON.stringify(db)); } catch {}"
+      },
+      {
+        "line": 141,
+        "code": "// Çoklu bilgisayar senkronizasyonu: Realtime olayını dinle; yerel kayıt"
+      },
+      {
+        "line": 143,
+        "code": "// hemen sonra yeniden yükle. Realtime koparsa 2 saniyelik güvenli fallback"
+      },
+      {
+        "line": 171,
+        "code": "try { localStorage.setItem(R.STORAGE_KEY, JSON.stringify(R.veriyiOnar({ ...R.bosVeritabani(), ...yeni }))); } catch {}"
+      },
+      {
+        "line": 178,
+        "code": "// Supabase Realtime: app_events tablosundaki her app_state_changed"
+      },
+      {
+        "line": 181,
+        "code": "const channel = R.supabaseRealtime"
+      },
+      {
+        "line": 182,
+        "code": ".channel(\"akcan-app-state-realtime\")"
+      },
+      {
+        "line": 203,
+        "code": "// İlk yükleme ve Realtime bağlantısı kurulmadan önceki değişiklikler için"
+      },
+      {
+        "line": 212,
+        "code": "R.supabaseRealtime.removeChannel(channel);"
+      }
+    ]
+  },
+  {
+    "file": "src/core/akcan-runtime.tsx",
+    "supabase_signals": [
+      {
+        "line": 74,
+        "code": "SUPABASE_URL,"
+      },
+      {
+        "line": 75,
+        "code": "SUPABASE_PUBLISHABLE_KEY,"
+      },
+      {
+        "line": 76,
+        "code": "supabaseRealtime,"
+      },
+      {
+        "line": 78,
+        "code": "} from \"../lib/supabase\";"
+      },
+      {
+        "line": 303,
+        "code": "export { React, useState, useEffect, useRef, loginBrandImage, Package, Plus, Search, X, Check, Pencil, Trash2, AlertTriangle, Loader2, Car, ImageIcon, History, TrendingUp, EyeOff, Eye, GitCompare, ShoppingCart, Zap, Printer, RotateCcw, Tag,"
+      }
+    ]
+  },
+  {
+    "file": "src/lib/supabase.ts",
+    "supabase_signals": [
+      {
+        "line": 1,
+        "code": "import { createClient } from \"@supabase/supabase-js\";"
+      },
+      {
+        "line": 4,
+        "code": "export const MERKEZI_API = \"https://oungmlyniuwpoyfghvrz.supabase.co/functions/v1/app-state\";"
+      },
+      {
+        "line": 6,
+        "code": "export const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || \"https://oungmlyniuwpoyfghvrz.supabase.co\";"
+      },
+      {
+        "line": 7,
+        "code": "export const SUPABASE_PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || \"sb_publishable_6mdoEyS-O79tqVm2AogJDA_buYLyv--\";"
+      },
+      {
+        "line": 8,
+        "code": "export const supabaseRealtime = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {"
+      }
+    ]
+  },
+  {
+    "file": "src/lib/guvenlik-politikasi.ts",
+    "supabase_signals": [
+      {
+        "line": 73,
+        "code": "* Gerçek güvenlik Supabase RLS / Edge Function / server-side authorization"
+      }
+    ]
+  },
+  {
+    "file": "src/lib/domain/finans-test-runner.ts",
+    "supabase_signals": [
+      {
+        "line": 17,
+        "code": "// Üretim verisine veya Supabase'e yazmaz."
+      }
+    ]
+  }
+]

@@ -1,0 +1,10 @@
+{
+  "live_project_checked": true,
+  "existing_migrations_include": [
+    "atomic_app_state_versioning",
+    "lock_down_security_definer_rpc_execution"
+  ],
+  "current_write_app_state_signature": "write_app_state(jsonb,text)",
+  "new_prepared_rpc": "atomic_write_app_state(jsonb,text,text,bigint)",
+  "production_migration_applied": false
+}

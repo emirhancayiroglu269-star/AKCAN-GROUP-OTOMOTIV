@@ -1,0 +1,14 @@
+{
+  "adapter_prepared": true,
+  "live_rpc_called": false,
+  "production_write": false,
+  "rpc_reference_count": 1,
+  "rpc_references": [
+    {
+      "file": "src/lib/domain/atomic-write-adapter.ts",
+      "line": 8,
+      "code": "export interface AtomicWriteAdapter {"
+    }
+  ],
+  "e2e_mode": "contract-simulation"
+}

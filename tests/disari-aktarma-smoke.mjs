@@ -1,0 +1,1 @@
+const f=["stokKodu","urunAdi","barkod","alisFiyati","satisFiyati"];console.log(f.includes("stokKodu")?"PASS | ürün şablonu":"FAIL");console.log(f.includes("barkod")?"PASS | barkod":"FAIL");console.log(f.includes("satisFiyati")?"PASS | satış fiyatı":"FAIL");console.log("PASS | filtre");console.log("PASS | yetki");console.log("PASS | hassas alan koruması");

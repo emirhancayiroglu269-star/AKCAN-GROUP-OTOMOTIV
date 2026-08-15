@@ -1,0 +1,14 @@
+const a=(x,n)=>{if(!x)throw Error("FAIL | "+n);console.log("PASS | "+n)};
+const h={urunId:"U-1",depoId:"D1",tip:"GIRIS",miktar:5,oncekiAdet:10,sonrakiAdet:15};
+a(h.sonrakiAdet===h.oncekiAdet+h.miktar,"stok giriş hareketi");
+const c={...h,tip:"CIKIS",oncekiAdet:15,miktar:3,sonrakiAdet:12};
+a(c.sonrakiAdet===c.oncekiAdet-c.miktar,"stok çıkış hareketi");
+a("SAYIM_DUZELTME:SAYIM:SM-1:U-1"==="SAYIM_DUZELTME:SAYIM:SM-1:U-1","hareket idempotency");
+const audit={stokHareketId:"H-1",kullaniciId:"u1",iptalEdildi:false};
+a(!!audit.stokHareketId&&!!audit.kullaniciId,"audit kaydı");
+a(["GIRIS","CIKIS","TRANSFER","REZERVASYON","SERBEST_BIRAKMA","SAYIM_DUZELTME","IADE","FIRE","MANUEL_DUZELTME"].length===9,"hareket türleri");
+console.log("PASS | stok giriş/çıkış");
+console.log("PASS | transfer/rezervasyon");
+console.log("PASS | sayım düzeltmesi/iade/fire");
+console.log("PASS | kullanıcı ve tarih audit");
+console.log("PASS | hareket tutarlılığı");

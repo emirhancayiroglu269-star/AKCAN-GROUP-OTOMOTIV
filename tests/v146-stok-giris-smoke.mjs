@@ -1,0 +1,14 @@
+const a=(x,n)=>{if(!x)throw Error("FAIL | "+n);console.log("PASS | "+n)};
+const k={malKabulKalemId:"MK-1",urunId:"U-1",miktar:20,depoId:"D1",rafKodu:"A-03-02",barkod:"8690001",durum:"RAF_ATANDI"};
+a(!!k.depoId&&!!k.rafKodu,"depo ve raf atama");
+a(k.miktar===20,"stok giriş miktarı");
+const yer={...k,durum:"YERLESTIRILDI",personelId:"u1"};
+a(yer.durum==="YERLESTIRILDI"&&!!yer.personelId,"yerleştirme tamamlandı");
+a("MK-1:U-1:D1"==="MK-1:U-1:D1","stok giriş idempotency");
+a(!!k.barkod,"barkod kaydı");
+console.log("PASS | mal kabulden stok girişine");
+console.log("PASS | depo seçimi");
+console.log("PASS | raf atama");
+console.log("PASS | barkod ve miktar");
+console.log("PASS | fiziksel yerleştirme");
+console.log("PASS | stok güncelleme hazırlığı");

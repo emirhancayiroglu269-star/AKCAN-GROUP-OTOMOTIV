@@ -1,0 +1,28 @@
+{
+  "verified_live": true,
+  "jsonb_top_level_counts": {
+    "satislar": 6,
+    "malAlimlari": 3,
+    "stokHareketleri": 23,
+    "cariler": 2,
+    "hesaplar": 3,
+    "kullanicilar": 2,
+    "roller": 4,
+    "iadeler": 1,
+    "araclar": 10,
+    "depolar": 2,
+    "giderKategorileri": 17,
+    "girisGecmisi": 43,
+    "islemGecmisi": 47,
+    "kategoriler": 31,
+    "kodlar": 7,
+    "markalar": 5,
+    "musteriFiyatGruplari": 5,
+    "parcalar": 9,
+    "posCihazlari": 1,
+    "uyumluluklar": 8,
+    "yedekGecmisi": 2
+  },
+  "production_write_performed": false,
+  "sensitive_password_values_copied": false
+}

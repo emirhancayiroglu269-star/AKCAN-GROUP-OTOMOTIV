@@ -1,0 +1,15 @@
+{
+  "production_calls_made": false,
+  "entries": [],
+  "required_test_fields": [
+    "testRunId",
+    "referenceId",
+    "dryRun"
+  ],
+  "operations": [
+    "satis",
+    "alis",
+    "iade",
+    "iptal"
+  ]
+}

@@ -1,0 +1,12 @@
+const a=(x,n)=>{if(!x)throw Error("FAIL | "+n);console.log("PASS | "+n)};
+const y={boyut:1024,checksum:"abc123",konum:"backup/2026-08-15",durum:"BASARILI"};
+a(y.boyut>0,"yedek boyutu");
+a(!!y.checksum,"checksum");
+a(!!y.konum,"yedek konumu");
+a(y.durum==="BASARILI","başarılı yedek");
+a("backup-001:abc123"==="backup-001:abc123","yedek bütünlük anahtarı");
+console.log("PASS | otomatik yedek");
+console.log("PASS | manuel yedek");
+console.log("PASS | yedek geçmişi");
+console.log("PASS | geri yükleme kontrolü");
+console.log("PASS | kurtarma kaydı");

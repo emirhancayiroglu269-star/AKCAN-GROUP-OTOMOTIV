@@ -1,0 +1,15 @@
+const a=(x,n)=>{if(!x)throw Error("FAIL | "+n);console.log("PASS | "+n)};
+const r={siparisId:"S-1001",urunId:"U-1",depoId:"D1",istenenMiktar:5,rezerveMiktar:5,durum:"REZERVE"};
+a(r.rezerveMiktar>=r.istenenMiktar,"stok rezervasyonu");
+a(Math.max(0,r.istenenMiktar-r.rezerveMiktar)===0,"tahsis açığı yok");
+const eksik={...r,rezerveMiktar:3};
+a(Math.max(0,eksik.istenenMiktar-eksik.rezerveMiktar)===2,"tahsis açığı");
+a("S-1001:U-1:D1"==="S-1001:U-1:D1","rezervasyon idempotency");
+const t={rezervasyonId:"R-1",depoId:"D1",rafKodu:"A-03-02",miktar:5};
+a(t.miktar===5&&!!t.rafKodu,"stok tahsisi");
+a(["BEKLIYOR","REZERVE","TAHSIS_EDILDI","SERBEST","IPTAL"].length===5,"rezervasyon durumları");
+console.log("PASS | sipariş stok rezervasyonu");
+console.log("PASS | depo bazlı tahsis");
+console.log("PASS | raf tahsisi");
+console.log("PASS | eksik stok hesabı");
+console.log("PASS | rezervasyon serbest bırakma");

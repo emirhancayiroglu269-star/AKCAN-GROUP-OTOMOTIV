@@ -1,0 +1,12 @@
+AKCAN GROUP OTOMOTIV ERP V15
+Giris ekrani guncellendi.
+
+- Kurumsal yesil + siyah tasarim
+- Kullanici adi / sifre alanlari
+- Sifre goster/gizle
+- Enter ile giris
+- Gercek giris fonksiyonu korunmustur
+- Hata ve yukleniyor durumlari
+- 15 dakika otomatik ekran kilidi bilgisi
+- Masaustu ve mobil uyumlu
+- Referans gorselin sol kurumsal alani proje asset'i olarak eklendi.

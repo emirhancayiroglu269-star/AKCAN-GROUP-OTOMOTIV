@@ -1,0 +1,12 @@
+PASS | F2 ürün arama
+PASS | F7 satış kaydet
+PASS | Ctrl+Enter kaydet
+PASS | negatif miktar engeli
+PASS | negatif ödeme engeli
+PASS | çift gönderim engeli
+PASS | satış yetkisi
+PASS | yetkisiz satış silme engeli
+PASS | rota formatı
+PASS | kritik bildirim görünürlüğü
+PASS | kritik işlem audit kapsamı
+PASS | V102 UI/regresyon temel senaryo

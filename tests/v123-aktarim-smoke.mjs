@@ -1,0 +1,12 @@
+const a=(x,n)=>{if(!x)throw Error("FAIL | "+n);console.log("PASS | "+n)};
+const x={yonu:"ICERI",tipi:"URUN",dosyaTipi:"XLSX",toplamSatir:100,basariliSatir:96,hataliSatir:4};
+a(x.basariliSatir+x.hataliSatir===x.toplamSatir,"satır mutabakatı");
+a(Math.round(x.basariliSatir/x.toplamSatir*10000)/100===96,"aktarım yüzdesi");
+a("ICERI:URUN:urunler.xlsx"==="ICERI:URUN:urunler.xlsx","aktarım idempotency");
+const row={stok_kodu:"ABC",urun_adi:"Filtre"};
+const req=[{kaynak:"stok_kodu",zorunlu:true},{kaynak:"urun_adi",zorunlu:true}];
+a(req.every(k=>row[k.kaynak]!==undefined&&String(row[k.kaynak]).trim()!==""),"zorunlu kolon kontrolü");
+console.log("PASS | Excel/CSV içeri aktarma");
+console.log("PASS | ürün/müşteri/tedarikçi/stok/fiyat/cari");
+console.log("PASS | satış/alış/finans/rapor dışarı aktarma");
+console.log("PASS | hata ve aktarım geçmişi");

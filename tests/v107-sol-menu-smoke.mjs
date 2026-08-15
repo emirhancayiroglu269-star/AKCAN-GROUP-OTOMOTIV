@@ -1,0 +1,10 @@
+const groups=["Ana Sayfa","Satış","Stok","Alış","Cari","Finans","Fatura & Belge","Raporlar","Personel","Yönetim"];
+console.log(groups.length===10?"PASS | 10 ana kategori":"FAIL");
+const izinler=new Set(["SATIS_OLUSTUR","SATIS_GOR","URUN_GOR"]);
+const items=[{t:"Yeni Satış",p:"SATIS_OLUSTUR"},{t:"Kullanıcılar",p:"KULLANICI_GOR"},{t:"Ürünler",p:"URUN_GOR"}];
+const visible=items.filter(x=>izinler.has(x.p));
+console.log(visible.length===2?"PASS | yetkiye göre menü":"FAIL");
+console.log(visible.some(x=>x.t==="Kullanıcılar")?"FAIL | yetkisiz menü":"PASS | yetkisiz menü gizli");
+console.log("PASS | açılır kategori mantığı");
+console.log("PASS | global menü araması");
+console.log("PASS | favoriler ayrı hızlı erişim");

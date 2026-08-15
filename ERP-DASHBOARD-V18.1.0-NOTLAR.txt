@@ -1,0 +1,12 @@
+AKCAN GROUP OTOMOTIV — ERP YÖNETİCİ DASHBOARD V18.1.0
+
+Bu sürüm V18.0.4 çalışan temel sürüm üzerine kurulmuştur.
+
+Yeni: 
+- Yönetici Hızlı Özeti: Bugünkü Ciro, Bu Ayki Ciro, Brüt Kâr, Net Faaliyet Kârı, Toplam Gider, Müşteri Alacağı, Tedarikçi Borcu, Stok Maliyeti
+- Seçili dönem / önceki eş uzunlukta dönem karşılaştırması
+- Ciro, satış adedi, brüt kâr ve ortalama sepet için yüzde değişim rozetleri
+- Mevcut satış, stok, kasa, cari ve finans motorları korunmuştur.
+- Yeni bağımlılık eklenmemiştir.
+
+Not: Yerel ortamda npm bağımlılıkları kurulu olmadığı için tam Vite build çalıştırılamadı; tsc yalnızca mevcut proje bağımlılık eksikleri nedeniyle hata verdi. Yeni kodda JSX/sözdizimi parse hatası görülmedi.

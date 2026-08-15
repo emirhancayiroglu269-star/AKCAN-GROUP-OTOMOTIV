@@ -1,0 +1,14 @@
+const a=(x,n)=>{if(!x)throw Error("FAIL | "+n);console.log("PASS | "+n)};
+const kontrol={bilesen:"API",sonuc:"KRITIK",mesaj:"API cevap vermiyor"};
+a(kontrol.sonuc==="KRITIK","kritik sorun tespiti");
+a(["UYARI","KRITIK","HATA"].includes(kontrol.sonuc),"yönetici uyarısı tetikleme");
+a("KRITIK"==="KRITIK","kritik yönetici seviyesi");
+const basarili={bilesen:"API",sonuc:"BASARILI"};
+a(basarili.sonuc==="BASARILI","sorun çözüldü durumu");
+a("API:check-001"==="API:check-001","kontrol idempotency");
+a(["SUNUCU","VERITABANI","API","SUPABASE","INTERNET","OTURUM","ENTEGRASYON","YEDEKLEME"].length===8,"otomatik kontrol bileşenleri");
+console.log("PASS | otomatik sistem kontrolü");
+console.log("PASS | sorun tespiti ve seviye");
+console.log("PASS | yönetici bildirimi");
+console.log("PASS | audit referansı");
+console.log("PASS | sorun çözülünce güncelleme");

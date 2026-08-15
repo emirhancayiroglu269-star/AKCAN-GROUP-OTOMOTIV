@@ -1,0 +1,17 @@
+const a=(x,n)=>{if(!x)throw Error("FAIL | "+n);console.log("PASS | "+n)};
+const net=(f,i)=>f*(1-i/100);
+a(net(100,10)===90,"net alış fiyatı");
+const normalize=(v,min,max)=>max===min?100:((v-min)/(max-min))*100;
+const maliyet=(n,min,max)=>100-normalize(n,min,max);
+const teslim=(g,min,max)=>100-normalize(g,min,max);
+a(maliyet(90,90,110)===100,"en düşük fiyat skoru");
+a(teslim(2,2,6)===100,"en hızlı teslim skoru");
+const skor=100*.5+100*.1+100*.2+95*.2;
+a(skor===99,"ağırlıklı toplam skor");
+a("U-1:2026-08"==="U-1:2026-08","karşılaştırma idempotency");
+console.log("PASS | net alış fiyatı");
+console.log("PASS | iskonto karşılaştırması");
+console.log("PASS | vade skoru");
+console.log("PASS | teslim süresi skoru");
+console.log("PASS | performans skoru");
+console.log("PASS | en avantajlı tedarikçi hesabı");

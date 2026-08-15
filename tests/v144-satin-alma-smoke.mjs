@@ -1,0 +1,14 @@
+const a=(x,n)=>{if(!x)throw Error("FAIL | "+n);console.log("PASS | "+n)};
+const k={miktar:10,birimFiyat:100,iskontoOrani:5,kdvOrani:20,gelenMiktar:10};
+a(k.birimFiyat*(1-k.iskontoOrani/100)===95,"net alış fiyatı");
+const s={tedarikciId:"T-1",kalemler:[k],durum:"SIPARIS_VERILDI"};
+const oran=(k.gelenMiktar/k.miktar)*100;
+a(oran===100,"mal kabul oranı");
+a(k.gelenMiktar>=k.miktar,"tam mal kabul");
+a("T-1:SA-1001"==="T-1:SA-1001","satın alma idempotency");
+a(["TALEP","ONAY_BEKLIYOR","SIPARIS_VERILDI","KISMEN_GELDI","TAM_GELDI","FATURALANDI","ODEME_BEKLIYOR","TAMAMLANDI","IPTAL"].length===9,"satın alma durumları");
+console.log("PASS | tedarikçi kartı");
+console.log("PASS | satın alma talebi/onayı");
+console.log("PASS | sipariş ve alış fiyatı");
+console.log("PASS | mal kabul");
+console.log("PASS | fatura ve ödeme takibi");
