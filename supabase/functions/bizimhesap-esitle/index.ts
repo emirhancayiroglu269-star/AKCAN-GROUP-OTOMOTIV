@@ -86,7 +86,7 @@ async function cek() {
     stok: sayi(al(u, 'quantity', 'qty', 'stock')),
     ham: u,
   })).filter((u) => u.bh_id);
-  iz.push(urunler.map((u) => [u.bh_id, u.alis_fiyati, u.satis_fiyati, u.stok, u.ad, u.kod]));
+  iz.push(urunler.map((u) => [u.bh_id, u.alis_fiyati, u.satis_fiyati, u.stok, u.ad, u.kod]).sort()); // API sırası değişebilir: sırala
   let degisen = 0;
   for (const p of parca(urunler, 400)) degisen += Number(await rpc('bh_urunleri_yaz', { p })) || 0;
 
@@ -100,7 +100,7 @@ async function cek() {
       miktar: sayi(al(s, 'quantity', 'qty', 'stock', 'amount')) ?? 0,
     })).filter((s) => s.urun_bh_id);
     stokSatiri += satirlar.length;
-    iz.push(d.bh_id, satirlar.map((s) => [s.urun_bh_id, s.miktar]));
+    iz.push(d.bh_id, satirlar.map((s) => [s.urun_bh_id, s.miktar]).sort());
     await rpc('bh_depo_stogu_yaz', { p_depo_bh: d.bh_id, p: satirlar });
   }
 
@@ -116,7 +116,7 @@ async function cek() {
         adres: metin(al(c, 'address')), bakiye: sayi(al(c, 'balance')) ?? 0, cek_senet: sayi(al(c, 'chequeandbond')) ?? 0,
       })).filter((c) => c.bh_id);
       cari += satirlar.length;
-      iz.push(satirlar.map((c) => [c.bh_id, c.bakiye, c.cek_senet]));
+      iz.push(satirlar.map((c) => [c.bh_id, c.bakiye, c.cek_senet]).sort());
       for (const p of parca(satirlar, 500)) await rpc('bh_carileri_yaz', { p });
     }
   } catch (e) { cariHata = (e as Error).message.slice(0, 300); }
