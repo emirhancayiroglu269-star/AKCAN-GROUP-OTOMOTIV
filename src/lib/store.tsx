@@ -34,8 +34,19 @@ export function StoreProvider({ personel: varsayilanAd, eposta = null, children 
   useEffect(() => {
     yenile();
     const kapat = backend.subscribe(yenile);
-    // canlı bağlantı koparsa da ekran güncel kalsın: 3 dakikada bir ve sekmeye dönüldüğünde yeniden yükle
-    const t = setInterval(() => { if (document.visibilityState === 'visible') yenile(); }, 3 * 60 * 1000);
+    // BizimHesap her dakika eşitlenir. 30 sn'de bir tek satırlık durum okunur; yalnız veri değiştiyse tamamı yeniden yüklenir.
+    let imza: string | null = null; let tamYukleme = Date.now();
+    const kontrol = async () => {
+      if (document.visibilityState !== 'visible') return;
+      try {
+        const d = await backend.durum(); if (!d) return;
+        if (imza !== null && d.imza !== imza) { imza = d.imza; tamYukleme = Date.now(); yenile(); return; }
+        imza = d.imza;
+        if (Date.now() - tamYukleme > 15 * 60 * 1000) { tamYukleme = Date.now(); yenile(); return; }
+        setDb((x) => (x && x.bh_durum && x.bh_durum.son_esitleme !== d.son_esitleme ? { ...x, bh_durum: { ...x.bh_durum, son_esitleme: d.son_esitleme } } : x));
+      } catch { /* bağlantı yoksa sonraki turda */ }
+    };
+    const t = setInterval(kontrol, 30 * 1000);
     let son = Date.now();
     const gorunur = () => { if (document.visibilityState === 'visible' && Date.now() - son > 60 * 1000) { son = Date.now(); yenile(); } };
     document.addEventListener('visibilitychange', gorunur); window.addEventListener('focus', gorunur);

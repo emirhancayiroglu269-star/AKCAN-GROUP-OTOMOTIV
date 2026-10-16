@@ -50,11 +50,16 @@ const sayi = (v: unknown) => {
   return Number.isFinite(n) ? n : null;
 };
 const parca = <T,>(a: T[], n: number) => Array.from({ length: Math.ceil(a.length / n) }, (_, i) => a.slice(i * n, i * n + n));
+async function ozet(veri: unknown): Promise<string> {
+  const b = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify(veri)));
+  return Array.from(new Uint8Array(b), (x) => x.toString(16).padStart(2, '0')).join('');
+}
 async function rpc(fn: string, args: Obj) { const { data, error } = await db.rpc(fn, args); if (error) throw new Error(`${fn}: ${error.message}`); return data; }
 
 // ---------- Çekme ----------
 async function cek() {
   const ornek: Obj = {};
+  const iz: unknown[] = []; // değişiklik algılama: fiyat, stok, depo stoğu, bakiye
 
   const depoHam = diziBul(await bh('/warehouses'));
   ornek.depolar = depoHam.slice(0, 3);
@@ -81,6 +86,7 @@ async function cek() {
     stok: sayi(al(u, 'quantity', 'qty', 'stock')),
     ham: u,
   })).filter((u) => u.bh_id);
+  iz.push(urunler.map((u) => [u.bh_id, u.alis_fiyati, u.satis_fiyati, u.stok, u.ad, u.kod]));
   let degisen = 0;
   for (const p of parca(urunler, 400)) degisen += Number(await rpc('bh_urunleri_yaz', { p })) || 0;
 
@@ -94,6 +100,7 @@ async function cek() {
       miktar: sayi(al(s, 'quantity', 'qty', 'stock', 'amount')) ?? 0,
     })).filter((s) => s.urun_bh_id);
     stokSatiri += satirlar.length;
+    iz.push(d.bh_id, satirlar.map((s) => [s.urun_bh_id, s.miktar]));
     await rpc('bh_depo_stogu_yaz', { p_depo_bh: d.bh_id, p: satirlar });
   }
 
@@ -109,11 +116,12 @@ async function cek() {
         adres: metin(al(c, 'address')), bakiye: sayi(al(c, 'balance')) ?? 0, cek_senet: sayi(al(c, 'chequeandbond')) ?? 0,
       })).filter((c) => c.bh_id);
       cari += satirlar.length;
+      iz.push(satirlar.map((c) => [c.bh_id, c.bakiye, c.cek_senet]));
       for (const p of parca(satirlar, 500)) await rpc('bh_carileri_yaz', { p });
     }
   } catch (e) { cariHata = (e as Error).message.slice(0, 300); }
 
-  return { depo: depolar.length, urun: urunler.length, degisen, stokSatiri, cari, cariHata, ornek };
+  return { depo: depolar.length, urun: urunler.length, degisen, stokSatiri, cari, cariHata, ornek, parmak: await ozet(iz) };
 }
 
 // ---------- Giriş noktası ----------
@@ -125,16 +133,24 @@ Deno.serve(async (req) => {
     await db.from('bh_durum').update({ son_hata: 'BH_TOKEN girilmemiş (Supabase > Edge Functions > Secrets)' }).eq('id', 1);
     return yanit({ ok: false, hata: 'BH_TOKEN girilmemiş' });
   }
+  // Aynı anda iki eşitleme çalışmasın (her dakika tetiklenir; bir tur 1 dakikayı aşarsa sonraki atlanır)
+  const simdi = new Date();
+  const { data: kilit } = await db.from('bh_durum').update({ kilit: simdi.toISOString() }).eq('id', 1)
+    .or(`kilit.is.null,kilit.lt.${new Date(simdi.getTime() - 3 * 60 * 1000).toISOString()}`).select('id, parmak_izi');
+  if (!kilit?.length) return yanit({ ok: true, atlandi: 'önceki eşitleme sürüyor' });
   try {
     const c = await cek();
+    const zaman = new Date().toISOString();
+    const degisti = c.parmak !== kilit[0].parmak_izi;
     await db.from('bh_durum').update({
-      son_esitleme: new Date().toISOString(), son_hata: c.cariHata ? `Cari bakiyeleri alınamadı: ${c.cariHata}` : null,
+      son_esitleme: zaman, son_hata: c.cariHata ? `Cari bakiyeleri alınamadı: ${c.cariHata}` : null,
       urun_sayisi: c.urun, depo_sayisi: c.depo, cari_sayisi: c.cari, ham_ornek: c.ornek,
+      parmak_izi: c.parmak, ...(degisti ? { son_degisim: zaman } : {}), kilit: null,
     }).eq('id', 1);
-    return yanit({ ok: true, depo: c.depo, urun: c.urun, degisen: c.degisen, stokSatiri: c.stokSatiri, cari: c.cari });
+    return yanit({ ok: true, depo: c.depo, urun: c.urun, degisen: c.degisen, stokSatiri: c.stokSatiri, cari: c.cari, degisti });
   } catch (e) {
     const mesaj = (e as Error).message.slice(0, 800);
-    await db.from('bh_durum').update({ son_hata: mesaj, son_esitleme: new Date().toISOString() }).eq('id', 1);
+    await db.from('bh_durum').update({ son_hata: mesaj, son_esitleme: new Date().toISOString(), kilit: null }).eq('id', 1);
     return yanit({ ok: false, hata: mesaj }, 500);
   }
 });

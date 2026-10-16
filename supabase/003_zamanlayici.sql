@@ -1,5 +1,5 @@
 -- =====================================================================
--- 003 — BizimHesap eşitlemesini her 3 dakikada bir otomatik çalıştır
+-- 003 — BizimHesap eşitlemesini her dakika otomatik çalıştır
 -- Edge Function "bizimhesap-esitle" yayınlandıktan SONRA çalıştırılır.
 -- =====================================================================
 create extension if not exists pg_cron;
@@ -11,7 +11,7 @@ exception when others then null; end $$;
 
 select cron.schedule(
   'bizimhesap-esitle',
-  '*/3 * * * *',
+  '* * * * *',
   $cron$
   select net.http_post(
     url := 'https://qmafuyuocmcobrstnmbx.supabase.co/functions/v1/bizimhesap-esitle',

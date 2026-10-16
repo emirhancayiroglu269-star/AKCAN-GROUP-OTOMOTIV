@@ -20,6 +20,8 @@ export interface Backend {
   bhEsitle(): Promise<EsitlemeSonucu>;
   urunKodlariYukle(satirlar: { anahtar: string; kodlar: string[]; tur: string }[]): Promise<{ eklenen: number; bulunamayan: number }>;
   subscribe(onChange: () => void): () => void;
+  /** Hafif kontrol: verinin değişip değişmediğini anlamak için tek satır okur */
+  durum(): Promise<{ son_esitleme?: string | null; imza: string } | null>;
 }
 
 const num = (v: unknown) => (v === null || v === undefined ? 0 : Number(v));
@@ -115,10 +117,16 @@ function supabaseBackend(sb: SupabaseClient): Backend {
       let timer: ReturnType<typeof setTimeout> | undefined;
       const fire = () => { clearTimeout(timer); timer = setTimeout(onChange, 1500); };
       const ch = sb.channel('degisiklikler');
-      ['urunler', 'depolar', 'bh_durum', 'hareketler', 'cariler', 'ayarlar', 'kullanicilar', 'urun_kodlari', 'tahsilat_notlari', 'stok_aksiyon'].forEach((t) =>
+      // BizimHesap eşitlemesinin yazdığı tablolar burada yok: onlar durum() ile 30 sn'de bir kontrol edilir
+      ['ayarlar', 'kullanicilar', 'urun_kodlari', 'tahsilat_notlari', 'stok_aksiyon'].forEach((t) =>
         ch.on('postgres_changes', { event: '*', schema: 'public', table: t }, fire));
       ch.subscribe();
       return () => { clearTimeout(timer); sb.removeChannel(ch); };
+    },
+    async durum() {
+      const { data } = await sb.from('bh_durum').select('son_esitleme,son_degisim,rapor_yukleme,masraf_son,son_hata').eq('id', 1).maybeSingle();
+      if (!data) return null;
+      return { son_esitleme: data.son_esitleme, imza: [data.son_degisim, data.rapor_yukleme, data.masraf_son, data.son_hata].join('|') };
     },
   };
 }
@@ -249,6 +257,7 @@ function demoBackend(): Backend {
       save(); return { eklenen, bulunamayan };
     },
     subscribe(onChange) { listeners.add(onChange); return () => { listeners.delete(onChange); }; },
+    async durum() { return null; },
   };
 }
 

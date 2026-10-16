@@ -17,3 +17,7 @@ begin
 end $$;
 
 alter policy "kullanici_oku" on kullanicilar using (benim_rolum() <> 'yok' or lower(eposta) = lower(auth.jwt() ->> 'email'));
+
+-- Dakikalık eşitleme: çakışma kilidi ve değişiklik algılama (site yalnız veri değişince yeniden yükler)
+alter table bh_durum add column if not exists kilit timestamptz, add column if not exists parmak_izi text, add column if not exists son_degisim timestamptz;
+select cron.alter_job(job_id := (select jobid from cron.job where jobname = 'bizimhesap-esitle'), schedule := '* * * * *');
