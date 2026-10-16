@@ -6,6 +6,7 @@ import type { Ayarlar } from '../lib/types';
 import { Alan, SayfaBaslik, onayla } from '../components/ui';
 import { BizimHesapPanel } from '../components/BizimHesapPanel';
 import { KullaniciPanel } from '../components/KullaniciPanel';
+import { AktarimYerImi } from '../components/AktarimYerImi';
 
 export default function AyarlarSayfa() {
   const { db, mode, calistir } = useStore();
@@ -43,6 +44,7 @@ export default function AyarlarSayfa() {
       </div>
 
       <BizimHesapPanel />
+      {mode === 'bulut' && <AktarimYerImi />}
       <KullaniciPanel />
 
       <div className="card p-5">
