@@ -1,0 +1,67 @@
+import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
+import { backend, MODE } from './backend';
+import type { DB, Rol } from './types';
+import { rolBul, yetkili, type Yetki } from './yetki';
+
+interface Ctx { db: DB; yenile: () => Promise<void>; personel: string; rol: Rol | 'yok'; eposta: string | null; izin: (y: Yetki) => boolean; mode: typeof MODE; calistir: <T>(f: () => Promise<T>, basari?: string) => Promise<NonNullable<T> | true | undefined> }
+const C = createContext<Ctx | null>(null);
+
+type Toast = { id: number; text: string; tip: 'ok' | 'hata' };
+let toastSet: ((f: (t: Toast[]) => Toast[]) => void) | null = null;
+export function toast(text: string, tip: Toast['tip'] = 'ok') {
+  const id = Date.now() + Math.random();
+  toastSet?.((t) => [...t, { id, text, tip }]);
+  setTimeout(() => toastSet?.((t) => t.filter((x) => x.id !== id)), 3500);
+}
+export function Toasts() {
+  const [list, set] = useState<Toast[]>([]);
+  useEffect(() => { toastSet = set; return () => { toastSet = null; }; }, []);
+  return (
+    <div className="fixed bottom-4 right-4 z-[100] flex flex-col gap-2 print:hidden">
+      {list.map((t) => (
+        <div key={t.id} className={`rounded-lg px-4 py-2.5 text-sm font-medium shadow-lg ${t.tip === 'ok' ? 'bg-emerald-600 text-white' : 'bg-red-600 text-white'}`}>{t.text}</div>
+      ))}
+    </div>
+  );
+}
+
+export function StoreProvider({ personel: varsayilanAd, eposta = null, children }: { personel: string; eposta?: string | null; children: ReactNode }) {
+  const [db, setDb] = useState<DB | null>(null);
+  const [hata, setHata] = useState<string | null>(null);
+  const yenile = useCallback(async () => {
+    try { setDb(await backend.load()); setHata(null); } catch (e) { setHata((e as Error).message); }
+  }, []);
+  useEffect(() => {
+    yenile();
+    const kapat = backend.subscribe(yenile);
+    // canlı bağlantı koparsa da ekran güncel kalsın: 3 dakikada bir ve sekmeye dönüldüğünde yeniden yükle
+    const t = setInterval(() => { if (document.visibilityState === 'visible') yenile(); }, 3 * 60 * 1000);
+    let son = Date.now();
+    const gorunur = () => { if (document.visibilityState === 'visible' && Date.now() - son > 60 * 1000) { son = Date.now(); yenile(); } };
+    document.addEventListener('visibilitychange', gorunur); window.addEventListener('focus', gorunur);
+    return () => { kapat(); clearInterval(t); document.removeEventListener('visibilitychange', gorunur); window.removeEventListener('focus', gorunur); };
+  }, [yenile]);
+
+  const calistir = useCallback(async <T,>(f: () => Promise<T>, basari?: string) => {
+    try { const r = await f(); if (MODE === 'bulut') await yenile(); if (basari) toast(basari); return (r ?? true) as NonNullable<T> | true; }
+    catch (e) { toast('Hata: ' + (e as Error).message, 'hata'); return undefined; }
+  }, [yenile]);
+
+  if (hata && !db) return (
+    <div className="grid h-screen place-items-center p-6 text-center">
+      <div className="max-w-md">
+        <p className="mb-2 text-lg font-semibold">Veriler yüklenemedi</p>
+        <p className="mb-4 text-sm text-slate-500">{hata}</p>
+        <p className="mb-4 text-xs text-slate-500">Supabase'de supabase/schema.sql dosyasını çalıştırdığınızdan emin olun.</p>
+        <button className="btn-primary" onClick={yenile}>Tekrar dene</button>
+      </div>
+    </div>
+  );
+  if (!db) return <div className="grid h-screen place-items-center text-slate-500">Yükleniyor…</div>;
+  const { rol, kayit } = MODE === 'demo' ? { rol: 'yonetici' as const, kayit: undefined } : rolBul(db, eposta);
+  const personel = kayit?.ad || varsayilanAd;
+  const izin = (y: Yetki) => yetkili(rol, y);
+  return <C.Provider value={{ db, yenile, personel, rol, eposta, izin, mode: MODE, calistir }}>{children}</C.Provider>;
+}
+
+export function useStore() { const c = useContext(C); if (!c) throw new Error('StoreProvider yok'); return c; }
