@@ -9,14 +9,20 @@ const URL_ = (import.meta.env.VITE_SUPABASE_URL as string | undefined) || SUPABA
 const ANON = (import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined) || SUPABASE_ANON_KEY;
 
 /** Aktarım kodunun tamamı yer iminin/kopyalanan kodun içindedir; dışarıdan kod yüklenmez. */
-const kodu = (anahtar: string, gun: number) =>
-  `(async(ANAHTAR,SUPA,ANON,GUN)=>{${AKTARIM}\n})(${JSON.stringify(anahtar)},${JSON.stringify(URL_)},${JSON.stringify(ANON)},${gun}).catch(e=>alert('Analize Aktar: '+e.message))`;
+const kodu = (anahtar: string, gun: number, oto = 0) =>
+  `(async(ANAHTAR,SUPA,ANON,GUN,OTO)=>{${AKTARIM}\n})(${JSON.stringify(anahtar)},${JSON.stringify(URL_)},${JSON.stringify(ANON)},${gun},${oto}).catch(e=>alert('Analize Aktar: '+e.message))`;
+const OTO_DK = 2;
 
 export function AktarimYerImi() {
   const [anahtar, setAnahtar] = useState<string | null>(null);
   const [bekle, setBekle] = useState(false);
   const link = useRef<HTMLAnchorElement>(null);
-  useEffect(() => { if (link.current && anahtar) link.current.setAttribute('href', 'javascript:' + encodeURIComponent(kodu(anahtar, 45))); }, [anahtar]);
+  const linkOto = useRef<HTMLAnchorElement>(null);
+  useEffect(() => {
+    if (!anahtar) return;
+    link.current?.setAttribute('href', 'javascript:' + encodeURIComponent(kodu(anahtar, 45)));
+    linkOto.current?.setAttribute('href', 'javascript:' + encodeURIComponent(kodu(anahtar, 7, OTO_DK)));
+  }, [anahtar]);
 
   const olustur = async () => {
     if (!supabase) return;
@@ -41,13 +47,18 @@ export function AktarimYerImi() {
       ) : (
         <div className="space-y-3 text-sm">
           <ol className="list-decimal space-y-1 pl-5 text-slate-600 dark:text-slate-300">
-            <li>Yeşil <b>Analize Aktar</b> düğmesini Chrome'un yer imleri çubuğuna sürükleyin (eskisi varsa silin; çubuk görünmüyorsa Ctrl+Shift+B).</li>
-            <li>BizimHesap'a girin ve yer imine tıklayın. Son 45 günün faturaları, masraflar, kasa hareketleri ve vadesi geçenler aktarılır (yaklaşık 1 dakika).</li>
+            <li>Yeşil düğmeleri Chrome'un yer imleri çubuğuna sürükleyin (eskileri silin; çubuk görünmüyorsa Ctrl+Shift+B).</li>
+            <li><b>Analize Aktar</b>: son 45 günü bir kez aktarır (yaklaşık 1 dakika).</li>
+            <li><b>Analize Aktar (otomatik)</b>: son 7 günü aktarır, sonra sekme açık kaldıkça her {OTO_DK} dakikada bir bugünün ve son 2 günün verilerini günceller. Yalnız değişiklik olunca yazar. BizimHesap oturumu kapanırsa kutu kırmızıya döner; yeniden girip tekrar tıklayın.</li>
           </ol>
           <div className="flex flex-wrap items-center gap-2">
             <a ref={link} onClick={(e) => { e.preventDefault(); toast('Bu düğmeye tıklamayın; yer imleri çubuğuna sürükleyin'); }}
               className="inline-flex cursor-grab items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 font-semibold text-white">
               <Bookmark size={16} /> Analize Aktar
+            </a>
+            <a ref={linkOto} onClick={(e) => { e.preventDefault(); toast('Bu düğmeye tıklamayın; yer imleri çubuğuna sürükleyin'); }}
+              className="inline-flex cursor-grab items-center gap-2 rounded-lg bg-emerald-700 px-4 py-2 font-semibold text-white">
+              <Bookmark size={16} /> Analize Aktar (otomatik)
             </a>
             <button className="btn-ghost" onClick={() => kopyala(45)}><Copy size={16} /> Kodu kopyala (45 gün)</button>
             <button className="btn-ghost" onClick={() => kopyala(0)}><Copy size={16} /> Tüm geçmiş (16 Mart'tan)</button>
