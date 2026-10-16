@@ -94,7 +94,7 @@ function supabaseBackend(sb: SupabaseClient): Backend {
       ]);
       const durum = (ok(bd) as BhDurum | null) ?? null;
       return {
-        urunler: u, depolar: dp, urun_depo_stok: uds, bh_durum: durum, hareketler: hareketleriBirlestir(h as Hareket[], rs as RaporSatiri[], durum, u as Urun[], ms as Masraf[]), masraflar: ms,
+        urunler: u, depolar: dp, urun_depo_stok: uds, bh_durum: durum, hareketler: hareketleriBirlestir(h as Hareket[], rs as RaporSatiri[], durum, u as Urun[], ms as Masraf[]), stok_degisim: (h as Hareket[]).map((x) => ({ ...x, kaynak: 'stok' as const })), masraflar: ms,
         kasa_akisi: ka as KasaAkisi[], hesap_bakiyeleri: hb as HesapBakiye[], vadesi_gecen: vg as VadesiGecen[], fiyat_gecmisi: fg, cariler: c, cari_hareketler: ch,
         ayarlar: (ok(a) as Ayarlar) ?? { id: 1, firma_adi: 'İşletmem' }, kullanicilar: ku, urun_kodlari: uk, tahsilat_notlari: tn, stok_aksiyon: sa,
       } as DB;
@@ -175,7 +175,7 @@ function demoSeed(): DB {
       const sf = u.satis_fiyati * (1 - indOran); const brut = (u.satis_fiyati / 1.2) * mk;
       hareketler.push({ id: hid++, tarih: t.toISOString(), urun_id: u.id, tur: 'satis', miktar: mk, satis_fiyati: sf, alis_fiyati: u.alis_fiyati, kdv: u.kdv, yok_say: false, kaynak: 'fatura',
         depo: rnd() < 0.72 ? 'SULTANBEYLİ DEPO' : 'VELİBABA DEPO', brut, indirim: brut * indOran,
-        cari_guid: 'C' + ci, cari_ad: DEMO_CARI[ci], kullanici: rnd() < 0.7 ? 'FURKAN' : 'EMİRHAN', belge_guid: `B${g}-${k}`, saat: `${String(t.getHours()).padStart(2, '0')}:${String(t.getMinutes()).padStart(2, '0')}` });
+        cari_guid: 'C' + ci, cari_ad: DEMO_CARI[ci], kullanici: rnd() < 0.7 ? 'FURKAN' : 'EMİRHAN', belge_guid: `B${g}-${k >> 1}`, saat: `${String(t.getHours()).padStart(2, '0')}:${String(t.getMinutes()).padStart(2, '0')}` });
     }
     if (g % 6 === 0) for (let k = 0; k < 4; k++) {
       const u = urunler[Math.floor(rnd() * urunler.length)];
@@ -200,6 +200,13 @@ function demoSeed(): DB {
     if (tip === 'kampanya') hareketler.push({ id: hid++, tarih: new Date(simdi - 120 * 864e5).toISOString(), urun_id: id, tur: 'satis', miktar: 1, satis_fiyati: alis * oran, alis_fiyati: alis, kdv: 20, yok_say: false, kaynak: 'fatura', cari_ad: 'PERAKENDE CARİ', belge_guid: 'BX' + id });
   }
   hareketler.sort((a, b) => b.tarih.localeCompare(a.tarih));
+  // stok değişimleri (son 6 gün): faturalı satışlar + birkaç faturasız düşüş/artış örneği
+  const stok_degisim: Hareket[] = hareketler.filter((h) => h.kaynak === 'fatura' && !h.urun_id.startsWith('yok:') && simdi - new Date(h.tarih).getTime() < 6 * 864e5)
+    .map((h) => ({ ...h, id: hid++, kaynak: 'stok' as const }));
+  for (const [i, tur, mk] of [[3, 'satis', 2], [7, 'satis', 1], [11, 'alis', 3], [15, 'satis', 4]] as const) {
+    const u = urunler[i]; stok_degisim.push({ id: hid++, tarih: new Date(simdi - 2 * 864e5).toISOString(), urun_id: u.id, tur, miktar: mk, satis_fiyati: u.satis_fiyati, alis_fiyati: u.alis_fiyati, kdv: 20, yok_say: false, kaynak: 'stok' });
+  }
+  urunler[20].stok = -2;
   const kasa: DB['kasa_akisi'] = []; let kid = 1;
   for (let g = 44; g >= 0; g--) {
     const gun = new Date(simdi - g * 864e5).toLocaleDateString('sv');
@@ -210,8 +217,8 @@ function demoSeed(): DB {
   const cari = (ad: string, tur: Cari['tur'], bakiye: number, tel = ''): Cari => ({ id: uid(), bh_id: uid(), tur, ad, telefon: tel, bakiye, cek_senet: 0 });
   return {
     urunler, depolar: [{ id: d1, ad: 'SULTANBEYLİ DEPO', aktif: true, bh_id: 'D1' }, { id: d2, ad: 'VELİBABA DEPO', aktif: true, bh_id: 'D2' }], urun_depo_stok: uds,
-    bh_durum: { id: 1, son_esitleme: new Date().toISOString(), takip_baslangic: new Date(simdi - 45 * 864e5).toISOString(), urun_sayisi: urunler.length, depo_sayisi: 2, cari_sayisi: 6 },
-    hareketler, fiyat_gecmisi: [],
+    bh_durum: { id: 1, son_esitleme: new Date().toISOString(), takip_baslangic: new Date(simdi - 7 * 864e5).toISOString(), rapor_son: new Date().toLocaleDateString('sv'), rapor_ilk: new Date(simdi - 45 * 864e5).toLocaleDateString('sv'), urun_sayisi: urunler.length, depo_sayisi: 2, cari_sayisi: 6 },
+    hareketler, stok_degisim, fiyat_gecmisi: [],
     cariler: [cari('Demir Lojistik', 'musteri', 12450, '05321112233'), cari('Ahmet Usta Oto', 'musteri', 3800), cari('34 ABC 123 / Egea', 'musteri', 950), cari('Perakende Cari', 'musteri', 0),
       cari('Martaş Otomotiv', 'tedarikci', -28400), cari('Otomarmara', 'tedarikci', -9150)],
     cari_hareketler: [], ayarlar: { id: 1, firma_adi: 'Demo İşletme', alis_kdv_haric: true, hedef_gun: 30, haric_masraf: [], hedef_marj: 35 }, kullanicilar: [], urun_kodlari: [],

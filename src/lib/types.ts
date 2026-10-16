@@ -58,6 +58,8 @@ export interface DB {
   hareketler: Hareket[]; fiyat_gecmisi: FiyatGecmisi[]; cariler: Cari[]; cari_hareketler: CariHareket[];
   ayarlar: Ayarlar; kullanicilar: Kullanici[]; urun_kodlari: UrunKodu[]; masraflar: Masraf[];
   kasa_akisi: KasaAkisi[]; hesap_bakiyeleri: HesapBakiye[]; vadesi_gecen: VadesiGecen[]; tahsilat_notlari: TahsilatNot[]; stok_aksiyon: StokAksiyon[];
+  /** BizimHesap stok değişimlerinin ham hali (faturayla birleştirilmeden); kayıp-kaçak kontrolü için */
+  stok_degisim?: Hareket[];
 }
 
 export type CrudTable = 'urunler' | 'urun_kodlari' | 'kullanicilar' | 'hareketler' | 'tahsilat_notlari' | 'stok_aksiyon';

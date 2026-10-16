@@ -9,7 +9,7 @@ export function rolBul(db: DB, eposta: string | null): { rol: Rol | 'yok'; kayit
 }
 
 const SAYFALAR: Record<Rol, AnaSayfa[]> = {
-  yonetici: ['panel', 'oneriler', 'hareketler', 'satisanaliz', 'musteri', 'karzarar', 'tahsilat', 'nakit', 'cariler', 'analiz', 'fiyat', 'usta', 'eritme', 'depolar', 'tedarikci', 'urunler', 'ayarlar'],
+  yonetici: ['panel', 'oneriler', 'hareketler', 'satisanaliz', 'musteri', 'sepet', 'kayip', 'karzarar', 'tahsilat', 'nakit', 'cariler', 'analiz', 'fiyat', 'usta', 'eritme', 'depolar', 'tedarikci', 'urunler', 'ayarlar'],
   // personel: stok tarafı, maliyet görmeden (Depolar'da karşılaştırma sekmesi gizli)
   kasiyer: ['urunler', 'depolar'],
   teknisyen: ['urunler', 'depolar'],
