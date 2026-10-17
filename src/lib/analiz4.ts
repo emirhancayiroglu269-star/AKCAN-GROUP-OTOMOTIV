@@ -60,12 +60,16 @@ export function kayipAnalizi(db: DB, a: Ayarlar, d: Donem) {
     }
     farklar.sort((p, q) => Math.abs(q.deger) - Math.abs(p.deger));
   }
+  // Elle düzeltilerek kapanmış: satış faturası stoktan düşmemiş, sonra aynı miktar faturasız stok girişiyle denkleştirilmiş (sayım düzeltmesi).
+  // Stok doğru kabul edilir; iki listede de gösterilmez, sayfada yalnız sayısı belirtilir.
+  const kapanmis = farklar.filter((f) => f.cikisFarki <= -0.5 && f.girisFarki >= 0.5 && Math.abs(f.cikisFarki + f.girisFarki) < 0.5);
+  const kapali = new Set(kapanmis.map((f) => f.u.id));
   const faturasizCikis = farklar.filter((f) => f.cikisFarki >= 0.5 && f.cikisFarki - f.girisFarki >= 0.5);
-  const faturasizGiris = farklar.filter((f) => f.girisFarki >= 0.5 && f.girisFarki - f.cikisFarki >= 0.5);
+  const faturasizGiris = farklar.filter((f) => !kapali.has(f.u.id) && f.girisFarki >= 0.5 && f.girisFarki - f.cikisFarki >= 0.5);
   // Stok takibi yapılmayan kartlar (işçilik, hizmet vb.): faturası kesilir ama stok hiç kıpırdamaz ve 0'da kalır. Bunlar listeye alınmaz.
   const stokluHareket = new Set((db.stok_degisim ?? []).map((h) => h.urun_id));
   const stokTakipsiz = (u: Urun) => HIZMET.test(u.ad) || (!stokluHareket.has(u.id) && (u.bh_stok ?? u.stok) === 0);
-  const stoktanDusmeyen = farklar.filter((f) => f.cikisFarki <= -0.5 && f.girisFarki > -0.5 && !stokTakipsiz(f.u));
+  const stoktanDusmeyen = farklar.filter((f) => !kapali.has(f.u.id) && f.cikisFarki <= -0.5 && f.girisFarki > -0.5 && !stokTakipsiz(f.u));
 
   // 2) Maliyetin altında satış (seçili dönem, fatura satırları)
   const zararli: ZararliSatis[] = [];
@@ -90,7 +94,7 @@ export function kayipAnalizi(db: DB, a: Ayarlar, d: Donem) {
   const depoFarki = db.urun_depo_stok.length ? db.urunler.filter((u) => u.aktif && Math.abs((depoTop.get(u.id) ?? 0) - u.stok) >= 0.5).map((u) => ({ u, depo: depoTop.get(u.id) ?? 0 })) : [];
 
   return {
-    pencere, farklar, faturasizCikis, faturasizGiris, stoktanDusmeyen,
+    pencere, farklar, faturasizCikis, faturasizGiris, stoktanDusmeyen, kapanmis,
     faturasizCikisDeger: faturasizCikis.reduce((t, f) => t + Math.max(0, f.deger), 0),
     zararli, zararToplam: zararli.reduce((t, z) => t + z.zarar, 0), kimeZarar: [...kimeZarar.values()].sort((p, q) => q.zarar - p.zarar),
     indirimli, indirimToplam: indirimli.reduce((t, x) => t + (x.h.indirim ?? 0), 0),

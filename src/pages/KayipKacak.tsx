@@ -54,6 +54,7 @@ export default function KayipKacak() {
               satirlar={k.stoktanDusmeyen.map((f) => ({ u: f.u, a: f.faturaSatis, b: f.stokCikis, fark: -f.cikisFarki, deger: -f.deger }))}
               aAd="Faturalı satış" bAd="Stoktan düşen" renk="text-amber-600" />
           </>}
+          {k.kapanmis.length > 0 && <p className="px-1 text-xs text-slate-500">Elle stok düzeltmesiyle kapanmış {k.kapanmis.length} ürün listelenmedi (satışı stoktan düşmemiş, sonra aynı miktar stok girişiyle denkleştirilmiş): {k.kapanmis.slice(0, 8).map((f) => f.u.kod || f.u.ad).join(', ')}{k.kapanmis.length > 8 ? '…' : ''}</p>}
           <Not>Karşılaştırma dönemi: <b>{pencereMetni}</b>. BizimHesap'ın stok değişimleri 14 Ekim'den beri takip ediliyor; bu dönem her gün uzar. Faturaların güncel olması için "Analize Aktar (otomatik)" açık olmalı. Aynı gün içinde düzeltilen kayıtlar birbirini götürür; tek tek satırlar kesin hırsızlık değil, kontrol edilecek liste olarak okunmalı.</Not>
         </div>
       )}
