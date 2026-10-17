@@ -33,6 +33,18 @@ export function kayipAnalizi(db: DB, a: Ayarlar, d: Donem) {
       if (h.yok_say || !donemde(h.tarih, pencere)) continue;
       if (h.tur === 'satis') al(h.urun_id).sc += h.miktar; else al(h.urun_id).sg += h.miktar;
     }
+    // Takipten sonra açılan ürün kartları: kartın ilk görüldüğü andaki stok (ör. alış girilmeden satılıp -1 ile açılan kart)
+    // bir hareket olarak kaydedilmez. Bu ilk stok, şu anki stoktan sonraki hareketler geri alınarak bulunur ve hesaba katılır.
+    if (takip) {
+      const net = new Map<string, number>();
+      for (const h of db.stok_degisim ?? []) if (!h.yok_say) net.set(h.urun_id, (net.get(h.urun_id) ?? 0) + (h.tur === 'alis' ? h.miktar : -h.miktar));
+      for (const u of db.urunler) {
+        if (!u.olusturma || new Date(u.olusturma) <= takip || !donemde(u.olusturma, pencere)) continue;
+        const ilk = (u.bh_stok ?? u.stok) - (net.get(u.id) ?? 0);
+        if (Math.abs(ilk) < 0.5) continue;
+        if (ilk < 0) al(u.id).sc += -ilk; else al(u.id).sg += ilk;
+      }
+    }
     for (const h of db.hareketler) {
       if (h.kaynak !== 'fatura' || !gercekUrun(h)) continue;
       if (donemde(h.tarih, pencere)) { if (h.tur === 'satis') al(h.urun_id).fs += h.miktar; else al(h.urun_id).fa += h.miktar; }
