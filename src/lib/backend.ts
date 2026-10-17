@@ -40,7 +40,7 @@ function norm<T>(t: string, rows: T[]): T[] {
   return rows.map((r) => { const o = { ...(r as Record<string, unknown>) }; f.forEach((k) => (o[k] = num(o[k]))); if (t === 'urunler' && o.bh_stok != null) o.bh_stok = Number(o.bh_stok); return o as T; });
 }
 
-interface RaporSatiri { id: number; tarih: string; tur: 'satis' | 'alis'; urun_id: ID | null; urun_ad: string | null; miktar: number; alis_fiyati: number; net: number; kdv: number; toplam: number; tutar?: number | null; indirim?: number | null;
+interface RaporSatiri { id: number; tarih: string; tur: 'satis' | 'alis'; iade?: boolean; urun_id: ID | null; urun_ad: string | null; miktar: number; alis_fiyati: number; net: number; kdv: number; toplam: number; tutar?: number | null; indirim?: number | null;
   kdv_orani?: number | null; belge_guid?: string | null; cari_guid?: string | null; cari_ad?: string | null; kullanici?: string | null; depo?: string | null; saat?: string | null }
 
 /** Rapor (gerçek fatura) satırlarını harekete çevirir; rapor olan günlerde stok tahminini kullanmaz */
@@ -48,7 +48,7 @@ function hareketleriBirlestir(stok: Hareket[], rapor: RaporSatiri[], d: BhDurum 
   const son = d?.rapor_son ?? null;
   const fiyat = new Map(urunler.map((u) => [u.id, u]));
   const yerelGun = (s: string) => new Date(s).toLocaleDateString('sv');
-  const r: Hareket[] = rapor.filter((x) => x.miktar > 0).map((x) => {
+  const r: Hareket[] = rapor.filter((x) => x.miktar > 0 && !x.iade).map((x) => {
     const kdvOran = x.kdv_orani != null ? Number(x.kdv_orani) : x.net > 0 && x.kdv > 0 ? Math.round((x.kdv / x.net) * 100) : (x.urun_id ? fiyat.get(x.urun_id)?.kdv ?? 20 : 20);
     return {
       id: -x.id, tarih: `${x.tarih}T${x.saat ? String(x.saat).slice(0, 5) : '12:00'}:00`,
@@ -95,7 +95,8 @@ function supabaseBackend(sb: SupabaseClient): Backend {
       ]);
       const durum = (ok(bd) as BhDurum | null) ?? null;
       return {
-        urunler: u, depolar: dp, urun_depo_stok: uds, bh_durum: durum, hareketler: hareketleriBirlestir(h as Hareket[], rs as RaporSatiri[], durum, u as Urun[], ms as Masraf[]), stok_degisim: (h as Hareket[]).map((x) => ({ ...x, kaynak: 'stok' as const })), masraflar: ms,
+        urunler: u, depolar: dp, urun_depo_stok: uds, bh_durum: durum, hareketler: hareketleriBirlestir(h as Hareket[], rs as RaporSatiri[], durum, u as Urun[], ms as Masraf[]), stok_degisim: (h as Hareket[]).map((x) => ({ ...x, kaynak: 'stok' as const })),
+        iadeler: (rs as RaporSatiri[]).filter((x) => x.iade && x.urun_id && x.miktar > 0).map((x) => ({ id: -x.id, tarih: `${x.tarih}T12:00:00`, urun_id: x.urun_id!, tur: x.tur, miktar: x.miktar, satis_fiyati: 0, alis_fiyati: x.alis_fiyati || 0, kdv: 20, yok_say: false, kaynak: 'fatura' as const, cari_ad: (x as unknown as { cari_ad?: string }).cari_ad ?? null })), masraflar: ms,
         kasa_akisi: ka as KasaAkisi[], hesap_bakiyeleri: hb as HesapBakiye[], vadesi_gecen: vg as VadesiGecen[], fiyat_gecmisi: fg, cariler: c, cari_hareketler: ch,
         ayarlar: (ok(a) as Ayarlar) ?? { id: 1, firma_adi: 'İşletmem' }, kullanicilar: ku, urun_kodlari: uk, tahsilat_notlari: tn, stok_aksiyon: sa,
       } as DB;

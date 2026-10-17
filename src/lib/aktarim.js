@@ -109,6 +109,22 @@ async function tur(gun, sessiz) {
     not('✓ ' + ad + ': ' + adet.toLocaleString('tr-TR') + ' satır, ' + tl(tutar) + (yazilan ? '' : ' (değişiklik yok)'));
   }
 
+  // İade belgeleri (BizimHesap belge türleri: 9 = satış iadesi, 7 = alış iadesi). Hiç iade olmaması normaldir.
+  try {
+    let adet = 0, yazilan = false;
+    for (const [tip, dt] of [['satis', '9'], ['alis', '7']]) {
+      for (const [b, s] of aylar(bas, bugun)) {
+        if (!sessiz) yaz('İadeler: ' + tr(b) + ' – ' + tr(s) + '…');
+        const sat = await raporCek('/api/report/getsalesreport', dt, b, s);
+        adet += sat.length;
+        if (!degisti('iade' + tip + iso(b) + iso(s), sat)) continue;
+        await rpc('bh_iade_yukle', { p_tur: tip, p_bas: iso(b), p_bit: iso(s), p: sat }); yazilan = true;
+      }
+    }
+    ozet.iade = yazilan;
+    not('✓ İadeler: ' + adet + ' satır' + (yazilan ? '' : ' (değişiklik yok)'));
+  } catch (e) { if (e instanceof OturumYok) throw e; not('✗ İadeler: ' + e.message); }
+
   try {
     if (!sessiz) yaz('Masraflar…');
     const d = await sayfaAl('/web/ngn/rep/ngncostreport');

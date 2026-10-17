@@ -45,6 +45,12 @@ export function kayipAnalizi(db: DB, a: Ayarlar, d: Donem) {
         if (ilk < 0) al(u.id).sc += -ilk; else al(u.id).sg += ilk;
       }
     }
+    // İadeler: tedarikçiye iade stoktan faturalı çıkış, müşteriden iade faturalı giriş sayılır
+    for (const h of db.iadeler ?? []) {
+      const cikis = h.tur === 'alis';
+      if (donemde(h.tarih, pencere)) { if (cikis) al(h.urun_id).fs += h.miktar; else al(h.urun_id).fa += h.miktar; }
+      else if (donemde(h.tarih, once) && t.has(h.urun_id)) { if (cikis) al(h.urun_id).fsO += h.miktar; else al(h.urun_id).faO += h.miktar; }
+    }
     for (const h of db.hareketler) {
       if (h.kaynak !== 'fatura' || !gercekUrun(h)) continue;
       if (donemde(h.tarih, pencere)) { if (h.tur === 'satis') al(h.urun_id).fs += h.miktar; else al(h.urun_id).fa += h.miktar; }
