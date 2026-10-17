@@ -27,8 +27,8 @@ export function kayipAnalizi(db: DB, a: Ayarlar, d: Donem) {
   if (pencere) {
     const t = new Map<string, { sc: number; sg: number; fs: number; fa: number; fsO: number; faO: number }>();
     const al = (id: string) => { let x = t.get(id); if (!x) { x = { sc: 0, sg: 0, fs: 0, fa: 0, fsO: 0, faO: 0 }; t.set(id, x); } return x; };
-    // Fatura tarihi, stoğa işlendiği günden birkaç gün önce olabilir (fatura 14'ünde, stok 15'inde girilmiş): pencereden önceki 5 günün faturaları yalnız açığı kapatmak için sayılır
-    const once = { bas: gunu(new Date(new Date(pencere.bas + 'T12:00').getTime() - 5 * 864e5)), bit: gunu(new Date(new Date(pencere.bas + 'T12:00').getTime() - 864e5)) };
+    // Fatura tarihi, stoğa işlendiği günden birkaç gün önce olabilir (fatura 14'ünde, stok 15'inde girilmiş): pencereden önceki 10 günün faturaları yalnız açığı kapatmak için sayılır (geriye tarihli ya da sonradan düzenlenen faturalar)
+    const once = { bas: gunu(new Date(new Date(pencere.bas + 'T12:00').getTime() - 10 * 864e5)), bit: gunu(new Date(new Date(pencere.bas + 'T12:00').getTime() - 864e5)) };
     for (const h of db.stok_degisim ?? []) {
       if (h.yok_say || !donemde(h.tarih, pencere)) continue;
       if (h.tur === 'satis') al(h.urun_id).sc += h.miktar; else al(h.urun_id).sg += h.miktar;

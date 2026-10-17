@@ -185,11 +185,13 @@ try {
 }
 
 if (OTO > 0) {
-  let sonDegisim = '—'; let artArda = 0;
+  let sonDegisim = '—'; let artArda = 0; let turSayisi = 0;
   const dongu = async () => {
     if (durdu) return;
     try {
-      const { ozet, notlar } = await tur(2, true); // son 2 gün + bugün
+      // Her tur son 2 günü; yarım saatte bir de son 35 günü yeniler (geriye tarihli ya da sonradan düzenlenen faturalar için). Değişmeyen veri yazılmaz.
+      turSayisi++;
+      const { ozet, notlar } = await tur(turSayisi % Math.max(1, Math.round(30 / OTO)) === 0 ? 35 : 2, true);
       if (durdu) return;
       artArda = 0;
       if (Object.values(ozet).some(Boolean)) sonDegisim = saat();
