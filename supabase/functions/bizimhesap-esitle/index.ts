@@ -57,8 +57,12 @@ async function ozet(veri: unknown): Promise<string> {
 async function rpc(fn: string, args: Obj) { const { data, error } = await db.rpc(fn, args); if (error) throw new Error(`${fn}: ${error.message}`); return data; }
 
 // ---------- Çekme ----------
-async function cek() {
+type Izler = { u?: Record<string, string>; d?: Record<string, string>; c?: Record<string, string> };
+// Yalnız değişen parçaları yaz: her dakika 5.000 ürünü baştan yazmak veritabanını yoruyordu
+async function cek(onceki: Izler) {
   const ornek: Obj = {};
+  const yeni: Izler = { u: {}, d: {}, c: {} };
+  let yazilanParca = 0;
   const iz: unknown[] = []; // değişiklik algılama: fiyat, stok, depo stoğu, bakiye
 
   const depoHam = diziBul(await bh('/warehouses'));
@@ -88,7 +92,13 @@ async function cek() {
   })).filter((u) => u.bh_id);
   iz.push(urunler.map((u) => [u.bh_id, u.alis_fiyati, u.satis_fiyati, u.stok, u.ad, u.kod]).sort()); // API sırası değişebilir: sırala
   let degisen = 0;
-  for (const p of parca(urunler, 400)) degisen += Number(await rpc('bh_urunleri_yaz', { p })) || 0;
+  urunler.sort((a, b) => String(a.bh_id).localeCompare(String(b.bh_id)));
+  for (const [i, p] of parca(urunler, 400).entries()) {
+    const h = await ozet(p.map((u) => [u.bh_id, u.ad, u.kod, u.barkod, u.marka, u.kategori, u.birim, u.alis_fiyati, u.satis_fiyati, u.kdv, u.stok, al(u.ham as Obj, 'isActive')]));
+    yeni.u![i] = h;
+    if (onceki.u?.[i] === h) continue;
+    degisen += Number(await rpc('bh_urunleri_yaz', { p })) || 0; yazilanParca++;
+  }
 
   // Depo stokları (her depo tek seferde: listede olmayanlar 0 yapılır)
   let stokSatiri = 0;
@@ -100,8 +110,11 @@ async function cek() {
       miktar: sayi(al(s, 'quantity', 'qty', 'stock', 'amount')) ?? 0,
     })).filter((s) => s.urun_bh_id);
     stokSatiri += satirlar.length;
-    iz.push(d.bh_id, satirlar.map((s) => [s.urun_bh_id, s.miktar]).sort());
-    await rpc('bh_depo_stogu_yaz', { p_depo_bh: d.bh_id, p: satirlar });
+    const dz = satirlar.map((s) => [s.urun_bh_id, s.miktar]).sort();
+    iz.push(d.bh_id, dz);
+    const h = await ozet(dz); yeni.d![d.bh_id!] = h;
+    if (onceki.d?.[d.bh_id!] === h) continue;
+    await rpc('bh_depo_stogu_yaz', { p_depo_bh: d.bh_id, p: satirlar }); yazilanParca++;
   }
 
   // Müşteri ve tedarikçi bakiyeleri (hata verirse stok eşitlemesini bozmasın)
@@ -117,11 +130,16 @@ async function cek() {
       })).filter((c) => c.bh_id);
       cari += satirlar.length;
       iz.push(satirlar.map((c) => [c.bh_id, c.bakiye, c.cek_senet]).sort());
-      for (const p of parca(satirlar, 500)) await rpc('bh_carileri_yaz', { p });
+      satirlar.sort((a, b) => String(a.bh_id).localeCompare(String(b.bh_id)));
+      for (const [i, p] of parca(satirlar, 500).entries()) {
+        const h = await ozet(p); const k = tur + i; yeni.c![k] = h;
+        if (onceki.c?.[k] === h) continue;
+        await rpc('bh_carileri_yaz', { p }); yazilanParca++;
+      }
     }
-  } catch (e) { cariHata = (e as Error).message.slice(0, 300); }
+  } catch (e) { cariHata = (e as Error).message.slice(0, 300); yeni.c = {}; }
 
-  return { depo: depolar.length, urun: urunler.length, degisen, stokSatiri, cari, cariHata, ornek, parmak: await ozet(iz) };
+  return { depo: depolar.length, urun: urunler.length, degisen, stokSatiri, cari, cariHata, ornek, parmak: await ozet(iz), yeni, yazilanParca };
 }
 
 // ---------- Giriş noktası ----------
@@ -136,18 +154,18 @@ Deno.serve(async (req) => {
   // Aynı anda iki eşitleme çalışmasın (her dakika tetiklenir; bir tur 1 dakikayı aşarsa sonraki atlanır)
   const simdi = new Date();
   const { data: kilit } = await db.from('bh_durum').update({ kilit: simdi.toISOString() }).eq('id', 1)
-    .or(`kilit.is.null,kilit.lt.${new Date(simdi.getTime() - 3 * 60 * 1000).toISOString()}`).select('id, parmak_izi');
+    .or(`kilit.is.null,kilit.lt.${new Date(simdi.getTime() - 3 * 60 * 1000).toISOString()}`).select('id, parmak_izi, parca_izleri');
   if (!kilit?.length) return yanit({ ok: true, atlandi: 'önceki eşitleme sürüyor' });
   try {
-    const c = await cek();
+    const c = await cek(((kilit[0] as Obj).parca_izleri as Izler) ?? {});
     const zaman = new Date().toISOString();
     const degisti = c.parmak !== kilit[0].parmak_izi;
     await db.from('bh_durum').update({
       son_esitleme: zaman, son_hata: c.cariHata ? `Cari bakiyeleri alınamadı: ${c.cariHata}` : null,
       urun_sayisi: c.urun, depo_sayisi: c.depo, cari_sayisi: c.cari, ham_ornek: c.ornek,
-      parmak_izi: c.parmak, ...(degisti ? { son_degisim: zaman } : {}), kilit: null,
+      parmak_izi: c.parmak, parca_izleri: c.yeni, ...(degisti ? { son_degisim: zaman } : {}), kilit: null,
     }).eq('id', 1);
-    return yanit({ ok: true, depo: c.depo, urun: c.urun, degisen: c.degisen, stokSatiri: c.stokSatiri, cari: c.cari, degisti });
+    return yanit({ ok: true, depo: c.depo, urun: c.urun, degisen: c.degisen, stokSatiri: c.stokSatiri, cari: c.cari, degisti, yazilanParca: c.yazilanParca });
   } catch (e) {
     const mesaj = (e as Error).message.slice(0, 800);
     await db.from('bh_durum').update({ son_hata: mesaj, son_esitleme: new Date().toISOString(), kilit: null }).eq('id', 1);

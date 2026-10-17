@@ -71,7 +71,8 @@ function supabaseBackend(sb: SupabaseClient): Backend {
   async function hepsi(t: string, order: string, asc = false, sinir = 50000, filtre?: [string, boolean]) {
     const sayfa = 1000; const sonuc: unknown[] = [];
     for (let i = 0; i < sinir; i += sayfa) {
-      let q = sb.from(t).select('*');
+      // ürünlerde BizimHesap'ın ham JSON'u (bh_ham) çok büyük ve sitede kullanılmıyor: çekilmez
+      let q = sb.from(t).select(t === 'urunler' ? 'id,kod,barkod,ad,marka,kategori,birim,alis_fiyati,satis_fiyati,kdv,stok,kritik_stok,raf,aktif,olusturma,bh_id,bh_guncelleme,bh_stok' : '*');
       if (filtre) q = q.eq(filtre[0], filtre[1]);
       const d = ok(await q.order(order, { ascending: asc }).range(i, i + sayfa - 1)) as unknown[];
       sonuc.push(...d);
