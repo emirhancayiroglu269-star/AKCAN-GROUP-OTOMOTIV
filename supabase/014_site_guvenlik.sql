@@ -21,3 +21,8 @@ alter policy "kullanici_oku" on kullanicilar using (benim_rolum() <> 'yok' or lo
 -- Dakikalık eşitleme: çakışma kilidi ve değişiklik algılama (site yalnız veri değişince yeniden yükler)
 alter table bh_durum add column if not exists kilit timestamptz, add column if not exists parmak_izi text, add column if not exists son_degisim timestamptz;
 select cron.alter_job(job_id := (select jobid from cron.job where jobname = 'bizimhesap-esitle'), schedule := '* * * * *');
+
+-- 17 Ekim: yük sorunu sonrası — parça izleri, eşitleme 2 dakikada bir, canlı bildirim yalnız kullanıcı tablolarında
+alter table bh_durum add column if not exists parca_izleri jsonb;
+select cron.alter_job(job_id := (select jobid from cron.job where jobname = 'bizimhesap-esitle'), schedule := '*/2 * * * *');
+alter publication supabase_realtime set table public.ayarlar, public.kullanicilar, public.urun_kodlari, public.tahsilat_notlari, public.stok_aksiyon;
