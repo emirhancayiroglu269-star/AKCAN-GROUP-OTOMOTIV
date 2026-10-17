@@ -62,7 +62,10 @@ export function kayipAnalizi(db: DB, a: Ayarlar, d: Donem) {
   }
   const faturasizCikis = farklar.filter((f) => f.cikisFarki >= 0.5 && f.cikisFarki - f.girisFarki >= 0.5);
   const faturasizGiris = farklar.filter((f) => f.girisFarki >= 0.5 && f.girisFarki - f.cikisFarki >= 0.5);
-  const stoktanDusmeyen = farklar.filter((f) => f.cikisFarki <= -0.5 && f.girisFarki > -0.5);
+  // Stok takibi yapılmayan kartlar (işçilik, hizmet vb.): faturası kesilir ama stok hiç kıpırdamaz ve 0'da kalır. Bunlar listeye alınmaz.
+  const stokluHareket = new Set((db.stok_degisim ?? []).map((h) => h.urun_id));
+  const stokTakipsiz = (u: Urun) => HIZMET.test(u.ad) || (!stokluHareket.has(u.id) && (u.bh_stok ?? u.stok) === 0);
+  const stoktanDusmeyen = farklar.filter((f) => f.cikisFarki <= -0.5 && f.girisFarki > -0.5 && !stokTakipsiz(f.u));
 
   // 2) Maliyetin altında satış (seçili dönem, fatura satırları)
   const zararli: ZararliSatis[] = [];
