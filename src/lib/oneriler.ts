@@ -273,11 +273,12 @@ export function onerileriCikar(db: DB): Oneri[] {
   const z = zamanAnalizi(db, d);
   const acikGunler = z.gunler.filter((x) => x.belge >= gunSay / 7 * 0.5);
   if (acikGunler.length >= 4) {
-    const ort = acikGunler.reduce((t, x) => t + x.ortalama, 0) / acikGunler.length;
-    const zayif = [...acikGunler].sort((x, y) => x.ortalama - y.ortalama)[0]; const guclu = [...acikGunler].sort((x, y) => y.ortalama - x.ortalama)[0];
-    if (zayif.ortalama < ort * 0.7) o.push({ id: 'zayif-gun', alan: 'Satış', oncelik: 3,
-      baslik: `${zayif.ad} günleri satış ortalamanın ${yuzde((1 - zayif.ortalama / ort) * 100)} altında`,
-      aciklama: `${zayif.ad} günü ortalama ${para(zayif.ortalama)}, en iyi gün ${guclu.ad} ${para(guclu.ortalama)}.`,
+    // ortanca (tipik gün) kullanılır: araç satışı gibi tek seferlik büyük faturalar bir günü olduğundan iyi göstermesin
+    const ort = acikGunler.reduce((t, x) => t + x.medyan, 0) / acikGunler.length;
+    const zayif = [...acikGunler].sort((x, y) => x.medyan - y.medyan)[0]; const guclu = [...acikGunler].sort((x, y) => y.medyan - x.medyan)[0];
+    if (zayif.medyan < ort * 0.7) o.push({ id: 'zayif-gun', alan: 'Satış', oncelik: 3,
+      baslik: `${zayif.ad} günleri satış diğer günlerin ${yuzde((1 - zayif.medyan / ort) * 100)} altında`,
+      aciklama: `Tipik bir ${zayif.ad} günü ${para(zayif.medyan)}, en iyi gün ${guclu.ad} ${para(guclu.medyan)} (son ${zayif.gunSayisi} ${zayif.ad}; tek seferlik büyük satışlar hesabı şişirmesin diye ortanca gün alınır).`,
       adimlar: [`${zayif.ad} günleri için servis randevusu/bakım kampanyası verin (örn. yağ değişimine işçilik indirimi)`, 'Personel izinlerini ve mal kabulünü zayıf güne kaydırın'], sayfa: 'satisanaliz' });
   }
 

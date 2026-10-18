@@ -53,17 +53,19 @@ export function musteriAnalizi(db: DB, d: Donem): MusteriOzet[] {
 
 // ======================= ZAMAN & DÖNEM =======================
 export function zamanAnalizi(db: DB, d: Donem) {
-  const gunler = Array.from({ length: 7 }, () => ({ ciro: 0, belge: new Set<string>(), gunSay: new Set<string>() }));
+  const gunler = Array.from({ length: 7 }, () => ({ ciro: 0, belge: new Set<string>(), gunSay: new Set<string>(), gunluk: new Map<string, number>() }));
   const saatler = Array.from({ length: 24 }, () => ({ ciro: 0, belge: new Set<string>() }));
   for (const h of gecerliHareketler(db, d)) {
     if (h.tur !== 'satis') continue;
     const t = new Date(h.tarih); const ciro = h.miktar * h.satis_fiyati;
     const gi = (t.getDay() + 6) % 7; // Pazartesi = 0
-    gunler[gi].ciro += ciro; gunler[gi].belge.add(h.belge_guid ?? h.tarih); gunler[gi].gunSay.add(gunu(h.tarih));
+    gunler[gi].ciro += ciro; gunler[gi].belge.add(h.belge_guid ?? h.tarih); gunler[gi].gunSay.add(gunu(h.tarih)); gunler[gi].gunluk.set(gunu(h.tarih), (gunler[gi].gunluk.get(gunu(h.tarih)) ?? 0) + ciro);
     if (h.saat) { const s = Number(h.saat.slice(0, 2)); if (s >= 0 && s < 24) { saatler[s].ciro += ciro; saatler[s].belge.add(h.belge_guid ?? h.tarih); } }
   }
   return {
-    gunler: gunler.map((x, i) => ({ ad: ['Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi', 'Pazar'][i], ciro: x.ciro, belge: x.belge.size, ortalama: x.gunSay.size ? x.ciro / x.gunSay.size : 0 })),
+    gunler: gunler.map((x, i) => ({ ad: ['Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi', 'Pazar'][i], ciro: x.ciro, belge: x.belge.size, ortalama: x.gunSay.size ? x.ciro / x.gunSay.size : 0,
+      // tipik gün: tek seferlik büyük satışlardan etkilenmeyen ortanca günlük ciro
+      medyan: (() => { const l = [...x.gunluk.values()].sort((a, b) => a - b); const n = l.length; return n ? (n % 2 ? l[(n - 1) / 2] : (l[n / 2 - 1] + l[n / 2]) / 2) : 0; })(), gunSayisi: x.gunSay.size })),
     saatler: saatler.map((x, i) => ({ saat: i, ciro: x.ciro, belge: x.belge.size })),
     saatVar: saatler.some((x) => x.ciro > 0),
   };
