@@ -65,7 +65,8 @@ export function onerileriCikar(db: DB): Oneri[] {
 
   const sonAlis = sonAlislar(db);
   const guncelle = aktif.map((u) => {
-    const s = sonAlis.get(u.id); if (!s || !(s.fiyat > 0) || !(u.satis_fiyati > 0)) return null;
+    // kartta alış hiç yoksa "alış arttı" denemez (o ürünler alış fiyatı girilmemiş sayılır)
+    const s = sonAlis.get(u.id); if (!s || !(s.fiyat > 0) || !(u.satis_fiyati > 0) || !(u.alis_fiyati > 0)) return null;
     const net = netSatis(u.satis_fiyati, u.kdv); const marj = ((net - s.fiyat) / net) * 100;
     const kartAlis = netAlis(u.alis_fiyati, u.kdv, a);
     if (!(s.fiyat > kartAlis * 1.03) || marj >= hedef * 0.6) return null;
@@ -76,10 +77,11 @@ export function onerileriCikar(db: DB): Oneri[] {
     const ek = guncelle.reduce((t, x) => t + x.ek, 0);
     o.push({ id: 'fiyat-guncelle', alan: 'Fiyat & kâr', oncelik: ek > 3000 ? 1 : 2, etki: ek || undefined, etkiTur: 'kar',
       baslik: `${guncelle.length} üründe alış fiyatı arttı, satış fiyatı güncellenmemiş`,
-      aciklama: `Son faturadaki alış fiyatı kartta yazan alıştan yüksek ve bu fiyatla marj hedefinizin çok altına düşüyor. Önerilen fiyata geçilirse mevcut satış hızıyla ayda yaklaşık ${para(ek)} ek kâr.`,
+      aciklama: `Son faturadaki alış fiyatı kartta yazan alıştan yüksek ve bu fiyatla marj hedefinizin çok altına düşüyor. ${ek > 0 ? `Önerilen fiyata geçilirse mevcut satış hızıyla ayda yaklaşık ${para(ek)} ek kâr.` : 'Bu ürünler son dönemde satılmadığı için ek kâr hesaplanmadı; bir sonraki satıştan önce fiyatı güncelleyin.'}`,
       adimlar: ['Önerilen satış fiyatını BizimHesap\'a girin', 'Alış fiyatını da son fatura fiyatıyla güncelleyin'], sayfa: 'fiyat',
       tablo: { basliklar: ['Ürün', 'Kartta alış', 'Son fatura alışı', 'Satış', 'Marj (son alışla)', 'Önerilen'], sag: [1, 2, 3, 4, 5],
-        satirlar: guncelle.slice(0, 15).map((x) => [urunAd(x.u), para(x.u.alis_fiyati), para(x.s.fiyat), para(x.u.satis_fiyati), `%${x.marj.toFixed(0)}`, para(x.oner)]) } });
+        satirlar: guncelle.slice(0, 15).map((x) => [urunAd(x.u), para(x.u.alis_fiyati), para(x.s.fiyat), para(x.u.satis_fiyati), `%${x.marj.toFixed(0)}`, para(x.oner)]),
+        bh: guncelle.slice(0, 15).map((x) => x.u.bh_id ? `https://uygulama.bizimhesap.com/web/ngn/prd/ngnproduct?rc=1&guid=${x.u.bh_id}` : null) } });
   }
 
   // ---------- STOK ----------
