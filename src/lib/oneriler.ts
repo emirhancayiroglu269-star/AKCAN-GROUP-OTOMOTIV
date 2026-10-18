@@ -255,7 +255,7 @@ export function onerileriCikar(db: DB): Oneri[] {
     baslik: `${kartFark.length} üründe kartta yazan alış fiyatı son faturadan çok yüksek`,
     aciklama: `Kartta genelde iskontosuz liste fiyatı yazıyor. ${kartFark.filter((x) => x.otomatik).length} üründe son 6 ayda fatura olduğu için marj ve fiyat hesaplarında artık faturanın net fiyatı kullanılıyor (ürün listesinde "fatura fiyatı" notu). Diğerlerinin faturası 6 aydan eski, kart fiyatı kullanılmaya devam ediyor.`,
     adimlar: ['Bir şey yapmanız gerekmiyor; site fatura fiyatını kendiliğinden kullanıyor', 'Kalıcı düzeltme için isterseniz BizimHesap\'ta kart alış fiyatını faturadaki net fiyatla güncelleyin; site o zaman yeniden kart fiyatına döner'], sayfa: 'fiyat',
-    tablo: { basliklar: ['Ürün', 'Kartta alış', 'Son fatura alışı'], sag: [1, 2], satirlar: kartFark.slice(0, 15).map((x) => [urunAd(x.u), para(x.kart), para(x.son) + (x.otomatik ? ' ✓' : '')]) } });
+    tablo: { basliklar: ['Stok kodu', 'Ürün', 'Kartta alış', 'Son fatura alışı'], sag: [2, 3], satirlar: kartFark.map((x) => [x.u.kod || '—', urunAd(x.u), para(x.kart), para(x.son) + (x.otomatik ? ' ✓' : '')]) } });
 
   const HIZMET_K = /işçilik|iscilik|İŞÇİLİK|hizmet|HİZMET|montaj|tamir|torna|kaporta|rot balans|yıkama|ücret/i;
   const kritiksiz = ozet.filter((x) => sinif.get(x.urun.id) === 'A' && x.urun.aktif && !(x.urun.kritik_stok > 0) && !!x.urun.kategori && !HIZMET_K.test(x.urun.ad));
