@@ -298,12 +298,14 @@ export function onerileriCikar(db: DB): Oneri[] {
     .filter((x) => x.n >= 4 && x.oran >= 0.2 && x.oran <= 0.75 && birimKarOrt(x.b) > 0)
     .map((x) => ({ ...x, firsat: (x.na - x.n) * 0.25 * birimKarOrt(x.b) * ay })).sort((x, y) => y.firsat - x.firsat);
   const goruldu = new Set<string>(); const caprazTek = capraz.filter((x) => { const k = [x.a, x.b].sort().join(); if (goruldu.has(k)) return false; goruldu.add(k); return true; });
-  if (caprazTek.length) {
-    const ek = caprazTek.slice(0, 10).reduce((t, x) => t + x.firsat, 0);
-    o.push({ id: 'capraz', alan: 'Satış', oncelik: 2, etki: ek, etkiTur: 'kar',
+  const ekCapraz = caprazTek.slice(0, 10).reduce((t, x) => t + x.firsat, 0);
+  // aylık etkisi küçükse kart gösterilmez; ayrıntılı analiz Birlikte Satılanlar sayfasında
+  if (caprazTek.length && ekCapraz >= 500) {
+    const ek = ekCapraz;
+    o.push({ id: 'capraz', alan: 'Satış', oncelik: ek >= 2000 ? 2 : 3, etki: ek, etkiTur: 'kar',
       baslik: 'Birlikte satılan ürünlerde çapraz satış fırsatı',
       aciklama: `Bu ürünler sık sık aynı fişte satılıyor, ama çoğu zaman biri tek başına çıkıyor. Kalan fişlerin dörtte birinde ikinci ürün de satılsa ayda yaklaşık ${para(ek)} ek kâr.`,
-      adimlar: ['Tezgâhta ilk ürünü alana ikinciyi mutlaka sorun', 'Bu ikilileri rafta yan yana koyun veya paket fiyat yapın'], sayfa: 'analiz',
+      adimlar: ['Tezgâhta ilk ürünü alana ikinciyi mutlaka sorun', 'Bu ikilileri rafta yan yana koyun veya paket fiyat yapın'], sayfa: 'sepet',
       tablo: { basliklar: ['Bunu alanlar', 'Şunu da alıyor', 'Birlikte', 'Oran', 'Tek başına satılan'], sag: [2, 3, 4],
         satirlar: caprazTek.slice(0, 12).map((x) => [urunAd(urunMap.get(x.a)!), urunAd(urunMap.get(x.b)!), `${x.n} fiş`, yuzde(x.oran * 100), `${x.na - x.n} fiş`]) } });
   }
