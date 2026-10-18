@@ -308,14 +308,16 @@ export function onerileriCikar(db: DB): Oneri[] {
 
   // düşen kategori
   if (once.bas >= ilk) {
-    const kat = (dd: Donem) => { const m = new Map<string, number>(); for (const h of gecerliHareketler(db, dd)) { if (h.tur !== 'satis') continue; const u = urunMap.get(h.urun_id); if (!u?.kategori) continue; m.set(u.kategori, (m.get(u.kategori) ?? 0) + hareketTutar(h, a).ciro); } return m; };
+    const kat = (dd: Donem) => { const m = new Map<string, { t: number; n: number; enb: number }>(); for (const h of gecerliHareketler(db, dd)) { if (h.tur !== 'satis') continue; const u = urunMap.get(h.urun_id); if (!u?.kategori) continue; const c = hareketTutar(h, a).ciro; const x = m.get(u.kategori) ?? { t: 0, n: 0, enb: 0 }; x.t += c; x.n++; x.enb = Math.max(x.enb, c); m.set(u.kategori, x); } return m; };
     const s = kat(d), p = kat(once);
-    const dusen = [...p.entries()].map(([k, v]) => ({ k, o: v, s: s.get(k) ?? 0 })).filter((x) => x.o > 10000 && x.s < x.o * 0.7).sort((x, y) => (y.o - y.s) - (x.o - x.s));
+    // seyrek satılan kategoriler ve tek büyük satışın şişirdiği dönemler yanıltmasın: önceki dönemde en az 5 satış, en büyük tek satış hariç karşılaştırma
+    const dusen = [...p.entries()].map(([k, v]) => { const sn = s.get(k); return { k, o: v.t, on: v.n, o2: v.t - v.enb, s: sn?.t ?? 0, sn: sn?.n ?? 0 }; })
+      .filter((x) => x.on >= 5 && x.o2 > 10000 && x.s < x.o2 * 0.7).sort((x, y) => (y.o2 - y.s) - (x.o2 - x.s));
     if (dusen.length) o.push({ id: 'dusen-kategori', alan: 'Satış', oncelik: 2,
       baslik: `${dusen.length} kategoride satış önceki 90 güne göre %30'dan fazla düştü`,
-      aciklama: 'Stok bitmiş, fiyat yükselmiş ya da rakip ucuzlamış olabilir.',
+      aciklama: 'Yalnız düzenli satılan kategoriler (önceki dönemde en az 5 satış) alındı; tek seferlik büyük bir satış düşüş gibi görünmesin diye önceki dönemin en büyük satışı karşılaştırmadan çıkarıldı. Stok bitmiş, fiyat yükselmiş ya da rakip ucuzlamış olabilir.',
       adimlar: ['Bu kategorilerde çok satan ürünlerin stokta olup olmadığına bakın', 'Fiyatlarınızı tedarikçi/rakip fiyatlarıyla karşılaştırın'], sayfa: 'satisanaliz',
-      tablo: { basliklar: ['Kategori', 'Önceki 90 gün', 'Son 90 gün', 'Değişim'], sag: [1, 2, 3], satirlar: dusen.slice(0, 10).map((x) => [x.k, para(x.o), para(x.s), `-${yuzde((1 - x.s / x.o) * 100)}`]) } });
+      tablo: { basliklar: ['Kategori', 'Önceki 90 gün', 'Son 90 gün', 'Değişim'], sag: [1, 2, 3], satirlar: dusen.slice(0, 15).map((x) => [x.k, `${para(x.o)} (${x.on} satış)`, `${para(x.s)} (${x.sn} satış)`, `-${yuzde((1 - x.s / x.o2) * 100)}`]) } });
   }
 
   return o.sort((x, y) => x.oncelik - y.oncelik || (y.etki ?? 0) - (x.etki ?? 0));
