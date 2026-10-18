@@ -115,7 +115,9 @@ export function onerileriCikar(db: DB): Oneri[] {
   }
 
   const s30 = urunOzetleri(db, d30); const gun30 = takipGunu(db, d30);
-  const bitmis = aktif.filter((u) => u.stok <= 0).map((u) => ({ u, x: s30.get(u.id), x90: ozetMap.get(u.id) }))
+  // işçilik/hizmet kalemleri stok tutulmaz; kategorisi olmayan kartlar da genelde hizmettir
+  const stokluMu = (u: Urun) => !!u.kategori && !/işçilik|iscilik|İŞÇİLİK|IŞÇİLİK|hizmet|HİZMET|revizyon|REVİZYON|prim\b|PRİMİ|montaj|MONTAJ|tamir|TAMİR|torna|TORNA|kaporta|KAPORTA|ücret|ÜCRET/i.test(u.ad);
+  const bitmis = aktif.filter((u) => u.stok <= 0 && stokluMu(u)).map((u) => ({ u, x: s30.get(u.id), x90: ozetMap.get(u.id) }))
     .filter((r) => (r.x?.satisSayisi ?? 0) >= 2).map((r) => ({ ...r, aylikKar: (r.x!.kar / gun30) * 30 })).sort((x, y) => y.aylikKar - x.aylikKar);
   if (bitmis.length) {
     const kayip = bitmis.reduce((t, r) => t + Math.max(0, r.aylikKar), 0);
