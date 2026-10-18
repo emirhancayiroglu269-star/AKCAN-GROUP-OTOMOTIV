@@ -50,7 +50,7 @@ export default function KarZarar() {
   const ortKar = tamAylar.length ? tamAylar.reduce((t, x) => t + x.kar, 0) / tamAylar.length : 0;
   const karOrani = ortCiro > 0 ? ortKar / ortCiro : 0;
   const basabas = karOrani > 0 ? ortGider / karOrani : 0;
-  const donemSatis = g.urunSatis + g.hizmetGeliri + g.maliyetsizUrun;
+  const donemSatis = g.urunSatis + g.hizmetGeliri + g.maliyetsizUrun + g.gecis;
   const AY = ['Oca', 'Şub', 'Mar', 'Nis', 'May', 'Haz', 'Tem', 'Ağu', 'Eyl', 'Eki', 'Kas', 'Ara'];
 
   return (
@@ -61,7 +61,7 @@ export default function KarZarar() {
         <Kpi etiket="Ürün brüt kârı" deger={para(g.urunKar)} alt={`Satış ${para(g.urunSatis)} · marj ${marj(g.urunKar, g.urunSatis)}`} renk={g.urunKar >= 0 ? 'green' : 'red'} />
         <Kpi etiket="Hizmet kârı" deger={para(g.hizmetKar)} alt={`Gelir ${para(g.hizmetGeliri)} − dış hizmet ${para(g.disHizmet)}`} renk={g.hizmetKar >= 0 ? 'green' : 'red'} />
         <Kpi etiket="İşletme giderleri" deger={para(g.masraf)} alt={masrafVar ? `${g.masrafGruplari.filter((x) => !x.haric).length} gider kalemi${g.haricMasraf ? ` · ${para(g.haricMasraf)} hariç tutuldu` : ''}` : 'Masraf verisi aktarılmadı'} renk="red" />
-        <Kpi etiket="Net kâr" deger={para(g.netKar)} alt={`Toplam satışın ${marj(g.netKar, g.urunSatis + g.hizmetGeliri + g.maliyetsizUrun)}'i`} renk={g.netKar >= 0 ? 'green' : 'red'} />
+        <Kpi etiket="Net kâr" deger={para(g.netKar)} alt={`Toplam satışın ${marj(g.netKar, donemSatis)}'i`} renk={g.netKar >= 0 ? 'green' : 'red'} />
       </div>
 
       <div className="grid gap-4 lg:grid-cols-3">
@@ -81,6 +81,7 @@ export default function KarZarar() {
             <div className="border-t border-slate-200 pt-2 dark:border-slate-700"><Satir l="= Net kâr" v={g.netKar} kalin buyuk /></div>
           </div>
           <div className="mt-4 space-y-1 text-xs text-slate-500">
+            {g.gecis > 0 && <div>• Araç alım/satım gibi geçiş satışları ({para(g.gecis)}: {g.gecisListe.slice(0, 3).map((x) => x.ad).join(', ')}) satış toplamında var ama hizmet gelirine ve kâra katılmadı.</div>}
             {g.maliyetsizUrun > 0 && <div>• Maliyeti girilmemiş ürün satışları ({para(g.maliyetsizUrun)}) kâra katılmadı; listesi aşağıda. BizimHesap'ta alış fiyatlarını girerseniz hesaba girer.</div>}
             {g.ciftKayit > 0 && <div>• {para(g.ciftKayit)} tutarındaki stok dışı alış, aynı tutarla masraf olarak da girildiği için iki kez sayılmadı.</div>}
             <div>• Masraf tutarları BizimHesap'taki toplamlardır. Ürün ve hizmet tutarları fatura raporundan, rapor aktarılmamış günlerde stok değişiminden gelir.</div>

@@ -240,7 +240,7 @@ export function onerileriCikar(db: DB): Oneri[] {
   const brut = g.urunKar + g.hizmetKar;
   if (brut > 0 && g.hizmetKar / brut > 0.3) o.push({ id: 'hizmet', alan: 'Satış', oncelik: 3,
     baslik: `Brüt kârın ${yuzde(g.hizmetKar / brut * 100)}'si hizmet/işçilikten geliyor`,
-    aciklama: `Son 90 günde hizmet geliri ${para(g.hizmetGeliri)}, dışarıya yaptırılan iş ${para(g.disHizmet)}. Hizmet, parça satışını da beraberinde getiriyor.`,
+    aciklama: `Son 90 günde hizmet geliri ${para(g.hizmetGeliri)}, dışarıya yaptırılan iş ve stok dışı alışlar ${para(g.disHizmet)}.${g.gecis > 0 ? ` Araç alım/satım gibi geçiş satışları (${para(g.gecis)}) hizmete sayılmadı.` : ''} Hizmet, parça satışını da beraberinde getiriyor.`,
     adimlar: ['Servis kapasitesini (usta, lift, randevu) artırmak kârı en hızlı büyütecek alan olabilir', 'Dışarıya yaptırılan işlerden sık olanları içeride yapmayı değerlendirin', 'Her servis işine bakım parçası (filtre, yağ, silecek) önerin'], sayfa: 'karzarar' });
 
   if (g.maliyetsizUrun > 0) o.push({ id: 'maliyetsiz', alan: 'Veri', oncelik: 2,
@@ -339,7 +339,7 @@ export function aySonuTahmini(db: DB) {
   for (const h of db.hareketler) { if (h.yok_say || h.tur !== 'satis') continue; const t = gunu(h.tarih); if (t < gAyBas || t.slice(0, 7) !== gAyBas.slice(0, 7)) continue;
     const c = hareketTutar(h, db.ayarlar).ciro; gecenAyTum += c; if (t <= gAyAyni) gecenAyAyni += c; }
   const gecenAyVar = (db.bh_durum?.rapor_ilk ?? '9999') <= gAyBas;
-  const satisNet = g.urunSatis + g.hizmetGeliri + g.maliyetsizUrun;
+  const satisNet = g.urunSatis + g.hizmetGeliri + g.maliyetsizUrun + g.gecis;
   const brut = g.urunKar + g.hizmetKar;
   const hiz = gecen > 0 ? 1 / gecen * sonGun : 1;
   const tahminCiro = ciro * hiz, tahminBrut = brut * hiz;

@@ -99,6 +99,8 @@ export function alinacakHesap(u: Urun, satilan: number, gunSayisi: number, hedef
 // ======================= GELİR TABLOSU =======================
 const HIZMET_RE = /İŞÇİLİK|ISCILIK|IŞÇİLİK|HİZMET|HIZMET|TAMİR|TAMIR|REVİZYON|REVIZYON|DEĞİŞİM|DEGISIM|YAZILIM|MONTAJ|BAKIM|TESİSAT|TESISAT|ARIZA|KAPORTA|BOYA|SÖKÜM|SOKUM|ONARIM|KODLAMA|AYAR|TEST|PRİM|PRIM/i;
 
+export const GECIS_RE = /ARAÇ ALIM|ARAC ALIM|ARAÇ SATI|ARAC SATI|ARAÇ BEDEL|ARAC BEDEL/i;
+
 /** Maliyeti olmayan satış satırı hizmet mi, yoksa BizimHesap'ta alış fiyatı girilmemiş ürün mü? */
 export function hizmetMi(h: Hareket, u?: Urun) {
   const ad = u?.ad ?? h.urun_ad ?? '';
@@ -107,6 +109,8 @@ export function hizmetMi(h: Hareket, u?: Urun) {
 
 export interface GelirTablosu {
   urunSatis: number; urunMaliyet: number; urunKar: number; maliyetsizUrun: number; maliyetsizUrunListe: { ad: string; tutar: number; adet: number; id?: string }[];
+  /** araç alım/satım gibi işletme dışı geçiş satışları: ciroda görünür, hizmet ve kâra katılmaz */
+  gecis: number; gecisListe: { ad: string; tutar: number; adet: number }[];
   hizmetGeliri: number; hizmetListe: { ad: string; tutar: number; adet: number }[]; disHizmet: number; disHizmetListe: { ad: string; tutar: number }[]; ciftKayit: number;
   masraf: number; masrafGruplari: { anahtar: string; ana: string; alt: string; tutar: number; adet: number; haric: boolean }[]; haricMasraf: number;
   hizmetKar: number; brutKar: number; netKar: number;
@@ -115,14 +119,15 @@ export interface GelirTablosu {
 /** Ürün kârı + hizmet kârı − işletme giderleri (tutarlar KDV hariç; masraflar BizimHesap'taki toplamla) */
 export function gelirTablosu(db: DB, d: Donem): GelirTablosu {
   const urun = new Map(db.urunler.map((u) => [u.id, u]));
-  const t: GelirTablosu = { urunSatis: 0, urunMaliyet: 0, urunKar: 0, maliyetsizUrun: 0, maliyetsizUrunListe: [], hizmetGeliri: 0, hizmetListe: [], disHizmet: 0, disHizmetListe: [], ciftKayit: 0, masraf: 0, masrafGruplari: [], haricMasraf: 0, hizmetKar: 0, brutKar: 0, netKar: 0 };
+  const t: GelirTablosu = { urunSatis: 0, urunMaliyet: 0, urunKar: 0, maliyetsizUrun: 0, maliyetsizUrunListe: [], gecis: 0, gecisListe: [], hizmetGeliri: 0, hizmetListe: [], disHizmet: 0, disHizmetListe: [], ciftKayit: 0, masraf: 0, masrafGruplari: [], haricMasraf: 0, hizmetKar: 0, brutKar: 0, netKar: 0 };
   const topla = (m: Map<string, { ad: string; tutar: number; adet: number }>, ad: string, tutar: number, adet: number) => { const x = m.get(ad) ?? { ad, tutar: 0, adet: 0 }; x.tutar += tutar; x.adet += adet; m.set(ad, x); };
-  const hz = new Map<string, { ad: string; tutar: number; adet: number }>(), mu = new Map<string, { ad: string; tutar: number; adet: number }>(), dh = new Map<string, { ad: string; tutar: number; adet: number }>();
+  const hz = new Map<string, { ad: string; tutar: number; adet: number }>(), mu = new Map<string, { ad: string; tutar: number; adet: number }>(), dh = new Map<string, { ad: string; tutar: number; adet: number }>(), gc = new Map<string, { ad: string; tutar: number; adet: number }>();
   for (const h of gecerliHareketler(db, d)) {
     const u = urun.get(h.urun_id);
     if (h.tur === 'satis') {
       const x = hareketTutar(h, db.ayarlar);
       if (!x.maliyetYok) { t.urunSatis += x.ciroNet; t.urunMaliyet += x.maliyet; }
+      else if (GECIS_RE.test(u?.ad ?? h.urun_ad ?? '')) { t.gecis += x.ciroNet; topla(gc, u?.ad ?? h.urun_ad ?? '—', x.ciroNet, h.miktar); }
       else if (hizmetMi(h, u)) { t.hizmetGeliri += x.ciroNet; topla(hz, u?.ad ?? h.urun_ad ?? '—', x.ciroNet, h.miktar); }
       else { t.maliyetsizUrun += x.ciroNet; topla(mu, u?.ad ?? h.urun_ad ?? '—', x.ciroNet, h.miktar); if (u) (mu.get(u.ad) as { id?: string }).id = String(u.id); }
     } else if (!u && h.kaynak === 'fatura') {
@@ -146,6 +151,7 @@ export function gelirTablosu(db: DB, d: Donem): GelirTablosu {
   t.haricMasraf = t.masrafGruplari.filter((g) => g.haric).reduce((s, g) => s + g.tutar, 0);
   t.hizmetListe = [...hz.values()].sort((a, b) => b.tutar - a.tutar);
   t.maliyetsizUrunListe = [...mu.values()].sort((a, b) => b.tutar - a.tutar);
+  t.gecisListe = [...gc.values()].sort((a, b) => b.tutar - a.tutar);
   t.disHizmetListe = [...dh.values()].sort((a, b) => b.tutar - a.tutar);
   t.hizmetKar = t.hizmetGeliri - t.disHizmet;
   t.brutKar = t.urunKar + t.hizmetKar;

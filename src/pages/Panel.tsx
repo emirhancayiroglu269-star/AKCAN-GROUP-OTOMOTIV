@@ -72,7 +72,7 @@ export default function Panel({ git }: { git: (s: Sayfa) => void }) {
       const dd: Donem = { bas: gunu(bas), bit: gunu(bit) < gunu() ? gunu(bit) : gunu() };
       if (ilk && dd.bit < ilk) continue;
       const x = gelirTablosu(db, dd);
-      l.push({ etiket: AY[bas.getMonth()], alt: `${AY[bas.getMonth()]} ${bas.getFullYear()}${i === 0 ? ' (devam ediyor)' : ''}`, degerler: [x.urunSatis + x.hizmetGeliri + x.maliyetsizUrun, x.brutKar, x.masraf] });
+      l.push({ etiket: AY[bas.getMonth()], alt: `${AY[bas.getMonth()]} ${bas.getFullYear()}${i === 0 ? ' (devam ediyor)' : ''}`, degerler: [x.urunSatis + x.hizmetGeliri + x.maliyetsizUrun + x.gecis, x.brutKar, x.masraf] });
     }
     while (l.length > 1 && l[0].degerler.every((v) => v === 0)) l.shift();
     return l;
