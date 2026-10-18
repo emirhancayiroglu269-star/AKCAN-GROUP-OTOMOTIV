@@ -54,7 +54,8 @@ function hareketleriBirlestir(stok: Hareket[], rapor: RaporSatiri[], d: BhDurum 
       id: -x.id, tarih: `${x.tarih}T${x.saat ? String(x.saat).slice(0, 5) : '12:00'}:00`,
       belge_guid: x.belge_guid, cari_guid: x.cari_guid, cari_ad: x.cari_ad, kullanici: x.kullanici, depo: x.depo, saat: x.saat ? String(x.saat).slice(0, 5) : null, urun_id: x.urun_id ?? `yok:${x.urun_ad}`, tur: x.tur, miktar: x.miktar,
       satis_fiyati: x.tur === 'satis' ? x.toplam / x.miktar : (x.urun_id ? fiyat.get(x.urun_id)?.satis_fiyati ?? 0 : 0),
-      alis_fiyati: x.tur === 'satis' ? x.alis_fiyati || 0 : x.net / x.miktar,
+      // satış anında kartta alış yoksa (0) ve kart sonradan düzeltildiyse güncel kart alışı kullanılır
+      alis_fiyati: x.tur === 'satis' ? x.alis_fiyati || (x.urun_id ? fiyat.get(x.urun_id)?.alis_fiyati ?? 0 : 0) || 0 : x.net / x.miktar,
       kdv: kdvOran, yok_say: false, kaynak: 'fatura', urun_ad: x.urun_ad, brut: x.tutar ?? undefined, indirim: x.indirim ?? undefined,
       cift_kayit: x.tur === 'alis' && !x.urun_id && masraf.some((m) => Math.abs(m.tutar - x.toplam) < 1 && Math.abs(new Date(m.tarih).getTime() - new Date(x.tarih).getTime()) <= 5 * 864e5),
     };

@@ -246,8 +246,8 @@ export function onerileriCikar(db: DB): Oneri[] {
   if (g.maliyetsizUrun > 0) o.push({ id: 'maliyetsiz', alan: 'Veri', oncelik: 2,
     baslik: `${para(g.maliyetsizUrun)} satışta ürünün alış fiyatı girilmemiş`,
     aciklama: `${g.maliyetsizUrunListe.length} üründe BizimHesap kartında alış fiyatı yok; bu satışların kârı hesaplanamıyor ve kâr eksik görünüyor.`,
-    adimlar: ['Bu ürünlere BizimHesap\'ta alış fiyatı (KDV hariç) girin', 'Aslında hizmetse kategorisini boş bırakın veya adına "işçilik" yazın'], sayfa: 'karzarar',
-    tablo: { basliklar: ['Ürün', 'Satış (KDV hariç)', 'Adet'], sag: [1, 2], satirlar: g.maliyetsizUrunListe.slice(0, 15).map((x) => [x.ad, para(x.tutar), sayi(x.adet)]) } });
+    adimlar: ['Satırdaki "BizimHesap\'ta aç" bağlantısıyla kartı açıp alış fiyatını girin; geçmiş satışların kârı da bu fiyatla hesaplanır ve ürün listeden düşer', 'Aslında hizmetse kategorisini boş bırakın veya adına "işçilik" yazın'], sayfa: 'karzarar',
+    tablo: (() => { const um = new Map(db.urunler.map((u) => [String(u.id), u])); const l = g.maliyetsizUrunListe; return { basliklar: ['Stok kodu', 'Ürün', 'Satış (KDV hariç)', 'Adet'], sag: [2, 3], satirlar: l.map((x) => [(x.id && um.get(x.id)?.kod) || '—', x.ad, para(x.tutar), sayi(x.adet)]), bh: l.map((x) => { const b = x.id ? um.get(x.id)?.bh_id : null; return b ? `https://uygulama.bizimhesap.com/web/ngn/prd/ngnproduct?rc=1&guid=${b}` : null; }) }; })() });
 
   const kartFark = aktif.map((u) => { const s = sonAlis.get(u.id); const kart = netAlis(u.kart_alis ?? u.alis_fiyati, u.kdv, a);
     return s && kart > 0 && s.fiyat > 0 && kart > s.fiyat * 1.3 ? { u, kart, son: s.fiyat, otomatik: !!u.kart_alis } : null; }).filter((x): x is NonNullable<typeof x> => !!x).sort((x, y) => (y.kart - y.son) - (x.kart - x.son));

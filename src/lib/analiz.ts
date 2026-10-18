@@ -106,7 +106,7 @@ export function hizmetMi(h: Hareket, u?: Urun) {
 }
 
 export interface GelirTablosu {
-  urunSatis: number; urunMaliyet: number; urunKar: number; maliyetsizUrun: number; maliyetsizUrunListe: { ad: string; tutar: number; adet: number }[];
+  urunSatis: number; urunMaliyet: number; urunKar: number; maliyetsizUrun: number; maliyetsizUrunListe: { ad: string; tutar: number; adet: number; id?: string }[];
   hizmetGeliri: number; hizmetListe: { ad: string; tutar: number; adet: number }[]; disHizmet: number; disHizmetListe: { ad: string; tutar: number }[]; ciftKayit: number;
   masraf: number; masrafGruplari: { anahtar: string; ana: string; alt: string; tutar: number; adet: number; haric: boolean }[]; haricMasraf: number;
   hizmetKar: number; brutKar: number; netKar: number;
@@ -124,7 +124,7 @@ export function gelirTablosu(db: DB, d: Donem): GelirTablosu {
       const x = hareketTutar(h, db.ayarlar);
       if (!x.maliyetYok) { t.urunSatis += x.ciroNet; t.urunMaliyet += x.maliyet; }
       else if (hizmetMi(h, u)) { t.hizmetGeliri += x.ciroNet; topla(hz, u?.ad ?? h.urun_ad ?? '—', x.ciroNet, h.miktar); }
-      else { t.maliyetsizUrun += x.ciroNet; topla(mu, u?.ad ?? h.urun_ad ?? '—', x.ciroNet, h.miktar); }
+      else { t.maliyetsizUrun += x.ciroNet; topla(mu, u?.ad ?? h.urun_ad ?? '—', x.ciroNet, h.miktar); if (u) (mu.get(u.ad) as { id?: string }).id = String(u.id); }
     } else if (!u && h.kaynak === 'fatura') {
       // stok dışı alış: dışarıdan alınan hizmet / parça (masraf olarak da girilmişse çift sayılmaz)
       const tutar = h.miktar * h.alis_fiyati;
