@@ -55,11 +55,15 @@ export function onerileriCikar(db: DB): Oneri[] {
   const urunMapD = new Map(db.urunler.map((u) => [u.id, u]));
   const gecisBelge = new Set<string>(); const satirlar90 = gecerliHareketler(db, d).filter((h) => h.tur === 'satis');
   for (const h of satirlar90) if (h.belge_guid && GECIS_RE.test(urunMapD.get(h.urun_id)?.ad ?? h.urun_ad ?? '')) gecisBelge.add(h.belge_guid);
+  const sonAlisDm = sonAlislar(db); const sinir6 = gunu(new Date(Date.now() - 180 * 864e5));
   const dm = new Map<ID, { urun: Urun; satilan: number; ciroNet: number; maliyet: number; kar: number }>();
   for (const h of satirlar90) {
     const u = urunMapD.get(h.urun_id); if (!u || !(h.satis_fiyati > 0) || (h.belge_guid && gecisBelge.has(h.belge_guid))) continue;
     const t = hareketTutar(h, a); if (t.maliyetYok) continue;
-    const x = dm.get(u.id) ?? { urun: u, satilan: 0, ciroNet: 0, maliyet: 0, kar: 0 }; x.satilan += h.miktar; x.ciroNet += t.ciroNet; x.maliyet += t.maliyet; x.kar += t.kar; dm.set(u.id, x);
+    // satış satırındaki maliyet kartın iskontosuz liste fiyatıysa (son 6 ayın faturasından %30+ yüksek) fatura net fiyatı kullanılır
+    const sf = sonAlisDm.get(u.id); const birimMal = t.maliyet / h.miktar;
+    const maliyet = sf && sf.tarih >= sinir6 && birimMal > sf.fiyat * 1.3 ? sf.fiyat * h.miktar : t.maliyet;
+    const x = dm.get(u.id) ?? { urun: u, satilan: 0, ciroNet: 0, maliyet: 0, kar: 0 }; x.satilan += h.miktar; x.ciroNet += t.ciroNet; x.maliyet += maliyet; x.kar += t.ciroNet - maliyet; dm.set(u.id, x);
   }
   const dusuk = [...dm.values()].filter((x) => x.maliyet > 0 && x.ciroNet > 500 && x.kar / x.ciroNet * 100 < Math.min(12, hedef / 2))
     .map((x) => ({ ...x, marj: (x.kar / x.ciroNet) * 100, fark: x.ciroNet * (hedef / 100) - x.kar })).sort((x, y) => y.fark - x.fark);
