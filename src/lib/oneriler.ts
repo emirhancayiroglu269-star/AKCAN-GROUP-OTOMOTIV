@@ -231,16 +231,20 @@ export function onerileriCikar(db: DB): Oneri[] {
 
   // ---------- GİDER ----------
   const once = oncekiDonem(d);
-  const masrafGrup = (dd: Donem) => { const m = new Map<string, number>(); const haric = new Set(a.haric_masraf ?? []);
-    for (const x of db.masraflar) { if (x.tarih < dd.bas || x.tarih > dd.bit) continue; const k = `${x.ana ?? ''}/${x.alt ?? ''}`; if (haric.has(k)) continue; m.set(k, (m.get(k) ?? 0) + x.tutar); } return m; };
+  const masrafGrup = (dd: Donem) => { const m = new Map<string, { t: number; n: number; enb: number }>(); const haric = new Set(a.haric_masraf ?? []);
+    for (const x of db.masraflar) { if (x.tarih < dd.bas || x.tarih > dd.bit) continue; const k = `${x.ana ?? ''}/${x.alt ?? ''}`; if (haric.has(k)) continue; const g = m.get(k) ?? { t: 0, n: 0, enb: 0 }; g.t += x.tutar; g.n++; g.enb = Math.max(g.enb, x.tutar); m.set(k, g); } return m; };
   if (once.bas >= ilk) {
     const simdi = masrafGrup(d), onceki = masrafGrup(once);
-    const artan = [...simdi.entries()].map(([k, v]) => ({ k, v, o: onceki.get(k) ?? 0 })).filter((x) => x.o > 0 && x.v > x.o * 1.3 && x.v - x.o > 5000).sort((x, y) => (y.v - y.o) - (x.v - x.o));
-    if (artan.length) o.push({ id: 'masraf-artis', alan: 'Gider', oncelik: 2, etki: artan.reduce((t, x) => t + x.v - x.o, 0) / 3, etkiTur: 'kar',
+    const artan = [...simdi.entries()].map(([k, g]) => { const og = onceki.get(k); return { k, v: g.t, n: g.n, enb: g.enb, o: og?.t ?? 0, on: og?.n ?? 0 }; })
+      .filter((x) => x.o > 0 && x.v > x.o * 1.3 && x.v - x.o > 5000).sort((x, y) => (y.v - y.o) - (x.v - x.o));
+    // artışın yarısından fazlası tek kayıttan geliyorsa bir defalık olabilir
+    const tek = (x: (typeof artan)[number]) => x.enb > (x.v - x.o) * 0.5;
+    if (artan.length) o.push({ id: 'masraf-artis', alan: 'Gider', oncelik: 2,
       baslik: `${artan.length} gider kalemi önceki 90 güne göre belirgin arttı`,
-      aciklama: 'Artış kalıcıysa fiyatlara yansıtmak veya gideri kısmak gerekir.',
-      adimlar: ['Her kalemin nedenini kontrol edin (bir defalık mı, kalıcı mı)', 'Bir defalık olanları Kâr / Zarar sayfasında hesaptan çıkarabilirsiniz'], sayfa: 'karzarar',
-      tablo: { basliklar: ['Gider', 'Önceki 90 gün', 'Son 90 gün', 'Artış'], sag: [1, 2, 3], satirlar: artan.slice(0, 10).map((x) => [x.k.replace('/', ' › '), para(x.o), para(x.v), yuzde((x.v - x.o) / x.o * 100)]) } });
+      aciklama: `Son 90 günde bu kalemlere önceki 90 güne göre toplam ${para(artan.reduce((t, x) => t + x.v - x.o, 0))} fazla gider yazılmış. Bir kısmı ödeme zamanlamasından (bir dönemde 2, diğerinde 3 kira gibi) ya da tek seferlik harcamalardan olabilir; "Not" sütununa bakın.`,
+      adimlar: ['Her kalemin nedenini kontrol edin (bir defalık mı, kalıcı mı)', 'Kalıcı artışlar (maaş, kira zammı) fiyatlara yansıtılmalı', 'Bir defalık olanları Kâr / Zarar sayfasında hesaptan çıkarabilirsiniz'], sayfa: 'karzarar',
+      tablo: { basliklar: ['Gider', 'Önceki 90 gün', 'Son 90 gün', 'Artış', 'Not'], sag: [1, 2, 3],
+        satirlar: artan.slice(0, 10).map((x) => [x.k.replace('/', ' › '), `${para(x.o)} (${x.on} kayıt)`, `${para(x.v)} (${x.n} kayıt)`, yuzde((x.v - x.o) / x.o * 100), tek(x) ? `Tek kayıt ${para(x.enb)}: bir defalık olabilir` : x.n > x.on ? 'Kayıt sayısı arttı' : 'Tutarlar arttı']) } });
   }
 
   const ortGider = tamAylar.length ? tamAylar.reduce((t, x) => t + x.masraf, 0) / tamAylar.length : 0;
