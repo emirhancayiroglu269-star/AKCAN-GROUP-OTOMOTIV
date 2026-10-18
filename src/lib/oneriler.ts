@@ -9,7 +9,10 @@ export interface Oneri {
   id: string; alan: Alan; oncelik: 1 | 2 | 3; baslik: string; aciklama: string;
   /** tahmini aylık etki (TL) · kar: kâra eklenecek · nakit: nakde dönecek / bağlı para */
   etki?: number; etkiTur?: 'kar' | 'nakit';
-  adimlar: string[]; sayfa?: Sayfa; tablo?: { basliklar: string[]; satirlar: (string | number)[][]; sag?: number[] };
+  adimlar: string[]; sayfa?: Sayfa;
+  /** tek tıkla uygulanabilir toplu kritik stok ataması */
+  kritikUygula?: { id: string; kritik: number }[];
+  tablo?: { basliklar: string[]; satirlar: (string | number)[][]; sag?: number[] };
 }
 
 const gunFark = (a: string, b: string) => Math.round((new Date(a + 'T12:00').getTime() - new Date(b + 'T12:00').getTime()) / 864e5);
@@ -254,12 +257,15 @@ export function onerileriCikar(db: DB): Oneri[] {
     adimlar: ['BizimHesap\'ta alış fiyatını son fatura fiyatıyla düzeltin'], sayfa: 'fiyat',
     tablo: { basliklar: ['Ürün', 'Kartta alış', 'Son fatura alışı'], sag: [1, 2], satirlar: kartFark.slice(0, 15).map((x) => [urunAd(x.u), para(x.kart), para(x.son)]) } });
 
-  const kritiksiz = ozet.filter((x) => sinif.get(x.urun.id) === 'A' && x.urun.aktif && !(x.urun.kritik_stok > 0));
+  const HIZMET_K = /işçilik|iscilik|İŞÇİLİK|hizmet|HİZMET|montaj|tamir|torna|kaporta|rot balans|yıkama|ücret/i;
+  const kritiksiz = ozet.filter((x) => sinif.get(x.urun.id) === 'A' && x.urun.aktif && !(x.urun.kritik_stok > 0) && !!x.urun.kategori && !HIZMET_K.test(x.urun.ad));
+  const kritikOneri = (x: (typeof ozet)[number]) => Math.max(1, Math.ceil((x.satilan / gunSay) * 10));
   if (kritiksiz.length >= 3) o.push({ id: 'kritik-tanimsiz', alan: 'Veri', oncelik: 3,
     baslik: `Kârın çoğunu getiren ${kritiksiz.length} üründe kritik stok seviyesi tanımlı değil`,
     aciklama: 'Kritik stok girilirse bu ürünler azaldığında Kritik Stok sayfası ve günlük özet sizi uyarır.',
-    adimlar: ['Ürünler sayfasından bu ürünlere kritik stok girin (yaklaşık 1–2 haftalık satış)'], sayfa: 'urunler',
-    tablo: { basliklar: ['Ürün', '90 günde satılan', 'Önerilen kritik stok'], sag: [1, 2], satirlar: kritiksiz.slice(0, 20).map((x) => [urunAd(x.urun), sayi(x.satilan), Math.max(1, Math.ceil((x.satilan / gunSay) * 10))]) } });
+    adimlar: ['Aşağıdaki "Önerilen kritik stokları kaydet" düğmesiyle hepsine yaklaşık 10 günlük satış kadar kritik stok atanır', 'İsterseniz sonra Ürünler veya Alınacaklar sayfasından tek tek değiştirebilirsiniz'], sayfa: 'urunler',
+    kritikUygula: kritiksiz.map((x) => ({ id: x.urun.id, kritik: kritikOneri(x) })),
+    tablo: { basliklar: ['Ürün', '90 günde satılan', 'Önerilen kritik stok'], sag: [1, 2], satirlar: kritiksiz.slice(0, 20).map((x) => [urunAd(x.urun), sayi(x.satilan), kritikOneri(x)]) } });
 
   // zayıf gün
   const z = zamanAnalizi(db, d);

@@ -2,6 +2,8 @@ import { useMemo, useState } from 'react';
 import { ArrowRight, Check, ChevronDown, Eye, Lightbulb, RotateCcw, TrendingUp, Wallet } from 'lucide-react';
 import type { Sayfa } from '../App';
 import { useStore } from '../lib/store';
+import { backend } from '../lib/backend';
+import type { Urun } from '../lib/types';
 import { para } from '../lib/format';
 import { onerileriCikar, type Alan, type Oneri } from '../lib/oneriler';
 import { Bos, Kpi, SayfaBaslik } from '../components/ui';
@@ -11,7 +13,16 @@ const ANAHTAR = 'oneri-yapildi';
 const okuYapildi = (): string[] => { try { return JSON.parse(localStorage.getItem(ANAHTAR) ?? '[]'); } catch { return []; } };
 
 export default function Oneriler({ git }: { git: (s: Sayfa) => void }) {
-  const { db } = useStore();
+  const { db, calistir, yenile } = useStore();
+  const [kaydediliyor, setKaydediliyor] = useState(false);
+  const kritikKaydet = async (liste: { id: string; kritik: number }[]) => {
+    setKaydediliyor(true);
+    await calistir(async () => {
+      for (let i = 0; i < liste.length; i += 10) await Promise.all(liste.slice(i, i + 10).map((x) => backend.update<Urun>('urunler', x.id, { kritik_stok: x.kritik })));
+      await yenile();
+    }, `${liste.length} ürüne kritik stok kaydedildi`);
+    setKaydediliyor(false);
+  };
   const tum = useMemo(() => onerileriCikar(db), [db]);
   const [alan, setAlan] = useState<Alan | ''>('');
   const [acik, setAcik] = useState<string | null>(null);
@@ -61,6 +72,11 @@ export default function Oneriler({ git }: { git: (s: Sayfa) => void }) {
               </div>
             )}
             <div className="flex flex-wrap gap-2">
+              {x.kritikUygula && x.kritikUygula.length > 0 && (
+                <button className="btn-primary" disabled={kaydediliyor} onClick={() => kritikKaydet(x.kritikUygula!)}>
+                  <Check size={15} /> {kaydediliyor ? 'Kaydediliyor…' : `Önerilen kritik stokları kaydet (${x.kritikUygula.length} ürün)`}
+                </button>
+              )}
               {x.sayfa && <button className="btn-ghost" onClick={() => git(x.sayfa!)}>İlgili sayfaya git <ArrowRight size={15} /></button>}
               <button className="btn-ghost" onClick={() => isaretle(x.id)}>{bitti ? <><RotateCcw size={15} /> Tekrar göster</> : <><Check size={15} /> Yapıldı, gizle</>}</button>
             </div>
