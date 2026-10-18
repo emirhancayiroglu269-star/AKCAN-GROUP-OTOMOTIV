@@ -14,7 +14,7 @@ export default function BirlikteSatilan() {
   const [q, setQ] = useState('');
   const [secili, setSecili] = useState<string | null>(null);
   const s = useMemo(() => sepetAnalizi(db, d, hizmetHaric), [db, d, hizmetHaric]);
-  const adaylar = useMemo(() => (q.length < 2 ? [] : db.urunler.filter((u) => (s.urunSatis.get(u.id) ?? 0) > 0 && ara(q, u.ad, u.kod, u.marka)).sort((a, b) => (s.urunSatis.get(b.id) ?? 0) - (s.urunSatis.get(a.id) ?? 0)).slice(0, 8)), [q, db, s]);
+  const adaylar = useMemo(() => (q.length < 2 ? [] : db.urunler.filter((u) => (s.urunSatis.get(u.id) ?? 0) > 0 && ara(q, u.kod)).sort((a, b) => (s.urunSatis.get(b.id) ?? 0) - (s.urunSatis.get(a.id) ?? 0)).slice(0, 8)), [q, db, s]);
   const sec = secili ? s.urunIcin(secili) : null;
   const seciliUrun = secili ? s.urun.get(secili) : null;
   const toplamPotansiyel = s.kurallar.reduce((t, r) => t + r.potansiyel, 0);
@@ -61,21 +61,21 @@ export default function BirlikteSatilan() {
             <h3 className="font-semibold">Bu ürünü alanlar başka ne aldı?</h3>
             <div className="relative mt-2">
               <Search size={15} className="absolute left-3 top-2.5 text-slate-400" />
-              <input className="inp pl-8" placeholder="Ürün adı, kod veya marka…" value={q} onChange={(e) => { setQ(e.target.value); setSecili(null); }} />
+              <input className="inp pl-8" placeholder="Stok kodu yazın…" value={q} onChange={(e) => { setQ(e.target.value); setSecili(null); }} />
               {adaylar.length > 0 && !secili && (
                 <div className="absolute z-10 mt-1 w-full rounded-lg border border-slate-200 bg-white shadow-lg dark:border-slate-700 dark:bg-slate-900">
                   {adaylar.map((u) => (
-                    <button key={u.id} className="block w-full px-3 py-2 text-left text-sm hover:bg-slate-50 dark:hover:bg-slate-800" onClick={() => { setSecili(u.id); setQ(u.ad); }}>
-                      {u.ad}<span className="ml-2 text-xs text-slate-500">{s.urunSatis.get(u.id)} fiş</span>
+                    <button key={u.id} className="block w-full px-3 py-2 text-left text-sm hover:bg-slate-50 dark:hover:bg-slate-800" onClick={() => { setSecili(u.id); setQ(u.kod ?? ''); }}>
+                      <span className="font-mono font-medium">{u.kod}</span> <span className="text-slate-500">{u.ad}</span><span className="ml-2 text-xs text-slate-500">{s.urunSatis.get(u.id)} fiş</span>
                     </button>
                   ))}
                 </div>
               )}
             </div>
           </div>
-          {!sec || !seciliUrun ? <Bos metin="Bir ürün arayıp seçin." /> : sec.liste.length === 0 ? <Bos metin={`${seciliUrun.ad} bu dönemde ${sec.nA} fişte satılmış, yanında başka ürün yok.`} /> : (
+          {!sec || !seciliUrun ? <Bos metin="Stok kodunu yazıp listeden ürünü seçin." /> : sec.liste.length === 0 ? <Bos metin={`${seciliUrun.ad} bu dönemde ${sec.nA} fişte satılmış, yanında başka ürün yok.`} /> : (
             <div className="max-h-[45vh] overflow-auto">
-              <p className="px-4 pt-3 text-xs text-slate-500"><b>{seciliUrun.ad}</b> {sec.nA} fişte satıldı. Aynı fişte en sık görülenler:</p>
+              <p className="px-4 pt-3 text-xs text-slate-500"><b>{seciliUrun.kod}</b> {seciliUrun.ad} · {sec.nA} fişte satıldı. Aynı fişte en sık görülenler:</p>
               <table className="tbl">
                 <thead><tr><th>Ürün</th><th className="text-right">Birlikte</th><th className="text-right">Oran</th><th className="text-right">Stok</th><th className="text-right">Fiyat</th></tr></thead>
                 <tbody>{sec.liste.map((x) => (
