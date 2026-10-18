@@ -1,7 +1,7 @@
 import type { DB, ID, Urun } from './types';
 import type { Sayfa } from '../App';
 import { gunu, para, sayi } from './format';
-import { abcSinifla, alinacakHesap, birimKar, gecerliHareketler, gelirTablosu, hareketTutar, hizmetMi, netAlis, netSatis, takipGunu, urunOzetleri, type Donem } from './analiz';
+import { GECIS_RE, abcSinifla, alinacakHesap, birimKar, gecerliHareketler, gelirTablosu, hareketTutar, hizmetMi, netAlis, netSatis, takipGunu, urunOzetleri, type Donem } from './analiz';
 import { aylikSeri, musteriAnalizi, nakitAkisi, oncekiDonem, onerilenFiyat, sonAlislar, sonSatislar, zamanAnalizi } from './analiz2';
 
 export type Alan = 'Fiyat & kâr' | 'Stok' | 'Satın alma' | 'Müşteri' | 'Nakit' | 'Gider' | 'Satış' | 'Veri';
@@ -51,7 +51,17 @@ export function onerileriCikar(db: DB): Oneri[] {
         satirlar: altinda.slice(0, 15).map((x) => [urunAd(x.u), para(x.k.alisNet), para(x.u.satis_fiyati), para(onerilenFiyat(x.u, x.k.alisNet, hedef) ?? 0), sayi(x.s)]) } });
   }
 
-  const dusuk = ozet.filter((x) => x.maliyet > 0 && x.ciroNet > 500 && x.kar / x.ciroNet * 100 < Math.min(12, hedef / 2))
+  // düşük marj: bedelsiz (0 TL) satırlar ve araç alım/satım gibi geçiş faturalarındaki parçalar (maliyetine aktarılan) sayılmaz
+  const urunMapD = new Map(db.urunler.map((u) => [u.id, u]));
+  const gecisBelge = new Set<string>(); const satirlar90 = gecerliHareketler(db, d).filter((h) => h.tur === 'satis');
+  for (const h of satirlar90) if (h.belge_guid && GECIS_RE.test(urunMapD.get(h.urun_id)?.ad ?? h.urun_ad ?? '')) gecisBelge.add(h.belge_guid);
+  const dm = new Map<ID, { urun: Urun; satilan: number; ciroNet: number; maliyet: number; kar: number }>();
+  for (const h of satirlar90) {
+    const u = urunMapD.get(h.urun_id); if (!u || !(h.satis_fiyati > 0) || (h.belge_guid && gecisBelge.has(h.belge_guid))) continue;
+    const t = hareketTutar(h, a); if (t.maliyetYok) continue;
+    const x = dm.get(u.id) ?? { urun: u, satilan: 0, ciroNet: 0, maliyet: 0, kar: 0 }; x.satilan += h.miktar; x.ciroNet += t.ciroNet; x.maliyet += t.maliyet; x.kar += t.kar; dm.set(u.id, x);
+  }
+  const dusuk = [...dm.values()].filter((x) => x.maliyet > 0 && x.ciroNet > 500 && x.kar / x.ciroNet * 100 < Math.min(12, hedef / 2))
     .map((x) => ({ ...x, marj: (x.kar / x.ciroNet) * 100, fark: x.ciroNet * (hedef / 100) - x.kar })).sort((x, y) => y.fark - x.fark);
   if (dusuk.length) {
     const ek = dusuk.reduce((t, x) => t + x.fark, 0) * ay * 0.5; // hedefin yarısı kadar iyileşme varsayımı
