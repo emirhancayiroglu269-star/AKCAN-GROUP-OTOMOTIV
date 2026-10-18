@@ -34,7 +34,9 @@ export function onerileriCikar(db: DB): Oneri[] {
   const sinif = new Map(ozet.map((x) => [x.urun.id, abc.get(x) ?? 'C']));
   const aktif = db.urunler.filter((u) => u.aktif);
   const g = gelirTablosu(db, d);
-  const urunAd = (u: Urun) => u.ad.length > 60 ? u.ad.slice(0, 58) + '…' : u.ad;
+  const kisaAd = (u: Urun) => u.ad.length > 60 ? u.ad.slice(0, 58) + '…' : u.ad;
+  // tablolarda ürünün yanında stok kodu da görünsün
+  const urunAd = (u: Urun) => (u.kod ? `${u.kod} · ` : '') + kisaAd(u);
 
   // ---------- FİYAT & KÂR ----------
   const altinda = aktif.filter((u) => u.alis_fiyati > 0 && u.satis_fiyati > 0 && birimKar(u, a).kar < 0)
@@ -256,7 +258,7 @@ export function onerileriCikar(db: DB): Oneri[] {
     aciklama: `Kartta genelde iskontosuz liste fiyatı yazıyor. ${kartFark.filter((x) => x.otomatik).length} üründe son 6 ayda fatura olduğu için marj ve fiyat hesaplarında artık faturanın net fiyatı kullanılıyor (ürün listesinde "fatura fiyatı" notu). Diğerlerinin faturası 6 aydan eski, kart fiyatı kullanılmaya devam ediyor.`,
     adimlar: ['Bir şey yapmanız gerekmiyor; site fatura fiyatını kendiliğinden kullanıyor', 'BizimHesap\'ta düzeltmek için satırdaki "BizimHesap\'ta aç" bağlantısıyla kartı açın, alış fiyatına "Karta girilecek" sütunundaki tutarı yazıp kaydedin; düzelen ürün birkaç dakika içinde listeden düşer', 'Kalıcı düzeltme için isterseniz BizimHesap\'ta kart alış fiyatını faturadaki net fiyatla güncelleyin; site o zaman yeniden kart fiyatına döner'], sayfa: 'fiyat',
     tablo: { basliklar: ['Stok kodu', 'Ürün', 'Kartta alış', 'Son fatura alışı', `Karta girilecek (${a.alis_kdv_haric ? 'KDV hariç' : 'KDV dahil'})`], sag: [2, 3, 4],
-      satirlar: kartFark.map((x) => [x.u.kod || '—', urunAd(x.u), para(x.kart), para(x.son) + (x.otomatik ? ' ✓' : ''), para(a.alis_kdv_haric ? x.son : x.son * (1 + (Number(x.u.kdv) || 0) / 100))]),
+      satirlar: kartFark.map((x) => [x.u.kod || '—', kisaAd(x.u), para(x.kart), para(x.son) + (x.otomatik ? ' ✓' : ''), para(a.alis_kdv_haric ? x.son : x.son * (1 + (Number(x.u.kdv) || 0) / 100))]),
       bh: kartFark.map((x) => x.u.bh_id ? `https://uygulama.bizimhesap.com/web/ngn/prd/ngnproduct?rc=1&guid=${x.u.bh_id}` : null) } });
 
   const HIZMET_K = /işçilik|iscilik|İŞÇİLİK|hizmet|HİZMET|montaj|tamir|torna|kaporta|rot balans|yıkama|ücret/i;
@@ -313,11 +315,19 @@ export function onerileriCikar(db: DB): Oneri[] {
     // seyrek satılan kategoriler ve tek büyük satışın şişirdiği dönemler yanıltmasın: önceki dönemde en az 5 satış, en büyük tek satış hariç karşılaştırma
     const dusen = [...p.entries()].map(([k, v]) => { const sn = s.get(k); return { k, o: v.t, on: v.n, o2: v.t - v.enb, s: sn?.t ?? 0, sn: sn?.n ?? 0 }; })
       .filter((x) => x.on >= 5 && x.o2 > 10000 && x.s < x.o2 * 0.7).sort((x, y) => (y.o2 - y.s) - (x.o2 - x.s));
+    const urunSay = (dd: Donem) => { const m = new Map<ID, number>(); for (const h of gecerliHareketler(db, dd)) if (h.tur === 'satis') m.set(h.urun_id, (m.get(h.urun_id) ?? 0) + h.miktar); return m; };
+    const us = urunSay(d), up = urunSay(once); const dusenSet = new Set(dusen.slice(0, 15).map((x) => x.k));
+    const urunDusen = [...up.entries()].flatMap(([id, n]) => { const u = urunMap.get(id); const m = us.get(id) ?? 0; return u?.kategori && dusenSet.has(u.kategori) && m < n ? [{ u, n, m }] : []; })
+      .sort((x, y) => (x.u.kategori ?? '').localeCompare(y.u.kategori ?? '', 'tr') || (y.n - y.m) - (x.n - x.m));
     if (dusen.length) o.push({ id: 'dusen-kategori', alan: 'Satış', oncelik: 2,
       baslik: `${dusen.length} kategoride satış önceki 90 güne göre %30'dan fazla düştü`,
       aciklama: 'Yalnız düzenli satılan kategoriler (önceki dönemde en az 5 satış) alındı; tek seferlik büyük bir satış düşüş gibi görünmesin diye önceki dönemin en büyük satışı karşılaştırmadan çıkarıldı. Stok bitmiş, fiyat yükselmiş ya da rakip ucuzlamış olabilir.',
       adimlar: ['Bu kategorilerde çok satan ürünlerin stokta olup olmadığına bakın', 'Fiyatlarınızı tedarikçi/rakip fiyatlarıyla karşılaştırın'], sayfa: 'satisanaliz',
-      tablo: { basliklar: ['Kategori', 'Önceki 90 gün', 'Son 90 gün', 'Değişim'], sag: [1, 2, 3], satirlar: dusen.slice(0, 15).map((x) => [x.k, `${para(x.o)} (${x.on} satış)`, `${para(x.s)} (${x.sn} satış)`, `-${yuzde((1 - x.s / x.o2) * 100)}`]) } });
+      tablo: { basliklar: ['Kategori / Stok kodu', 'Ürün', 'Önceki 90 gün', 'Son 90 gün', 'Stok'], sag: [2, 3, 4],
+        satirlar: dusen.slice(0, 15).flatMap((x) => [
+          [`▸ ${x.k}`, `Kategori toplamı · -${yuzde((1 - x.s / x.o2) * 100)}`, `${para(x.o)} (${x.on} satış)`, `${para(x.s)} (${x.sn} satış)`, ''],
+          ...urunDusen.filter((y) => y.u.kategori === x.k).map((y) => [y.u.kod || '—', kisaAd(y.u), `${sayi(y.n)} adet`, `${sayi(y.m)} adet`, sayi(y.u.stok)]),
+        ]) } });
   }
 
   return o.sort((x, y) => x.oncelik - y.oncelik || (y.etki ?? 0) - (x.etki ?? 0));
