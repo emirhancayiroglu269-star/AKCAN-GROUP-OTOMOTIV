@@ -67,8 +67,8 @@ export default function Oneriler({ git }: { git: (s: Sayfa) => void }) {
             <ul className="mb-4 space-y-1.5 text-sm">{x.adimlar.map((s, i) => <li key={i} className="flex gap-2"><span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-marka-500" />{s}</li>)}</ul>
             {x.tablo && x.tablo.satirlar.length > 0 && (
               <div className="mb-4 max-h-[50vh] overflow-auto rounded-lg border border-slate-200 dark:border-slate-800">
-                <table className="tbl"><thead><tr>{x.tablo.basliklar.map((b, i) => <th key={i} className={x.tablo!.sag?.includes(i) ? 'text-right' : ''}>{b}</th>)}</tr></thead>
-                  <tbody>{x.tablo.satirlar.map((r, i) => <tr key={i}>{r.map((c, j) => <td key={j} className={x.tablo!.sag?.includes(j) ? 'whitespace-nowrap text-right' : ''}>{c}</td>)}</tr>)}</tbody></table>
+                <table className="tbl"><thead><tr>{x.tablo.basliklar.map((b, i) => <th key={i} className={x.tablo!.sag?.includes(i) ? 'text-right' : ''}>{b}</th>)}{x.tablo.bh && <th />}</tr></thead>
+                  <tbody>{x.tablo.satirlar.map((r, i) => <tr key={i}>{r.map((c, j) => <td key={j} className={x.tablo!.sag?.includes(j) ? 'whitespace-nowrap text-right' : ''}>{c}</td>)}{x.tablo!.bh && <td className="whitespace-nowrap text-right">{x.tablo!.bh[i] ? <a href={x.tablo!.bh[i]!} target="_blank" rel="noopener noreferrer" className="text-marka-600 hover:underline">BizimHesap'ta aç ↗</a> : null}</td>}</tr>)}</tbody></table>
               </div>
             )}
             <div className="flex flex-wrap gap-2">

@@ -12,7 +12,7 @@ export interface Oneri {
   adimlar: string[]; sayfa?: Sayfa;
   /** tek tıkla uygulanabilir toplu kritik stok ataması */
   kritikUygula?: { id: string; kritik: number }[];
-  tablo?: { basliklar: string[]; satirlar: (string | number)[][]; sag?: number[] };
+  tablo?: { basliklar: string[]; satirlar: (string | number)[][]; sag?: number[]; /** satır başına BizimHesap ürün kartı bağlantısı */ bh?: (string | null)[] };
 }
 
 const gunFark = (a: string, b: string) => Math.round((new Date(a + 'T12:00').getTime() - new Date(b + 'T12:00').getTime()) / 864e5);
@@ -254,8 +254,10 @@ export function onerileriCikar(db: DB): Oneri[] {
   if (kartFark.length) o.push({ id: 'kart-alis', alan: 'Veri', oncelik: 3,
     baslik: `${kartFark.length} üründe kartta yazan alış fiyatı son faturadan çok yüksek`,
     aciklama: `Kartta genelde iskontosuz liste fiyatı yazıyor. ${kartFark.filter((x) => x.otomatik).length} üründe son 6 ayda fatura olduğu için marj ve fiyat hesaplarında artık faturanın net fiyatı kullanılıyor (ürün listesinde "fatura fiyatı" notu). Diğerlerinin faturası 6 aydan eski, kart fiyatı kullanılmaya devam ediyor.`,
-    adimlar: ['Bir şey yapmanız gerekmiyor; site fatura fiyatını kendiliğinden kullanıyor', 'Kalıcı düzeltme için isterseniz BizimHesap\'ta kart alış fiyatını faturadaki net fiyatla güncelleyin; site o zaman yeniden kart fiyatına döner'], sayfa: 'fiyat',
-    tablo: { basliklar: ['Stok kodu', 'Ürün', 'Kartta alış', 'Son fatura alışı'], sag: [2, 3], satirlar: kartFark.map((x) => [x.u.kod || '—', urunAd(x.u), para(x.kart), para(x.son) + (x.otomatik ? ' ✓' : '')]) } });
+    adimlar: ['Bir şey yapmanız gerekmiyor; site fatura fiyatını kendiliğinden kullanıyor', 'BizimHesap\'ta düzeltmek için satırdaki "BizimHesap\'ta aç" bağlantısıyla kartı açın, alış fiyatına "Karta girilecek" sütunundaki tutarı yazıp kaydedin; düzelen ürün birkaç dakika içinde listeden düşer', 'Kalıcı düzeltme için isterseniz BizimHesap\'ta kart alış fiyatını faturadaki net fiyatla güncelleyin; site o zaman yeniden kart fiyatına döner'], sayfa: 'fiyat',
+    tablo: { basliklar: ['Stok kodu', 'Ürün', 'Kartta alış', 'Son fatura alışı', `Karta girilecek (${a.alis_kdv_haric ? 'KDV hariç' : 'KDV dahil'})`], sag: [2, 3, 4],
+      satirlar: kartFark.map((x) => [x.u.kod || '—', urunAd(x.u), para(x.kart), para(x.son) + (x.otomatik ? ' ✓' : ''), para(a.alis_kdv_haric ? x.son : x.son * (1 + (Number(x.u.kdv) || 0) / 100))]),
+      bh: kartFark.map((x) => x.u.bh_id ? `https://uygulama.bizimhesap.com/web/ngn/prd/ngnproduct?rc=1&guid=${x.u.bh_id}` : null) } });
 
   const HIZMET_K = /işçilik|iscilik|İŞÇİLİK|hizmet|HİZMET|montaj|tamir|torna|kaporta|rot balans|yıkama|ücret/i;
   const kritiksiz = ozet.filter((x) => sinif.get(x.urun.id) === 'A' && x.urun.aktif && !(x.urun.kritik_stok > 0) && !!x.urun.kategori && !HIZMET_K.test(x.urun.ad));
