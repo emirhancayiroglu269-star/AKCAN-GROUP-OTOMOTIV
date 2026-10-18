@@ -3,6 +3,8 @@ export type ID = string;
 export interface Urun {
   id: ID; kod?: string | null; barkod?: string | null; ad: string; marka?: string | null; kategori?: string | null;
   birim: string; alis_fiyati: number; satis_fiyati: number; kdv: number; stok: number; kritik_stok: number;
+  /** analizde fatura fiyatı kullanılıyorsa: kartta yazan asıl alış ve faturanın bilgisi (yalnız istemcide) */
+  kart_alis?: number; alis_fatura?: { tarih: string; tedarikci: string | null };
   raf?: string | null; aktif: boolean; olusturma?: string; bh_id?: string | null; bh_guncelleme?: string | null; bh_stok?: number | null;
 }
 

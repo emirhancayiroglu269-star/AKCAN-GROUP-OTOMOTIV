@@ -1,4 +1,5 @@
 import { useRef, createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
+import { faturaAlisUygula } from './efektifAlis';
 import { backend, MODE } from './backend';
 import type { DB, Rol } from './types';
 import { rolBul, yetkili, type Yetki } from './yetki';
@@ -33,7 +34,7 @@ export function StoreProvider({ personel: varsayilanAd, eposta = null, children 
   const yenile = useCallback(async () => {
     if (yukleniyor.current) return;
     yukleniyor.current = true;
-    try { setDb(await backend.load()); setHata(null); } catch (e) { setHata((e as Error).message); } finally { yukleniyor.current = false; }
+    try { setDb(faturaAlisUygula(await backend.load())); setHata(null); } catch (e) { setHata((e as Error).message); } finally { yukleniyor.current = false; }
   }, []);
   useEffect(() => {
     yenile();

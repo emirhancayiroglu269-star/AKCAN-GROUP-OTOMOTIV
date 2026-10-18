@@ -249,13 +249,13 @@ export function onerileriCikar(db: DB): Oneri[] {
     adimlar: ['Bu ürünlere BizimHesap\'ta alış fiyatı (KDV hariç) girin', 'Aslında hizmetse kategorisini boş bırakın veya adına "işçilik" yazın'], sayfa: 'karzarar',
     tablo: { basliklar: ['Ürün', 'Satış (KDV hariç)', 'Adet'], sag: [1, 2], satirlar: g.maliyetsizUrunListe.slice(0, 15).map((x) => [x.ad, para(x.tutar), sayi(x.adet)]) } });
 
-  const kartFark = aktif.map((u) => { const s = sonAlis.get(u.id); const kart = netAlis(u.alis_fiyati, u.kdv, a);
-    return s && kart > 0 && s.fiyat > 0 && kart > s.fiyat * 1.3 ? { u, kart, son: s.fiyat } : null; }).filter((x): x is NonNullable<typeof x> => !!x).sort((x, y) => (y.kart - y.son) - (x.kart - x.son));
+  const kartFark = aktif.map((u) => { const s = sonAlis.get(u.id); const kart = netAlis(u.kart_alis ?? u.alis_fiyati, u.kdv, a);
+    return s && kart > 0 && s.fiyat > 0 && kart > s.fiyat * 1.3 ? { u, kart, son: s.fiyat, otomatik: !!u.kart_alis } : null; }).filter((x): x is NonNullable<typeof x> => !!x).sort((x, y) => (y.kart - y.son) - (x.kart - x.son));
   if (kartFark.length) o.push({ id: 'kart-alis', alan: 'Veri', oncelik: 3,
     baslik: `${kartFark.length} üründe kartta yazan alış fiyatı son faturadan çok yüksek`,
-    aciklama: 'Kartta yazan alış fiyatı son fatura fiyatından %30\'dan fazla yüksek. Marj ve fiyat önerileri bu ürünlerde olduğundan düşük çıkar (Kâr / Zarar faturaları kullandığı için etkilenmez).',
-    adimlar: ['BizimHesap\'ta alış fiyatını son fatura fiyatıyla düzeltin'], sayfa: 'fiyat',
-    tablo: { basliklar: ['Ürün', 'Kartta alış', 'Son fatura alışı'], sag: [1, 2], satirlar: kartFark.slice(0, 15).map((x) => [urunAd(x.u), para(x.kart), para(x.son)]) } });
+    aciklama: `Kartta genelde iskontosuz liste fiyatı yazıyor. ${kartFark.filter((x) => x.otomatik).length} üründe son 6 ayda fatura olduğu için marj ve fiyat hesaplarında artık faturanın net fiyatı kullanılıyor (ürün listesinde "fatura fiyatı" notu). Diğerlerinin faturası 6 aydan eski, kart fiyatı kullanılmaya devam ediyor.`,
+    adimlar: ['Bir şey yapmanız gerekmiyor; site fatura fiyatını kendiliğinden kullanıyor', 'Kalıcı düzeltme için isterseniz BizimHesap\'ta kart alış fiyatını faturadaki net fiyatla güncelleyin; site o zaman yeniden kart fiyatına döner'], sayfa: 'fiyat',
+    tablo: { basliklar: ['Ürün', 'Kartta alış', 'Son fatura alışı'], sag: [1, 2], satirlar: kartFark.slice(0, 15).map((x) => [urunAd(x.u), para(x.kart), para(x.son) + (x.otomatik ? ' ✓' : '')]) } });
 
   const HIZMET_K = /işçilik|iscilik|İŞÇİLİK|hizmet|HİZMET|montaj|tamir|torna|kaporta|rot balans|yıkama|ücret/i;
   const kritiksiz = ozet.filter((x) => sinif.get(x.urun.id) === 'A' && x.urun.aktif && !(x.urun.kritik_stok > 0) && !!x.urun.kategori && !HIZMET_K.test(x.urun.ad));

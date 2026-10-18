@@ -70,7 +70,7 @@ export default function FiyatMarj() {
                 <tr key={r.u.id}>
                   <td><div className="font-medium"><UrunLink id={r.u.id}>{r.u.ad}</UrunLink></div><div className="text-xs text-slate-500">{[r.u.kod, r.u.marka].filter(Boolean).join(' · ')}</div></td>
                   <td className="text-right">{sayi(r.u.stok)}</td>
-                  <td className="text-right text-slate-500">{r.u.alis_fiyati > 0 ? para(r.bk.alisNet) : '—'}</td>
+                  <td className="text-right text-slate-500">{r.u.alis_fiyati > 0 ? <>{para(r.bk.alisNet)}{r.u.kart_alis ? <div className="text-[10px] text-sky-700" title={`Kartta ${para(r.u.kart_alis)} yazıyor; ${r.u.alis_fatura?.tarih} tarihli faturanın net fiyatı kullanılıyor`}>fatura fiyatı</div> : null}</> : '—'}</td>
                   <td className={`text-right ${r.maliyetArtti ? 'font-semibold text-red-600' : 'text-slate-500'}`}>{r.son ? <>{para(r.son.fiyat)}<div className="text-[10px] font-normal text-slate-400">{tarih(r.son.tarih + 'T12:00')}{r.son.tedarikci ? ` · ${r.son.tedarikci}` : ''}</div></> : '—'}</td>
                   <td className="text-right font-medium">{para(r.u.satis_fiyati)}</td>
                   <td className={`text-right ${r.marjGuncel === null ? 'text-slate-300' : r.marjGuncel < 0 ? 'text-red-600' : r.marjGuncel < h ? 'text-amber-600' : 'text-emerald-700'}`}>{r.marjGuncel === null ? '—' : `%${r.marjGuncel.toFixed(0)}`}</td>
