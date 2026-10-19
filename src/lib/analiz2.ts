@@ -204,9 +204,16 @@ export function nakitAkisi(db: DB, d: Donem) {
   const gunluk = new Map<string, { giris: number; cikis: number }>();
   const tip = new Map<string, { giris: number; cikis: number }>();
   let giris = 0, cikis = 0;
+  // kendi hesaplar arası aktarım: aynı gün aynı tutarda bir "Para Çıkışı" ve bir "Para Girişi" eşleşirse virman sayılır (POS → banka, banka → kredi kartı gibi)
+  const ic = new Set<unknown>(); const bekleyen = new Map<string, unknown[]>();
+  for (const k of db.kasa_akisi) {
+    if (k.tarih < d.bas || k.tarih > d.bit || (k.tip !== 'Para Girişi' && k.tip !== 'Para Çıkışı')) continue;
+    const tutar = Math.round((k.giris + k.cikis) * 100); const karsi = `${k.tarih}|${tutar}|${k.tip === 'Para Girişi' ? 'Para Çıkışı' : 'Para Girişi'}`;
+    const l = bekleyen.get(karsi); if (l?.length) { ic.add(l.shift()); ic.add(k); } else { const kk = `${k.tarih}|${tutar}|${k.tip}`; bekleyen.set(kk, [...(bekleyen.get(kk) ?? []), k]); }
+  }
   for (const k of db.kasa_akisi) {
     if (k.tarih < d.bas || k.tarih > d.bit) continue;
-    if (k.tip === 'Virman' || /virman/i.test(k.aciklama ?? '')) continue;
+    if (k.tip === 'Virman' || /virman/i.test(k.aciklama ?? '') || ic.has(k)) continue;
     giris += k.giris; cikis += k.cikis;
     const g = gunluk.get(k.tarih) ?? { giris: 0, cikis: 0 }; g.giris += k.giris; g.cikis += k.cikis; gunluk.set(k.tarih, g);
     const t = tip.get(k.tip || 'Diğer') ?? { giris: 0, cikis: 0 }; t.giris += k.giris; t.cikis += k.cikis; tip.set(k.tip || 'Diğer', t);
