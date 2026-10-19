@@ -2,7 +2,8 @@ import { useMemo, useState } from 'react';
 import { Download, Info, MessageCircle, Printer, Save, Wrench } from 'lucide-react';
 import { useStore } from '../lib/store';
 import { backend } from '../lib/backend';
-import { netAlis, netSatis } from '../lib/analiz';
+import { netAlis, netSatis, stokluMu } from '../lib/analiz';
+import { sonAlislar } from '../lib/analiz2';
 import { ara, para, parse, sayi, tarih } from '../lib/format';
 import { UrunLink } from '../components/DetayKart';
 import { Bos, Kpi, SayfaBaslik } from '../components/ui';
@@ -27,16 +28,20 @@ export default function UstaFiyat() {
     return [...m.entries()].sort((a, b) => b[1] - a[1]);
   }, [db.urunler, sadeceStok]);
 
-  const satirlar = useMemo(() => db.urunler.filter((u) => u.aktif && u.satis_fiyati > 0 && u.alis_fiyati > 0 && u.kategori && secili.has(u.kategori) && (!sadeceStok || u.stok > 0)).map((u) => {
-    const maliyet = netAlis(u.alis_fiyati, u.kdv, db.ayarlar);
+  const sonAl = useMemo(() => sonAlislar(db), [db]);
+  const satirlar = useMemo(() => db.urunler.filter((u) => u.aktif && u.satis_fiyati > 0 && u.alis_fiyati > 0 && u.kategori && secili.has(u.kategori) && stokluMu(u) && (!sadeceStok || u.stok > 0)).map((u) => {
+    // maliyet: kart alışı ile son alış faturasının büyüğü (fiyat arttıysa yeni maliyetin altına inilmesin)
+    const kart = netAlis(u.alis_fiyati, u.kdv, db.ayarlar); const fat = sonAl.get(u.id)?.fiyat ?? 0;
+    const maliyet = Math.max(kart, fat);
     const tabanFiyat = yukari5(maliyet * (1 + tb / 100) * (1 + u.kdv / 100));
     const hedef = yukari5(u.satis_fiyati * (1 - ind / 100));
     const usta = Math.min(u.satis_fiyati, Math.max(hedef, tabanFiyat));
     const n = netSatis(usta, u.kdv);
     return { u, maliyet, usta, tabanda: usta > hedef, gercekInd: ((u.satis_fiyati - usta) / u.satis_fiyati) * 100, marj: ((n - maliyet) / n) * 100 };
-  }).sort((a, b) => (a.u.kategori ?? '').localeCompare(b.u.kategori ?? '', 'tr') || a.u.ad.localeCompare(b.u.ad, 'tr')), [db, secili, sadeceStok, ind, tb]);
+  }).sort((a, b) => (a.u.kategori ?? '').localeCompare(b.u.kategori ?? '', 'tr') || a.u.ad.localeCompare(b.u.ad, 'tr')), [db, sonAl, secili, sadeceStok, ind, tb]);
   const liste = satirlar.filter((x) => ara(q, x.u.ad, x.u.kod, x.u.marka, x.u.kategori));
   const tabanSay = satirlar.filter((x) => x.tabanda).length;
+  const medyanMarj = (() => { const l = satirlar.map((x) => (netSatis(x.u.satis_fiyati, x.u.kdv) / x.maliyet - 1) * 100).filter(Number.isFinite).sort((p, r) => p - r); return l.length ? l[Math.floor(l.length / 2)] : null; })();
   const ortMarj = satirlar.length ? satirlar.reduce((t, x) => t + x.marj, 0) / satirlar.length : 0;
 
   const kaydet = () => calistir(() => backend.ayarKaydet({ usta_liste: { indirim: ind, taban: tb, kategoriler: [...secili], sadeceStok } }), 'Usta listesi ayarları kaydedildi');
@@ -105,7 +110,7 @@ export default function UstaFiyat() {
         </div>
       </div>
       <div className="flex items-start gap-2 rounded-xl bg-slate-100 p-3 text-xs text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-        <Info size={15} className="mt-0.5 shrink-0" /><span>Usta fiyatı = perakende fiyat − indirim; ama "maliyet + alt sınır" fiyatının altına inmez ve perakende fiyatın üstüne çıkmaz (KDV dahil, 5 TL'ye yuvarlanır). Maliyet, BizimHesap kartındaki alış fiyatıdır. Bu liste BizimHesap'a yazılmaz; ustaya satarken bu fiyatı faturaya siz girersiniz.</span>
+        <Info size={15} className="mt-0.5 shrink-0" /><span>Usta fiyatı = perakende fiyat − indirim; ama "maliyet + alt sınır" fiyatının altına inmez ve perakende fiyatın üstüne çıkmaz (KDV dahil, 5 TL'ye yuvarlanır). Maliyet, BizimHesap kartındaki alış fiyatı ile son alış faturasındaki fiyatın büyüğüdür (KDV hariç).{medyanMarj != null && <> Seçili ürünlerde perakende fiyat ortalama maliyetin %{medyanMarj.toFixed(0)} üstünde; alt sınır maliyet + %{tb} olduğu için en fazla yaklaşık %{Math.max(0, (1 - (1 + tb / 100) / (1 + medyanMarj / 100)) * 100).toFixed(0)} indirim uygulanabilir, fazlası alt sınıra takılır.</>} Bu liste BizimHesap'a yazılmaz; ustaya satarken bu fiyatı faturaya siz girersiniz.</span>
       </div>
     </div>
   );
