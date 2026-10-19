@@ -101,19 +101,23 @@ export function onerileriCikar(db: DB): Oneri[] {
   }
 
   // ---------- STOK ----------
-  const sonSat = sonSatislar(db); const bugun = gunu();
+  const sonSat = sonSatislar(db); const bugun = gunu(); const sonAl = sonAlislar(db);
+  // satış verisinin gerçekten başladığı gün (ilk satış faturası)
+  const veriBas = db.hareketler.reduce((m, h) => (h.tur === 'satis' && h.kaynak === 'fatura' && gunu(h.tarih) < m ? gunu(h.tarih) : m), bugun);
+  const tarihKisa = (t: string) => `${t.slice(8, 10)}.${t.slice(5, 7)}`;
   const olu = aktif.filter((u) => u.stok > 0 && u.alis_fiyati > 0).map((u) => {
-    const s = sonSat.get(u.id); const gecen = s ? gunFark(bugun, s) : gunFark(bugun, ilk);
-    return { u, s, gecen, deger: u.stok * netAlis(u.alis_fiyati, u.kdv, a) };
-  }).filter((x) => x.gecen > 90).sort((x, y) => y.deger - x.deger);
+    const s = sonSat.get(u.id); const al = sonAl.get(u.id)?.tarih; const gecen = s ? gunFark(bugun, s) : gunFark(bugun, veriBas > ilk ? veriBas : ilk);
+    return { u, s, al, gecen, deger: u.stok * netAlis(u.alis_fiyati, u.kdv, a) };
+  // son 90 günde alınmış ürün henüz "ölü" sayılmaz
+  }).filter((x) => x.gecen > 90 && !(x.al && gunFark(bugun, x.al) <= 90)).sort((x, y) => y.deger - x.deger);
   if (olu.length) {
     const deger = olu.reduce((t, x) => t + x.deger, 0);
     o.push({ id: 'olu-stok', alan: 'Stok', oncelik: deger > 50000 ? 1 : 2, etki: deger, etkiTur: 'nakit',
       baslik: `${para(deger)} değerinde ürün 90 günden uzun süredir satılmıyor`,
-      aciklama: `${sayi(olu.length)} çeşit ürün rafta bekliyor. Bu para başka ürüne dönse devir hızı artar. En değerli 15'i aşağıda.`,
+      aciklama: `${sayi(olu.length)} çeşit ürün rafta bekliyor (son 90 günde alınanlar hariç). Satış kayıtları ${tarihKisa(veriBas)} tarihinden başlıyor; "öncesi" yazanlar o tarihten önce alınmış eski stok. Bu para başka ürüne dönse devir hızı artar. En değerli 20'si aşağıda.`,
       adimlar: ['Bu ürünleri tekrar sipariş etmeyin', 'Maliyetine yakın fiyatla kampanya veya usta/servis indirimi yapın', 'Tedarikçiye iade/değişim imkânı varsa sorun'], sayfa: 'stoksagligi',
-      tablo: { basliklar: ['Ürün', 'Stok', 'Son satış', 'Bağlı para'], sag: [1, 3],
-        satirlar: olu.slice(0, 15).map((x) => [urunAd(x.u), sayi(x.u.stok), x.s ? `${x.gecen} gün önce` : 'hiç satılmadı', para(x.deger)]) } });
+      tablo: { basliklar: ['Ürün', 'Stok', 'Son satış', 'Son alış', 'Bağlı para'], sag: [1, 4],
+        satirlar: olu.slice(0, 20).map((x) => [urunAd(x.u), sayi(x.u.stok), x.s ? `${x.gecen} gün önce` : `${tarihKisa(veriBas)}'ten beri satış yok`, x.al ? tarihKisa(x.al) : `${tarihKisa(veriBas)} öncesi`, para(x.deger)]) } });
   }
 
   const s30 = urunOzetleri(db, d30); const gun30 = takipGunu(db, d30);
