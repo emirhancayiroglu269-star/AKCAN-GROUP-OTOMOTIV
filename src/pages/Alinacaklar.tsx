@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { Download, Info, MessageCircle, Printer, Snowflake, Sun, Truck } from 'lucide-react';
 import { useStore } from '../lib/store';
 import { backend } from '../lib/backend';
-import { alinacakHesap, stokluMu, takipGunu, urunOzetleri, type Donem } from '../lib/analiz';
+import { alinacakHesap, stokluMu, takipGunu, urunOzetleri, type Donem, kritikAltinda } from '../lib/analiz';
 import { ara, gunu, para, parse, sayi, tarih } from '../lib/format';
 import type { Urun } from '../lib/types';
 import { Bos, Kpi, SayfaBaslik } from '../components/ui';
@@ -35,12 +35,12 @@ export default function Alinacaklar() {
       const satilan = oz.get(u.id)?.satilan ?? 0; const satisSay = oz.get(u.id)?.satisSayisi ?? 0;
       const ms = mevsimAcik ? mevsim(u) : null;
       const h = alinacakHesap(u, satilan * (ms?.katsayi ?? 1), gun, hedefGun);
-      const kritik = u.kritik_stok > 0 && u.stok <= u.kritik_stok;
+      const kritik = kritikAltinda(u);
       // dönemde tek kez satılan ürün (kritik stok tanımlı değilse) "bitti" listesine girmez: bir kerelik parça yeniden alınmaz
       const bitti = u.stok <= 0 && satisSay >= 2;
       if (!kritik && u.stok <= 0 && satisSay < 2) return [];
       if (!kritik && !bitti && h.alinacak <= 0) return [];
-      return [{ u, satilan, hiz: h.hiz, yeter: h.yeterGun, oneri: Math.max(h.alinacak, kritik ? Math.max(1, u.kritik_stok * 2 - Math.max(0, u.stok)) : 1), neden: kritik ? 'kritik' as const : bitti ? 'bitti' as const : 'azaliyor' as const, mevsim: ms && ms.katsayi !== 1 ? ms : null }];
+      return [{ u, satilan, hiz: h.hiz, yeter: h.yeterGun, oneri: Math.max(h.alinacak, kritik ? Math.max(1, Math.ceil(u.kritik_stok) - Math.max(0, u.stok)) : 1), neden: kritik ? 'kritik' as const : bitti ? 'bitti' as const : 'azaliyor' as const, mevsim: ms && ms.katsayi !== 1 ? ms : null }];
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [db, gunSec, gun, hedefGun, mevsimAcik]);
@@ -92,7 +92,7 @@ export default function Alinacaklar() {
       </div>
       <div className="mb-3 flex items-start gap-2 rounded-xl bg-slate-100 p-3 text-xs text-slate-600 dark:bg-slate-800 dark:text-slate-300">
         <Info size={15} className="mt-0.5 shrink-0" />
-        <span>Önerilen adet = son {gunSec} günün günlük satışı × {hedefGun} gün − mevcut stok ({gun} günlük veriyle). "Mevsime göre ayarla" açıkken akü, antifriz, klima, silecek gibi mevsimlik ürünlerde satış hızı gelecek ayın beklenen talebine göre artırılır/azaltılır. Tedarikçi, son 6 ayın alış faturalarında bu ürünü en ucuza aldığınız firmadır. Kritik seviye tanımladığınız ürünler stok o seviyeye inince de listelenir. Dönemde tek kez satılan ürünler (kritik seviyesi yoksa), {hedefGun} günde yarım adetten az satış beklenenler ve işçilik/hizmet kalemleri önerilmez; stokta muadili yeterince olan bitmiş ürünlerin sipariş adedi 0 gelir. kritik seviyeyi tablodan değiştirebilirsiniz (BizimHesap'a yazılmaz).</span>
+        <span>Önerilen adet = son {gunSec} günün günlük satışı × {hedefGun} gün − mevcut stok ({gun} günlük veriyle). "Mevsime göre ayarla" açıkken akü, antifriz, klima, silecek gibi mevsimlik ürünlerde satış hızı gelecek ayın beklenen talebine göre artırılır/azaltılır. Tedarikçi, son 6 ayın alış faturalarında bu ürünü en ucuza aldığınız firmadır. Kritik seviye "rafta en az bu kadar olsun" demektir: stok o seviyenin altına inince listelenir ve seviyeye tamamlanacak kadar önerilir. Dönemde tek kez satılan ürünler (kritik seviyesi yoksa), {hedefGun} günde yarım adetten az satış beklenenler ve işçilik/hizmet kalemleri önerilmez; stokta muadili yeterince olan bitmiş ürünlerin sipariş adedi 0 gelir. kritik seviyeyi tablodan değiştirebilirsiniz (BizimHesap'a yazılmaz).</span>
       </div>
       {grupla && secili.length > 0 && (
         <div className="mb-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">

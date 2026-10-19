@@ -45,7 +45,7 @@ export function UrunArama({ sec, otoOdak, placeholder = 'Barkod okut veya ürün
               <div className="shrink-0 text-right">
                 <div className="font-semibold">{para(u.satis_fiyati)}</div>
                 {(() => { const st = depoStogu(db, u.id, depoId); return (
-                  <div className={`text-xs ${st <= 0 ? 'text-red-600' : st <= u.kritik_stok ? 'text-amber-600' : 'text-slate-500'}`}>
+                  <div className={`text-xs ${st <= 0 ? 'text-red-600' : st < u.kritik_stok ? 'text-amber-600' : 'text-slate-500'}`}>
                     {depoId ? 'Depo' : 'Stok'}: {sayi(st)}{depoId && st !== u.stok ? <span className="text-slate-400"> / top. {sayi(u.stok)}</span> : null}
                   </div>); })()}
               </div>

@@ -7,7 +7,7 @@ import type { Urun } from '../lib/types';
 import { Alan, Bos, Kpi, Modal, SayfaBaslik } from '../components/ui';
 import { aktifDepolar, stokHaritasi } from '../lib/depo';
 import { kodHaritasi, urunAra } from '../lib/kod';
-import { birimKar, hareketTutar, stokluMu } from '../lib/analiz';
+import { birimKar, hareketTutar, stokluMu, kritikAltinda } from '../lib/analiz';
 import { EtiketModal, type EtiketKalem } from '../components/StokAraclari';
 import { Plus, X } from 'lucide-react';
 import { UrunLink } from '../components/DetayKart';
@@ -31,7 +31,7 @@ export default function Urunler() {
   const liste = useMemo(() => {
     const aday = q.trim() ? urunAra(db, q, kodlar, { sadeceAktif: false }).map((x) => x.urun) : [...db.urunler].sort((a, b) => a.ad.localeCompare(b.ad, 'tr'));
     return aday.filter((u) => (filtre === 'pasif' ? !u.aktif : u.aktif) && (filtre !== 'stoklu' || u.stok > 0) && (filtre !== 'biten' || (u.stok <= 0 && stokluMu(u))) &&
-      (filtre !== 'kritik' || (u.kritik_stok > 0 && u.stok <= u.kritik_stok)) && (!kat || u.kategori === kat));
+      (filtre !== 'kritik' || kritikAltinda(u)) && (!kat || u.kategori === kat));
   }, [db, q, kodlar, filtre, kat]);
 
   const aktifler = db.urunler.filter((u) => u.aktif);
@@ -80,7 +80,7 @@ export default function Urunler() {
                       {maliyetGor && <td className="text-right">{u.alis_fiyati ? <>{para(u.alis_fiyati)}{u.kart_alis ? <div className="text-[10px] text-sky-700" title={`Kartta ${para(u.kart_alis)} yazıyor; ${u.alis_fatura?.tarih} tarihli faturanın net fiyatı kullanılıyor`}>fatura fiyatı</div> : null}</> : <span className="text-slate-300">—</span>}</td>}<td className="text-right font-medium">{para(u.satis_fiyati)}</td>
                       {maliyetGor && <td className={`text-right ${bk.maliyetYok ? 'text-slate-300' : bk.marj < 0 ? 'text-red-600' : bk.marj < 15 ? 'text-amber-600' : 'text-slate-500'}`}>{bk.maliyetYok ? '—' : `%${bk.marj.toFixed(0)}`}</td>}
                       {depolar.length > 1 && depolar.map((d) => { const m = harita.get(u.id)?.get(d.id) ?? 0; return <td key={d.id} className={`text-right ${m < 0 ? 'text-red-600' : m === 0 ? 'text-slate-300' : ''}`}>{sayi(m)}</td>; })}
-                      <td className="text-right"><span className={`rozet ${u.stok <= 0 ? 'bg-red-100 text-red-700' : u.kritik_stok > 0 && u.stok <= u.kritik_stok ? 'bg-amber-100 text-amber-800' : 'bg-emerald-50 text-emerald-700'}`}>{sayi(u.stok)} {u.birim}</span></td>
+                      <td className="text-right"><span className={`rozet ${u.stok <= 0 ? 'bg-red-100 text-red-700' : kritikAltinda(u) ? 'bg-amber-100 text-amber-800' : 'bg-emerald-50 text-emerald-700'}`}>{sayi(u.stok)} {u.birim}</span></td>
                       <td>
                         <div className="flex justify-end gap-1 text-slate-400">
                           <button title="Etiket yazdır" className="rounded p-1 hover:bg-slate-100 hover:text-violet-600 dark:hover:bg-slate-800" onClick={() => setEtiket([{ urun: u, adet: 1 }])}><Tag size={16} /></button>

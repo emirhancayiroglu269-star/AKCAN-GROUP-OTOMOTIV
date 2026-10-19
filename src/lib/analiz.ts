@@ -99,13 +99,16 @@ export function abcSinifla<T>(liste: T[], deger: (x: T) => number, aSinir = 80, 
   return m;
 }
 
+/** Kritik stok = rafta en az bu kadar olsun: stok bu seviyenin ALTINA inince uyarı (kullanıcı kararı) */
+export const kritikAltinda = (u: Pick<Urun, 'kritik_stok' | 'stok'>) => u.kritik_stok > 0 && u.stok < u.kritik_stok;
+
 /** Alınacak adet: günlük satış hızı × hedef gün − mevcut stok; kritik stok tanımlıysa en az ona tamamla */
 export function alinacakHesap(u: Urun, satilan: number, gunSayisi: number, hedefGun: number) {
   const hiz = satilan / Math.max(1, gunSayisi);
   const stok = Math.max(0, u.stok);
   // hedef sürede yarım adetten az satış bekleniyorsa (ör. yılda bir satılan motor) stok önerilmez
   const beklenen = hiz * hedefGun;
-  const hedef = Math.max(beklenen >= 0.5 ? Math.ceil(beklenen) : 0, u.kritik_stok > 0 ? Math.ceil(u.kritik_stok * 1.5) : 0);
+  const hedef = Math.max(beklenen >= 0.5 ? Math.ceil(beklenen) : 0, u.kritik_stok > 0 ? Math.ceil(u.kritik_stok) : 0);
   const yeterGun = hiz > 0 ? stok / hiz : Infinity;
   return { hiz, hedef, alinacak: Math.max(0, hedef - stok), yeterGun };
 }
