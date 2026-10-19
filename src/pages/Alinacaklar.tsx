@@ -38,6 +38,7 @@ export default function Alinacaklar() {
       const kritik = u.kritik_stok > 0 && u.stok <= u.kritik_stok;
       // dönemde tek kez satılan ürün (kritik stok tanımlı değilse) "bitti" listesine girmez: bir kerelik parça yeniden alınmaz
       const bitti = u.stok <= 0 && satisSay >= 2;
+      if (!kritik && u.stok <= 0 && satisSay < 2) return [];
       if (!kritik && !bitti && h.alinacak <= 0) return [];
       return [{ u, satilan, hiz: h.hiz, yeter: h.yeterGun, oneri: Math.max(h.alinacak, kritik ? Math.max(1, u.kritik_stok * 2 - Math.max(0, u.stok)) : 1), neden: kritik ? 'kritik' as const : bitti ? 'bitti' as const : 'azaliyor' as const, mevsim: ms && ms.katsayi !== 1 ? ms : null }];
     });
