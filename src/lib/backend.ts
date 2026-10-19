@@ -102,7 +102,7 @@ function supabaseBackend(sb: SupabaseClient): Backend {
       const durum = (ok(bd) as BhDurum | null) ?? null;
       return {
         urunler: u, depolar: dp, urun_depo_stok: uds, bh_durum: durum, hareketler: hareketleriBirlestir(h as Hareket[], rs as RaporSatiri[], durum, u as Urun[], ms as Masraf[]), stok_degisim: (h as Hareket[]).map((x) => ({ ...x, kaynak: 'stok' as const })),
-        iadeler: (rs as RaporSatiri[]).filter((x) => x.iade && x.urun_id && x.miktar > 0).map((x) => ({ id: -x.id, tarih: `${x.tarih}T12:00:00`, urun_id: x.urun_id!, tur: x.tur, miktar: x.miktar, satis_fiyati: 0, alis_fiyati: x.alis_fiyati || 0, kdv: 20, yok_say: false, kaynak: 'fatura' as const, cari_ad: (x as unknown as { cari_ad?: string }).cari_ad ?? null })), masraflar: ms,
+        iadeler: (rs as RaporSatiri[]).filter((x) => x.iade && x.urun_id && x.miktar > 0).map((x) => ({ id: -x.id, tarih: `${x.tarih}T12:00:00`, urun_id: x.urun_id!, tur: x.tur, miktar: x.miktar, urun_ad: x.urun_ad, satis_fiyati: x.tur === 'satis' ? (x.toplam || 0) / x.miktar : 0, alis_fiyati: x.tur === 'alis' ? (x.net || 0) / x.miktar : x.alis_fiyati || 0, kdv: 20, yok_say: false, kaynak: 'fatura' as const, cari_ad: (x as unknown as { cari_ad?: string }).cari_ad ?? null })), masraflar: ms,
         kasa_akisi: ka as KasaAkisi[], hesap_bakiyeleri: hb as HesapBakiye[], vadesi_gecen: vg as VadesiGecen[], fiyat_gecmisi: fg, cariler: c, cari_hareketler: ch,
         ayarlar: (ok(a) as Ayarlar) ?? { id: 1, firma_adi: 'İşletmem' }, kullanicilar: ku, urun_kodlari: uk, tahsilat_notlari: tn, stok_aksiyon: sa,
       } as DB;
