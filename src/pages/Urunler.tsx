@@ -11,6 +11,7 @@ import { birimKar, hareketTutar, stokluMu, kritikAltinda } from '../lib/analiz';
 import { EtiketModal, type EtiketKalem } from '../components/StokAraclari';
 import { Plus, X } from 'lucide-react';
 import { UrunLink } from '../components/DetayKart';
+import { OtoparcasanLink } from '../components/DisLink';
 
 export default function Urunler() {
   const { db, izin } = useStore();
@@ -75,7 +76,7 @@ export default function Urunler() {
                   return (
                     <tr key={u.id}>
                       <td className="font-mono text-xs text-slate-500">{u.kod}<div>{u.barkod}</div></td>
-                      <td><div className="flex items-center gap-1 font-medium"><UrunLink id={u.id}>{u.ad}</UrunLink>{u.bh_id && <span title="BizimHesap'tan eşitleniyor"><Link2 size={13} className="text-sky-500" /></span>}</div><div className="text-xs text-slate-500">{u.kategori}{kodlar.get(u.id)?.length ? <span className="ml-1.5 rozet bg-sky-50 text-sky-700" title={kodlar.get(u.id)!.map((k) => k.kod).join(', ')}>{kodlar.get(u.id)!.length} OEM/muadil</span> : null}</div></td>
+                      <td><div className="flex items-center gap-1 font-medium"><UrunLink id={u.id}>{u.ad}</UrunLink>{u.bh_id && <span title="BizimHesap'tan eşitleniyor"><Link2 size={13} className="text-sky-500" /></span>}</div><div className="text-xs text-slate-500">{u.kategori} <OtoparcasanLink u={u} kisa />{kodlar.get(u.id)?.length ? <span className="ml-1.5 rozet bg-sky-50 text-sky-700" title={kodlar.get(u.id)!.map((k) => k.kod).join(', ')}>{kodlar.get(u.id)!.length} OEM/muadil</span> : null}</div></td>
                       <td>{u.marka}</td><td>{u.raf}</td>
                       {maliyetGor && <td className="text-right">{u.alis_fiyati ? <>{para(u.alis_fiyati)}{u.kart_alis ? <div className="text-[10px] text-sky-700" title={`Kartta ${para(u.kart_alis)} yazıyor; ${u.alis_fatura?.tarih} tarihli faturanın net fiyatı kullanılıyor`}>fatura fiyatı</div> : null}</> : <span className="text-slate-300">—</span>}</td>}<td className="text-right font-medium">{para(u.satis_fiyati)}</td>
                       {maliyetGor && <td className={`text-right ${bk.maliyetYok ? 'text-slate-300' : bk.marj < 0 ? 'text-red-600' : bk.marj < 15 ? 'text-amber-600' : 'text-slate-500'}`}>{bk.maliyetYok ? '—' : `%${bk.marj.toFixed(0)}`}</td>}

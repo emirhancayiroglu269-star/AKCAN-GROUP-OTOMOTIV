@@ -8,6 +8,7 @@ import { gunu, para, sayi, tarih, telLink } from '../lib/format';
 import { CubukGrafik } from './grafik';
 import { muadilBulucu } from '../lib/muadil';
 import { Modal } from './ui';
+import { OtoparcasanLink } from './DisLink';
 
 type Detay = { tur: 'urun'; id: string } | { tur: 'musteri'; guid: string | null; ad: string };
 let ac: ((d: Detay | null) => void) | null = null;
@@ -39,7 +40,7 @@ function UrunIcerik({ id }: { id: string }) {
   const oneri = onerilenFiyat(u, maliyetGuncel, hedef);
   return (
     <div className="space-y-4">
-      <div className="text-sm text-slate-500">{[u.kod, u.barkod, u.marka, u.kategori, u.raf ? `Raf ${u.raf}` : '', k.arac ? `${k.arac.marka}${k.arac.model ? ' ' + k.arac.model : ''}` : ''].filter(Boolean).join(' · ')}</div>
+      <div className="flex flex-wrap items-center gap-x-2 text-sm text-slate-500"><span>{[u.kod, u.barkod, u.marka, u.kategori, u.raf ? `Raf ${u.raf}` : '', k.arac ? `${k.arac.marka}${k.arac.model ? ' ' + k.arac.model : ''}` : ''].filter(Boolean).join(' · ')}</span><OtoparcasanLink u={u} /></div>
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         <Bilgi e="Stok" v={sayi(u.stok)} alt={k.depo.filter((x) => x.miktar).map((x) => `${x.ad.replace(/ DEPO$/i, '')}: ${sayi(x.miktar)}`).join(' · ') || undefined} />
         <Bilgi e="Satış fiyatı (KDV dahil)" v={para(u.satis_fiyati)} alt={oneri && maliyet ? `Kategori hedefiyle (%${hedef}) önerilen ${para(oneri)}` : undefined} />
