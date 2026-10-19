@@ -11,6 +11,7 @@ import { DonemSecici, useDonem } from '../components/DonemSecici';
 import { CubukGrafik, GrupluCubuk, PayCubugu, YatayListe } from '../components/grafik';
 import { Degisim } from '../components/Degisim';
 import { Kpi, SayfaBaslik } from '../components/ui';
+import { tahsilatDisi } from '../lib/tahsilat';
 
 const AY = ['Oca', 'Şub', 'Mar', 'Nis', 'May', 'Haz', 'Tem', 'Ağu', 'Eyl', 'Eki', 'Kas', 'Ara'];
 const gunOnce = (n: number) => gunu(new Date(Date.now() - n * 864e5));
@@ -80,7 +81,7 @@ export default function Panel({ git }: { git: (s: Sayfa) => void }) {
 
   const alacak = db.cariler.filter((c) => c.tur === 'musteri' && c.bakiye > 0).reduce((s, c) => s + c.bakiye, 0);
   const tedarikciBakiye = db.cariler.filter((c) => c.tur === 'tedarikci').reduce((s, c) => s + c.bakiye, 0);
-  const vadesiGecen = db.vadesi_gecen.reduce((s, v) => s + (v.tutar > 0 ? v.tutar : 0), 0);
+  const vadesiGecen = db.vadesi_gecen.reduce((s, v) => s + (v.tutar > 0 && !tahsilatDisi(db, v.cari) ? v.tutar : 0), 0);
   const urun = new Map(db.urunler.map((u) => [u.id, u]));
   const son = db.hareketler.filter((h) => !h.yok_say).slice(0, 10);
   const zararli = db.urunler.filter((u) => u.aktif && u.alis_fiyati > 0 && u.satis_fiyati > 0 && birimKar(u, a).kar < 0).length;
@@ -145,7 +146,7 @@ export default function Panel({ git }: { git: (s: Sayfa) => void }) {
             <button className="ml-auto text-xs font-normal text-marka-600 hover:underline" onClick={() => git('oneriler')}>Tümü ({oneriler.length}) →</button></div>
           <div className="mb-2 flex flex-wrap gap-1.5 text-xs">
             {stok.kritik > 0 && <button onClick={() => git('alinacaklar')} className="rozet bg-amber-50 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300">⚠ {stok.kritik} kritik stok</button>}
-            {vadesiGecen > 0 && <button onClick={() => git('cariler')} className="rozet bg-red-50 text-red-700 dark:bg-red-500/15 dark:text-red-300">⏰ {para(vadesiGecen)} vadesi geçmiş</button>}
+            {vadesiGecen > 0 && <button onClick={() => git('tahsilat')} className="rozet bg-red-50 text-red-700 dark:bg-red-500/15 dark:text-red-300">⏰ {para(vadesiGecen)} vadesi geçmiş</button>}
             {stok.eksi > 0 && <button onClick={() => git('urunler')} className="rozet bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300">{stok.eksi} eksi stok</button>}
             {zararli > 0 && <button onClick={() => git('fiyat')} className="rozet bg-red-50 text-red-700 dark:bg-red-500/15 dark:text-red-300">{zararli} maliyet altı fiyat</button>}
           </div>
