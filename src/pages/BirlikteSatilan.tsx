@@ -17,7 +17,7 @@ export default function BirlikteSatilan() {
   const adaylar = useMemo(() => (q.length < 2 ? [] : db.urunler.filter((u) => (s.urunSatis.get(u.id) ?? 0) > 0 && ara(q, u.kod)).sort((a, b) => (s.urunSatis.get(b.id) ?? 0) - (s.urunSatis.get(a.id) ?? 0)).slice(0, 8)), [q, db, s]);
   const sec = secili ? s.urunIcin(secili) : null;
   const seciliUrun = secili ? s.urun.get(secili) : null;
-  const toplamPotansiyel = s.kurallar.reduce((t, r) => t + r.potansiyel, 0);
+  const toplamPotansiyel = s.kacanToplam;
   const yuzde = (x: number) => `%${Math.round(x * 100)}`;
 
   return (

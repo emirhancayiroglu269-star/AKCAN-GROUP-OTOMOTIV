@@ -2,9 +2,12 @@
 import type { Ayarlar, DB, Hareket, Urun } from './types';
 import { donemde, netAlis, netSatis, type Donem } from './analiz';
 import { gunu } from './format';
+import { gecisBelgeleri } from './analiz2';
 
 const gercekUrun = (h: Hareket) => typeof h.urun_id === 'string' && !h.urun_id.startsWith('yok:');
-const HIZMET = /işçilik|iscilik|torna|hizmet|montaj|tamir|değişim|degisim|bakım ücreti|kaporta|boya|rot balans|yıkama/i;
+const HIZMET_RE4 = /işçilik|iscilik|torna|hizmet|montaj|tamir|değişim|degisim|bakım ücreti|kaporta|boya|rot balans|yıkama/i;
+// büyük harf Türkçe adlarda (İŞÇİLİK) /i yetmez: önce Türkçe küçük harfe çevrilir
+const HIZMET = { test: (s: string) => HIZMET_RE4.test(s.toLocaleLowerCase('tr')) };
 
 // ======================= KAYIP-KAÇAK =======================
 export interface StokFarki { u: Urun; stokCikis: number; faturaSatis: number; stokGiris: number; faturaAlis: number; cikisFarki: number; girisFarki: number; deger: number }
@@ -115,10 +118,12 @@ export function sepetAnalizi(db: DB, d: Donem, hizmetHaric: boolean) {
   const urun = new Map(db.urunler.map((u) => [u.id, u]));
   const belgeler = new Map<string, { urunler: Set<string>; kategoriler: Set<string>; tarih: string; cari: string }>();
   const katTutar = new Map<string, { tutar: number; satir: number }>();
+  const gecis = gecisBelgeleri(db);
   for (const h of db.hareketler) {
     if (h.kaynak !== 'fatura' || h.tur !== 'satis' || !h.belge_guid || !gercekUrun(h) || !donemde(h.tarih, d)) continue;
     const u = urun.get(h.urun_id); if (!u) continue;
-    if (hizmetHaric && HIZMET.test(u.ad)) continue;
+    if (gecis.has(h.belge_guid)) continue; // araç alım faturası (maliyetine aktarılan parçalar) sepet değildir
+    if (hizmetHaric && (HIZMET.test(u.ad) || !u.kategori)) continue;
     let b = belgeler.get(h.belge_guid);
     if (!b) { b = { urunler: new Set(), kategoriler: new Set(), tarih: h.tarih, cari: h.cari_ad ?? '' }; belgeler.set(h.belge_guid, b); }
     b.urunler.add(u.id);
@@ -159,6 +164,14 @@ export function sepetAnalizi(db: DB, d: Donem, hizmetHaric: boolean) {
     const kt = katTutar.get(r.b); const ort = kt && kt.satir ? kt.tutar / kt.satir : 0;
     return { ...r, eksik, ortTutar: ort, potansiyel: eksik * r.guven * ort };
   }).sort((p, q) => q.potansiyel - p.potansiyel);
+  // toplam kaçan: her fişte eksik olan her kategori bir kez sayılır (A→B ve C→B kuralları aynı eksikliği iki kez saymasın)
+  let kacanToplam = 0;
+  for (const f of fisler) {
+    if (gunu(f.tarih) < son30) continue;
+    const enIyi = new Map<string, number>();
+    for (const r of kurallar) if (f.kategoriler.has(r.a) && !f.kategoriler.has(r.b)) enIyi.set(r.b, Math.max(enIyi.get(r.b) ?? 0, r.guven));
+    for (const [b, g] of enIyi) { const kt = katTutar.get(b); kacanToplam += g * (kt && kt.satir ? kt.tutar / kt.satir : 0); }
+  }
 
   // Stokta biri var biri yok: sık birlikte satılan ikililerde tamamlayıcısı tükenmiş ürünler
   const eksikTamamlayici = urunIkili.flatMap((x) => {
@@ -179,5 +192,5 @@ export function sepetAnalizi(db: DB, d: Donem, hizmetHaric: boolean) {
   };
 
   const cokKalem = fisler.filter((f) => f.urunler.size >= 2).length;
-  return { N, cokKalem, ortKalem: N ? fisler.reduce((t, f) => t + f.urunler.size, 0) / N : 0, urunIkili, katIkili, kurallar, eksikTamamlayici, urunIcin, urunSatis: ur.tek, urun };
+  return { N, cokKalem, ortKalem: N ? fisler.reduce((t, f) => t + f.urunler.size, 0) / N : 0, urunIkili, katIkili, kurallar, kacanToplam, eksikTamamlayici, urunIcin, urunSatis: ur.tek, urun };
 }
