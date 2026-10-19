@@ -1,6 +1,6 @@
 import type { DB, Hareket, ID, Urun } from './types';
 import { gunu } from './format';
-import { gecerliHareketler, hareketTutar, hizmetMi, netAlis, netSatis, type Donem } from './analiz';
+import { GECIS_RE, gecerliHareketler, hareketTutar, hizmetMi, netAlis, netSatis, type Donem } from './analiz';
 
 const gunFark = (a: string, b: string) => Math.round((new Date(a + 'T12:00').getTime() - new Date(b + 'T12:00').getTime()) / 864e5);
 export const PERAKENDE_RE = /PERAKENDE/i;
@@ -23,7 +23,9 @@ export function musteriAnalizi(db: DB, d: Donem): MusteriOzet[] {
   const cari = new Map(db.cariler.filter((c) => c.tur === 'musteri').map((c) => [c.bh_id, c]));
   const m = new Map<string, { ad: string; ciro: number; net: number; kar: number; belgeler: Set<string>; gunler: Set<string>; urunler: Set<string>; ilk: string; son: string }>();
   // tüm zamanlar: ilk/son alış ve aralık için; dönem içi: tutarlar
-  const tum = db.hareketler.filter((h) => h.tur === 'satis' && h.cari_guid && !h.yok_say);
+  // araç alım/satım gibi geçiş faturaları (ve o faturadaki maliyetine aktarılan parçalar) müşteri cirosuna sayılmaz
+  const gecisBelge = new Set(db.hareketler.filter((h) => h.tur === 'satis' && h.belge_guid && GECIS_RE.test(urun.get(h.urun_id)?.ad ?? h.urun_ad ?? '')).map((h) => h.belge_guid!));
+  const tum = db.hareketler.filter((h) => h.tur === 'satis' && h.cari_guid && !h.yok_say && !(h.belge_guid && gecisBelge.has(h.belge_guid)));
   for (const h of tum) {
     const g = gunu(h.tarih);
     let x = m.get(h.cari_guid!);
