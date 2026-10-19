@@ -202,16 +202,18 @@ export function onerileriCikar(db: DB): Oneri[] {
   const tumDonem: Donem = { bas: ilk, bit: gunu() };
   const mus = musteriAnalizi(db, tumDonem).filter((m) => m.segment !== 'Perakende');
   const kaybolan = mus.filter((m) => m.segment === 'Riskte' || m.segment === 'Kaybedilen').sort((x, y) => y.ciro - x.ciro);
-  const degerli = kaybolan.filter((m) => m.belge >= 2).slice(0, 20);
+  // düzenli müşteri: en az 3 farklı günde ve en az 30 günlük bir zamana yayılmış alış (aynı aracın tek tamiri için kesilen 2 fatura düzenlilik değildir)
+  const degerli = kaybolan.filter((m) => (m.gunSay ?? m.belge) >= 3 && gunFark(m.son, m.ilk) >= 30).slice(0, 20);
   if (degerli.length) {
-    const aylikCiro = degerli.reduce((t, m) => t + m.ciro / Math.max(1, gunFark(m.son, m.ilk) + 30) * 30, 0);
-    const aylikKar = degerli.reduce((t, m) => t + m.kar / Math.max(1, gunFark(m.son, m.ilk) + 30) * 30, 0);
+    // aylık tutar: müşterinin aktif olduğu süreye (en az 90 gün) yayılır; kısa sürede yapılan büyük işler aylığı şişirmesin
+    const aylikCiro = degerli.reduce((t, m) => t + m.ciro / Math.max(90, gunFark(m.son, m.ilk)) * 30, 0);
+    const aylikKar = degerli.reduce((t, m) => t + m.kar / Math.max(90, gunFark(m.son, m.ilk)) * 30, 0);
     o.push({ id: 'kaybolan-musteri', alan: 'Müşteri', oncelik: aylikKar > 5000 ? 1 : 2, etki: aylikKar, etkiTur: 'kar',
       baslik: `${degerli.length} düzenli müşteri gelmeyi bıraktı ya da gecikiyor`,
       aciklama: `Bu müşteriler eskiden düzenli alışveriş yapıyordu; her zamanki aralıklarının çok üstünde süredir gelmediler. Geri kazanılırlarsa ayda yaklaşık ${para(aylikCiro)} satış, ${para(aylikKar)} kâr.`,
       adimlar: ['En değerli olanları bu hafta arayın, neden gelmediklerini sorun', 'Usta/filo müşterilerine özel fiyat veya vade teklif edin'], sayfa: 'musteri',
-      tablo: { basliklar: ['Müşteri', 'Durum', 'Son alış', 'Toplam satış', 'Telefon'], sag: [3],
-        satirlar: degerli.map((m) => [m.ad, m.segment, `${m.sonGecen} gün önce`, para(m.ciro), m.telefon ?? '']) } });
+      tablo: { basliklar: ['Müşteri', 'Durum', 'Geldiği gün', 'Son alış', 'Toplam satış', 'Telefon'], sag: [2, 4],
+        satirlar: degerli.map((m) => [m.ad, m.segment, sayi(m.gunSay ?? m.belge), `${m.sonGecen} gün önce`, para(m.ciro), m.telefon ?? '']) } });
   }
 
   const sadik = mus.filter((m) => m.segment === 'Sadık').sort((x, y) => y.ciro - x.ciro);

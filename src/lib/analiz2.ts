@@ -15,7 +15,7 @@ export function satirKar(h: Hareket, db: DB, urun: Map<ID, Urun>) {
 // ======================= MÜŞTERİ =======================
 export type Segment = 'Sadık' | 'Düzenli' | 'Yeni' | 'Riskte' | 'Kaybedilen' | 'Tek seferlik' | 'Perakende';
 export interface MusteriOzet {
-  guid: string; ad: string; telefon?: string | null; bakiye?: number; ciro: number; net: number; kar: number; belge: number; ilk: string; son: string;
+  guid: string; ad: string; telefon?: string | null; bakiye?: number; ciro: number; net: number; kar: number; belge: number; ilk: string; son: string; /** farklı alış günü sayısı (tüm zamanlar) */ gunSay?: number;
   ortSepet: number; ortAralik: number | null; sonGecen: number; segment: Segment; urunCesit: number;
 }
 export function musteriAnalizi(db: DB, d: Donem): MusteriOzet[] {
@@ -48,7 +48,7 @@ export function musteriAnalizi(db: DB, d: Donem): MusteriOzet[] {
       : sonGecen > 90 ? 'Kaybedilen'
       : ortAralik !== null && sonGecen > Math.max(45, ortAralik * 2.5) ? 'Riskte'
       : gunler.length >= 6 ? 'Sadık' : gunFark(bugun, x.ilk) <= 30 ? 'Yeni' : 'Düzenli';
-    return { guid, ad: c?.ad ?? x.ad, telefon: c?.telefon, bakiye: c?.bakiye, ciro: x.ciro, net: x.net, kar: x.kar, belge: x.belgeler.size, ilk: x.ilk, son: x.son,
+    return { guid, ad: c?.ad ?? x.ad, telefon: c?.telefon, bakiye: c?.bakiye, ciro: x.ciro, net: x.net, kar: x.kar, belge: x.belgeler.size, gunSay: x.gunler.size, ilk: x.ilk, son: x.son,
       ortSepet: x.belgeler.size ? x.ciro / x.belgeler.size : 0, ortAralik, sonGecen, segment: seg, urunCesit: x.urunler.size };
   });
 }
