@@ -1,6 +1,7 @@
 const tl = new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY', minimumFractionDigits: 2 });
 export const para = (n: number) => tl.format(Number.isFinite(n) ? n : 0);
-export const sayi = (n: number) => new Intl.NumberFormat('tr-TR', { maximumFractionDigits: 3 }).format(n || 0);
+const sayiB = new Intl.NumberFormat('tr-TR', { maximumFractionDigits: 3 });
+export const sayi = (n: number) => sayiB.format(n || 0);
 export const tarih = (s?: string | null) => (s ? new Date(s).toLocaleDateString('tr-TR') : '—');
 export const tarihSaat = (s?: string | null) =>
   s ? new Date(s).toLocaleString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—';
@@ -27,4 +28,9 @@ export const telLink = (tel?: string | null) => {
 /** Kod karşılaştırması için: harf/rakam dışındakileri at, büyük harf ('4246.R1' = '424 6r1') */
 export const kodNorm = (s?: string | null) => (s ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '');
 /** Yerel saatle YYYY-MM-DD */
-export const gunu = (s: string | Date = new Date()) => new Date(s).toLocaleDateString('sv');
+const gunOnb = new Map<string, string>();
+const gunHesap = (d: Date) => (Number.isNaN(d.getTime()) ? 'Invalid Date' : `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`);
+export const gunu = (s: string | Date = new Date()) => {
+  if (typeof s !== 'string') return gunHesap(new Date(s));
+  let r = gunOnb.get(s); if (r === undefined) { r = gunHesap(new Date(s)); if (gunOnb.size > 50000) gunOnb.clear(); gunOnb.set(s, r); } return r;
+};

@@ -32,6 +32,9 @@ function tahsilatHesapla(db: DB): TahsilatSatir[] {
   for (const n of db.tahsilat_notlari) { const k = buyuk(n.cari); notlar.set(k, [...(notlar.get(k) ?? []), n]); }
   const tah = db.kasa_akisi.filter((k) => k.giris > 0 && k.tip === 'Tahsilat' && k.karsi && !/PERAKENDE/i.test(k.karsi));
   const sinir14 = gunOnce(13), sinir90 = gunOnce(89);
+  // cari başına satışlar bir kez gruplanır (her borçlu için tüm hareketleri baştan taramamak için)
+  const satislar = new Map<string, { gun: string; tutar: number }[]>();
+  for (const h of db.hareketler) if (h.tur === 'satis' && !h.yok_say && h.cari_ad) { const kk = buyuk(h.cari_ad); const l = satislar.get(kk); const x = { gun: gunu(h.tarih), tutar: h.miktar * h.satis_fiyati }; if (l) l.push(x); else satislar.set(kk, [x]); }
   return db.vadesi_gecen.filter((v) => v.tutar > 0 && !tahsilatDisi(db, v.cari)).map((v) => {
     const c = cariBul(v.cari); const k = buyuk(c?.ad ?? v.cari); const ana = anaAd(v.cari);
     const nl = [...(notlar.get(k) ?? []), ...(c && buyuk(v.cari) !== k ? notlar.get(buyuk(v.cari)) ?? [] : [])].sort((a, b) => (b.olusturma ?? '').localeCompare(a.olusturma ?? ''));
@@ -40,7 +43,7 @@ function tahsilatHesapla(db: DB): TahsilatSatir[] {
     const t = tah.filter((x) => ana.length > 3 && buyuk(x.karsi).includes(ana)).sort((a, b) => b.tarih.localeCompare(a.tarih));
     // vade tarihinden SONRA yapılan satışlar (borcu oluşturan fatura sayılmaz)
     const vadeSonra = v.gun != null ? gunOnce(v.gun - 1) : sinir14; const sinirS = vadeSonra > sinir14 ? vadeSonra : sinir14;
-    const son14Satis = db.hareketler.filter((h) => h.tur === 'satis' && !h.yok_say && h.cari_ad && buyuk(h.cari_ad) === k && gunu(h.tarih) >= sinirS).reduce((s, h) => s + h.miktar * h.satis_fiyati, 0);
+    const son14Satis = (satislar.get(k) ?? []).filter((x) => x.gun >= sinirS).reduce((s, x) => s + x.tutar, 0);
     let durum: TahsilatDurum = 'aranacak';
     if (acikSoz?.soz_tarih) durum = acikSoz.soz_tarih < bugun ? 'soz_gecti' : acikSoz.soz_tarih === bugun ? 'soz_bugun' : 'soz_bekleniyor';
     else if (sonTemas && gunFark(bugun, gunu(sonTemas)) < 3) durum = 'yeni_arandi';

@@ -1,7 +1,7 @@
 import { SUPABASE_ANON_KEY, SUPABASE_URL } from './baglanti';
 
-const URL_ = (import.meta.env.VITE_SUPABASE_URL as string | undefined) || SUPABASE_URL;
-const ANON = (import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined) || SUPABASE_ANON_KEY;
+const URL_ = (import.meta.env?.VITE_SUPABASE_URL as string | undefined) || SUPABASE_URL;
+const ANON = (import.meta.env?.VITE_SUPABASE_ANON_KEY as string | undefined) || SUPABASE_ANON_KEY;
 let son = 0;
 /** Tarayıcıda oluşan hatayı veritabanına yaz (telefon gibi konsolu görülemeyen cihazlarda sorunu bulmak için) */
 export function hataKaydet(e: unknown, ek = '') {
