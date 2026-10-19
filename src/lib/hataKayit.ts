@@ -13,15 +13,26 @@ export function hataKaydet(e: unknown, ek = '') {
   } catch { /* yok */ }
 }
 
-/** Teşhis: telefonda açılış aşamalarını ve sürelerini kaydet (yalnız ilk 60 sn, mobil cihazlarda) */
-const basla = performance.now(); const asamalar: string[] = [];
-let gonderildi = false;
+/** Teşhis: telefonda açılış aşamalarını kaydet. Sekme çökse bile son ulaşılan aşama görünsün diye her aşama anında gönderilir
+ *  (yalnız mobil cihazlarda, açılışın ilk 90 sn'si, 10 dakikada en fazla 4 açılış). */
+const basla = performance.now(); const oturum = Math.random().toString(36).slice(2, 7);
+const mobil = typeof navigator !== 'undefined' && /iPhone|iPad|Android|Mobile/i.test(navigator.userAgent);
+let gonderilen = 0;
+const izinli = (() => {
+  if (!mobil) return false;
+  try { const t = Date.now(); const l = (JSON.parse(localStorage.getItem('teshis') || '[]') as number[]).filter((x) => t - x < 600000); if (l.length >= 4) return false; l.push(t); localStorage.setItem('teshis', JSON.stringify(l)); } catch { /* yok */ }
+  return true;
+})();
 export function asama(ad: string) {
-  if (!/iPhone|iPad|Android|Mobile/i.test(navigator.userAgent) || performance.now() - basla > 60000) return;
-  asamalar.push(`${Math.round(performance.now() - basla)}ms ${ad}`);
+  if (!izinli || gonderilen >= 40 || performance.now() - basla > 90000) return; gonderilen++;
+  try {
+    fetch(URL_ + '/rest/v1/istemci_hata', { method: 'POST', keepalive: true, headers: { apikey: ANON, Authorization: 'Bearer ' + ANON, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+      body: JSON.stringify({ mesaj: `teşhis ${oturum} ${Math.round(performance.now() - basla)}ms ${ad}`.slice(0, 300), yigin: null, ua: navigator.userAgent.slice(0, 300), sayfa: location.hash.slice(0, 100) }) }).catch(() => undefined);
+  } catch { /* yok */ }
 }
-if (typeof window !== 'undefined') setTimeout(() => {
-  if (gonderildi || !/iPhone|iPad|Android|Mobile/i.test(navigator.userAgent)) return; gonderildi = true;
-  fetch(URL_ + '/rest/v1/istemci_hata', { method: 'POST', headers: { apikey: ANON, Authorization: 'Bearer ' + ANON, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
-    body: JSON.stringify({ mesaj: 'teşhis 25sn: ' + (document.body.innerText || '').slice(0, 200).replace(/\s+/g, ' '), yigin: asamalar.join('\n'), ua: navigator.userAgent.slice(0, 300), sayfa: location.hash.slice(0, 100) }) }).catch(() => undefined);
-}, 25000);
+/** bir hesaplamanın başını ve sonunu (süresiyle) kaydet */
+export function olc<T>(ad: string, f: () => T): T {
+  if (!izinli) return f();
+  asama(ad + ' basladi'); const t = performance.now(); const x = f(); asama(`${ad} bitti ${Math.round(performance.now() - t)}ms`); return x;
+}
+asama('basladi');

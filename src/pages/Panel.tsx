@@ -1,4 +1,5 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
+import { asama, olc } from '../lib/hataKayit';
 import { AlertTriangle, ArrowDownRight, ArrowRight, ArrowUpRight, Boxes, CalendarClock, Info, Lightbulb, Sun, TrendingUp, Users, Wallet } from 'lucide-react';
 import type { Sayfa } from '../App';
 import { useStore } from '../lib/store';
@@ -33,6 +34,7 @@ export default function Panel({ git }: { git: (s: Sayfa) => void }) {
   const { db } = useStore();
   const [d, setD] = useDonem();
   const a = db.ayarlar;
+  useEffect(() => { asama('panel cizildi'); }, []);
 
   const stok = useMemo(() => {
     let maliyet = 0, satis = 0, kar = 0, kalem = 0, biten = 0, kritik = 0, eksi = 0, maliyetsiz = 0;
@@ -51,13 +53,13 @@ export default function Panel({ git }: { git: (s: Sayfa) => void }) {
     return { maliyet, satis, kar, kalem, biten, kritik, eksi, maliyetsiz, kat: [...kat.entries()].sort((x, y) => y[1] - x[1]) };
   }, [db.urunler, a]);
 
-  const t = useMemo(() => toplamlar(db, d), [db, d]);
-  const g = useMemo(() => gelirTablosu(db, d), [db, d]);
-  const dz = useMemo(() => donemOzet(db, d), [db, d]);
-  const seri = useMemo(() => gunlukSeri(db, d, (h) => h.miktar * h.satis_fiyati), [db, d]);
-  const enKarli = useMemo(() => [...urunOzetleri(db, d).values()].filter((x) => x.satilan > 0).sort((x, y) => y.kar - x.kar), [db, d]);
+  const t = useMemo(() => olc('p.toplamlar', () => toplamlar(db, d)), [db, d]);
+  const g = useMemo(() => olc('p.gelir', () => gelirTablosu(db, d)), [db, d]);
+  const dz = useMemo(() => olc('p.donem', () => donemOzet(db, d)), [db, d]);
+  const seri = useMemo(() => olc('p.seri', () => gunlukSeri(db, d, (h) => h.miktar * h.satis_fiyati)), [db, d]);
+  const enKarli = useMemo(() => [...olc('p.urunozet', () => urunOzetleri(db, d)).values()].filter((x) => x.satilan > 0).sort((x, y) => y.kar - x.kar), [db, d]);
   const oneriler = useMemo(() => onerileriCikar(db), [db]);
-  const ay = useMemo(() => aySonuTahmini(db), [db]);
+  const ay = useMemo(() => olc('p.aysonu', () => aySonuTahmini(db)), [db]);
 
   // bugün / dün / geçen hafta aynı gün (aynı saate kadar)
   const bugun = useMemo(() => {

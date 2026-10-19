@@ -1,3 +1,4 @@
+import { olc } from './hataKayit';
 import type { DB, StokAksiyonTur, TahsilatNot, Urun } from './types';
 import { gunu } from './format';
 import { netAlis } from './analiz';
@@ -20,7 +21,9 @@ export interface TahsilatSatir {
   notlar: TahsilatNot[]; acikSoz: TahsilatNot | null; sonTemas: string | null; sonTahsilat: { tarih: string; tutar: number } | null;
   son90Tahsilat: number; son14Satis: number; durum: TahsilatDurum; puan: number; tutulmayanSoz: number;
 }
-export function tahsilatListesi(db: DB): TahsilatSatir[] {
+const tahsilatOnbellek = new WeakMap<DB, TahsilatSatir[]>();
+export function tahsilatListesi(db: DB): TahsilatSatir[] { let l = tahsilatOnbellek.get(db); if (!l) { l = olc('tahsilat', () => tahsilatHesapla(db)); tahsilatOnbellek.set(db, l); } return l; }
+function tahsilatHesapla(db: DB): TahsilatSatir[] {
   const bugun = gunu();
   const musteri = db.cariler.filter((c) => c.tur === 'musteri');
   const cari = new Map(musteri.map((c) => [buyuk(c.ad), c]));

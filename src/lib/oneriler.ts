@@ -1,3 +1,4 @@
+import { olc } from './hataKayit';
 import type { DB, ID, Urun } from './types';
 import type { Sayfa } from '../App';
 import { mevsim } from './analiz3';
@@ -23,7 +24,10 @@ const yuzde = (x: number) => `%${x.toFixed(0)}`;
 const gun = (fark: number) => gunu(new Date(Date.now() - fark * 864e5));
 
 /** Son 90 günün verisinden kurala dayalı öneriler (en önemli → en az önemli) */
-export function onerileriCikar(db: DB): Oneri[] {
+const oneriOnbellek = new WeakMap<DB, Oneri[]>();
+/** menü rozeti ve ana sayfa aynı veriyle ayrı ayrı istediği için sonuç veri başına bir kez hesaplanır */
+export function onerileriCikar(db: DB): Oneri[] { let l = oneriOnbellek.get(db); if (!l) { l = olc('oneriler', () => onerileriHesapla(db)); oneriOnbellek.set(db, l); } return l; }
+function onerileriHesapla(db: DB): Oneri[] {
   const o: Oneri[] = [];
   const a = db.ayarlar;
   const hedef = a.hedef_marj ?? 35;
