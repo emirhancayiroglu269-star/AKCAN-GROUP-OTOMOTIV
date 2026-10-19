@@ -104,7 +104,7 @@ Deno.serve(async (req) => {
   if (!kilit?.length) return yanit({ ok: true, atlandi: 'önceki tur sürüyor' });
   let islenen = 0;
   try {
-    const { data: l, error } = await db.from('otomarmara_veri').select('urun_id, urunler!inner(kod)').eq('durum', 'istendi').order('istendi').limit(TUR_LIMIT);
+    const { data: l, error } = await db.from('otomarmara_veri').select('urun_id, urunler!inner(kod)').eq('durum', 'istendi').order('oncelik', { ascending: false }).order('istendi').limit(TUR_LIMIT);
     if (error) throw new Error(error.message);
     await girisYap();
     for (const x of l ?? []) {
@@ -115,9 +115,10 @@ Deno.serve(async (req) => {
       islenen++; await bekle(1500);
     }
     await durum({ son_calisma: new Date().toISOString(), son_hata: null, kilit: null, islenen: (Number(kilit[0].islenen) || 0) + islenen });
-    // kalan varsa kendini yeniden tetikle (cron beklemeden)
+    // kullanıcının istediği (öncelikli) ürün kaldıysa hemen devam et; toplu doldurma ise cron hızında (2 dk'da 8 ürün) yavaş ilerler
     const { count } = await db.from('otomarmara_veri').select('urun_id', { count: 'exact', head: true }).eq('durum', 'istendi');
-    if ((count ?? 0) > 0) {
+    const { count: oncelikli } = await db.from('otomarmara_veri').select('urun_id', { count: 'exact', head: true }).eq('durum', 'istendi').eq('oncelik', 1);
+    if ((oncelikli ?? 0) > 0) {
       const p = fetch(Deno.env.get('SUPABASE_URL') + '/functions/v1/otomarmara-muadil', { method: 'POST', headers: { Authorization: req.headers.get('Authorization') ?? '', 'Content-Type': 'application/json' }, body: '{}' }).catch(() => {});
       // deno-lint-ignore no-explicit-any
       (globalThis as any).EdgeRuntime?.waitUntil?.(p);

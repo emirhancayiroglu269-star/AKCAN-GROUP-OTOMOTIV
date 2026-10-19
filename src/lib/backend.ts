@@ -117,7 +117,7 @@ function supabaseBackend(sb: SupabaseClient): Backend {
     async urunKodlariYukle(satirlar) { return ok(await sb.rpc('urun_kodlari_yukle', { p: satirlar })) as { eklenen: number; bulunamayan: number }; },
     async omIste(ids) {
       if (!ids.length) return; const t = new Date().toISOString();
-      ok(await sb.from('otomarmara_veri').upsert(ids.map((id) => ({ urun_id: id, durum: 'istendi', istendi: t })), { onConflict: 'urun_id' }));
+      ok(await sb.from('otomarmara_veri').upsert(ids.map((id) => ({ urun_id: id, durum: 'istendi', istendi: t, oncelik: 1 })), { onConflict: 'urun_id' }));
       // sunucu hemen işlemeye başlasın (cron da 2 dakikada bir bakar); yanıt beklenmez
       sb.functions.invoke('otomarmara-muadil', { body: {} }).catch(() => undefined);
     },
