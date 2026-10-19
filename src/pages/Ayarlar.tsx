@@ -20,7 +20,7 @@ export default function AyarlarSayfa() {
   const ornek = db.urunler.find((u) => u.aktif && u.alis_fiyati > 0 && u.satis_fiyati > 0 && u.stok > 0);
   const marj = (haric: boolean) => {
     if (!ornek) return null;
-    const s = ornek.satis_fiyati / (1 + ornek.kdv / 100), m = haric ? ornek.alis_fiyati : ornek.alis_fiyati / (1 + ornek.kdv / 100);
+    const al = ornek.kart_alis ?? ornek.alis_fiyati; const s = ornek.satis_fiyati / (1 + ornek.kdv / 100), m = haric ? al : al / (1 + ornek.kdv / 100);
     return ((s - m) / s) * 100;
   };
 
@@ -39,7 +39,7 @@ export default function AyarlarSayfa() {
             </select>
           </Alan>
         </div>
-        {ornek && <p className="mt-2 text-xs text-slate-500">Örnek: <b>{ornek.ad}</b> — alış {ornek.alis_fiyati}, satış {ornek.satis_fiyati} (KDV %{ornek.kdv}). "KDV dahil" seçiminde marj %{marj(false)!.toFixed(0)}, "KDV hariç" seçiminde %{marj(true)!.toFixed(0)} çıkar. BizimHesap'ta alış fiyatını nasıl girdiğinize göre seçin; tüm kâr hesapları buna göre yapılır.</p>}
+        {ornek && <p className="mt-2 text-xs text-slate-500">Örnek: <b>{ornek.ad}</b> — alış {ornek.kart_alis ?? ornek.alis_fiyati}, satış {ornek.satis_fiyati} (KDV %{ornek.kdv}). "KDV dahil" seçiminde marj %{marj(false)!.toFixed(0)}, "KDV hariç" seçiminde %{marj(true)!.toFixed(0)} çıkar. BizimHesap'ta alış fiyatını nasıl girdiğinize göre seçin; tüm kâr hesapları buna göre yapılır.</p>}
         <button className="btn-primary mt-4" onClick={kaydet}>Kaydet</button>
       </div>
 

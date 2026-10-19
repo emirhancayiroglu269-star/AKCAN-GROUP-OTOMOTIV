@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Check, Download, Info, MessageCircle, PackageMinus, Plus, Target, Undo2, X } from 'lucide-react';
 import { useStore } from '../lib/store';
+import { ilkSatisGunu } from '../lib/analiz';
 import { backend } from '../lib/backend';
 import { ara, para, parse, sayi, tarih } from '../lib/format';
 import { eritmeIlerleme, eritmeListesi, haftaBasi, type EritmeSatir } from '../lib/tahsilat';
@@ -137,7 +138,7 @@ export default function StokEritme() {
       )}
       <div className="mt-4 flex items-start gap-2 rounded-xl bg-slate-100 p-3 text-xs text-slate-600 dark:bg-slate-800 dark:text-slate-300">
         <Info size={15} className="mt-0.5 shrink-0" />
-        <span>Öneriler: bağlı parası ₺300'ün altındakiler "beklet"; son 120 günde faturayla alınmış olanlar "iade"; daha önce satılmış olanlar maliyetin %{oran} üstüne "kampanya" (KDV dahil, 5 TL'ye yuvarlanır, mevcut fiyatın üstüne çıkmaz); hiç satılmamış olanlar maliyetine "toplu satış". Plana eklediğiniz ürünlerde stok azaldıkça "paraya dönen" tutar kendiliğinden artar (stok BizimHesap'tan 3 dakikada bir gelir). Fiyat değişikliğini ve iadeyi BizimHesap'ta siz yaparsınız; program BizimHesap'a yazmaz. Satış verisi {db.bh_durum?.rapor_ilk ? tarih(db.bh_durum.rapor_ilk + 'T12:00') : 'takip başlangıcı'} tarihinden beri var; "hiç satılmadı" o tarihten beri demektir.</span>
+        <span>Öneriler: bağlı parası ₺300'ün altındakiler "beklet"; son 150 günde faturayla alınmış olanlar "iade"; daha önce satılmış olanlar maliyetin %{oran} üstüne "kampanya" (KDV dahil, 5 TL'ye yuvarlanır, mevcut fiyatın üstüne çıkmaz); hiç satılmamış olanlar maliyetine "toplu satış". Plana eklediğiniz ürünlerde stok azaldıkça "paraya dönen" tutar kendiliğinden artar (stok BizimHesap'tan 3 dakikada bir gelir). Fiyat değişikliğini ve iadeyi BizimHesap'ta siz yaparsınız; program BizimHesap'a yazmaz. Satış verisi {ilkSatisGunu(db) ? tarih(ilkSatisGunu(db)! + 'T12:00') : 'takip başlangıcı'} tarihinden beri var; "hiç satılmadı" o tarihten beri demektir.</span>
       </div>
     </div>
   );

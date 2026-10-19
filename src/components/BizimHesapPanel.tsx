@@ -34,7 +34,7 @@ export function BizimHesapPanel() {
           </div>
         </div>
       )}
-      <p className="mt-3 text-xs text-slate-500">Program BizimHesap'ı <b>yalnızca okur</b>; BizimHesap'a hiçbir kayıt göndermez. Her 3 dakikada ürün, fiyat, depo stoğu ve cari bakiyeleri çekilir. Stok azalması satış, artması alış olarak kaydedilir.</p>
+      <p className="mt-3 text-xs text-slate-500">Program BizimHesap'ı <b>yalnızca okur</b>; BizimHesap'a hiçbir kayıt göndermez. Her 2 dakikada ürün, fiyat, depo stoğu ve cari bakiyeleri çekilir. Stok azalması satış, artması alış olarak kaydedilir.</p>
     </div>
   );
 }
