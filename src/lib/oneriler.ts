@@ -1,5 +1,6 @@
 import type { DB, ID, Urun } from './types';
 import type { Sayfa } from '../App';
+import { mevsim } from './analiz3';
 import { depoKisa, depoMuadil, muadilMetin, stoktakiMuadiller } from './muadil';
 import { gunu, para, sayi } from './format';
 import { GECIS_RE, abcSinifla, alinacakHesap, birimKar, gecerliHareketler, gelirTablosu, hareketTutar, hizmetMi, netAlis, netSatis, takipGunu, urunOzetleri, type Donem } from './analiz';
@@ -149,18 +150,22 @@ export function onerileriCikar(db: DB): Oneri[] {
       satirlar: azalan.slice(0, 20).map((r) => [urunAd(r.u), sayi(r.u.stok), r.h.hiz.toFixed(2), Math.round(r.h.yeterGun), sayi(r.h.alinacak)]) } });
 
   const fazla = aktif.filter((u) => u.stok > 0 && u.alis_fiyati > 0).map((u) => {
-    const x = ozetMap.get(u.id); const hiz = (x?.satilan ?? 0) / gunSay; if (!(hiz > 0)) return null;
-    const stokGun = u.stok / hiz; const fazlaAdet = Math.max(0, u.stok - hiz * 90);
-    return { u, hiz, stokGun, fazlaDeger: fazlaAdet * netAlis(u.alis_fiyati, u.kdv, a) };
+    const x = ozetMap.get(u.id); const hiz0 = (x?.satilan ?? 0) / gunSay; if (!(hiz0 > 0)) return null;
+    // mevsimlik ürün (antifriz, akü, silecek…): geçen 3 ayın satış hızı önümüzdeki 6 ayın talebine göre düzeltilir
+    const ms = mevsim(u); const ayI = new Date().getMonth();
+    const ort = (bas: number, n: number) => ms ? Array.from({ length: n }, (_, i) => ms.profil[(bas + i + 12) % 12]).reduce((t, v) => t + v, 0) / n : 1;
+    const kat = ms ? Math.max(0.3, Math.min(4, ort(ayI + 1, 6) / Math.max(0.01, ort(ayI - 2, 3)))) : 1;
+    const hiz = hiz0 * kat; const stokGun = u.stok / hiz; const fazlaAdet = Math.max(0, u.stok - hiz * 90);
+    return { u, hiz, kat, ms, stokGun, fazlaDeger: fazlaAdet * netAlis(u.alis_fiyati, u.kdv, a) };
   }).filter((x): x is NonNullable<typeof x> => !!x && x.stokGun > 180 && x.fazlaDeger > 1000).sort((x, y) => y.fazlaDeger - x.fazlaDeger);
   if (fazla.length) {
     const deger = fazla.reduce((t, x) => t + x.fazlaDeger, 0);
     o.push({ id: 'fazla-stok', alan: 'Stok', oncelik: deger > 30000 ? 2 : 3, etki: deger, etkiTur: 'nakit',
       baslik: `${fazla.length} üründe 6 aydan fazla yetecek stok var`,
-      aciklama: `Satılıyorlar ama elde çok fazla var. 90 günlük ihtiyacın üstündeki kısım ${para(deger)} bağlı para demek.`,
+      aciklama: `Satılıyorlar ama elde çok fazla var. 90 günlük ihtiyacın üstündeki kısım ${para(deger)} bağlı para demek. Mevsimlik ürünlerde (antifriz, akü vb.) önümüzdeki ayların beklenen satışı hesaba katıldı.`,
       adimlar: ['Bu ürünlerden stok bitene kadar alım yapmayın', 'Toplu alım indirimi için fazla almışsanız, indirimin bağlı paraya değip değmediğine bakın'], sayfa: 'stoksagligi',
-      tablo: { basliklar: ['Ürün', 'Stok', 'Günde satış', 'Kaç gün yeter', 'Fazla stok değeri'], sag: [1, 2, 3, 4],
-        satirlar: fazla.slice(0, 15).map((x) => [urunAd(x.u), sayi(x.u.stok), x.hiz.toFixed(2), Math.round(x.stokGun), para(x.fazlaDeger)]) } });
+      tablo: { basliklar: ['Ürün', 'Stok', 'Günde satış', 'Kaç gün yeter', 'Fazla stok değeri', 'Not'], sag: [1, 2, 3, 4],
+        satirlar: fazla.slice(0, 20).map((x) => [urunAd(x.u), sayi(x.u.stok), x.hiz.toFixed(2), Math.round(x.stokGun), para(x.fazlaDeger), x.ms && x.kat !== 1 ? `${x.ms.ad}: önümüzdeki aylarda satış ×${x.kat.toFixed(1)} beklenir (hesaba katıldı)` : '']) } });
   }
 
   // ---------- SATIN ALMA: tedarikçi fiyat farkı ----------
