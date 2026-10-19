@@ -81,19 +81,31 @@ export function kayipAnalizi(db: DB, a: Ayarlar, d: Donem) {
   const stoktanDusmeyen = farklar.filter((f) => !kapali.has(f.u.id) && f.cikisFarki <= -0.5 && f.girisFarki > -0.5 && !stokTakipsiz(f.u));
 
   // 2) Maliyetin altında satış (seçili dönem, fatura satırları)
-  const zararli: ZararliSatis[] = [];
+  // 0 TL'lik satırlar (ücretsiz verilen / kendi aracına takılan) ayrı listelenir; araç alım-satım (geçiş) faturaları hariç;
+  // satırdaki maliyet son 180 gündeki alış faturasının 1,3 katından fazlaysa (kart alışı hatalı) fatura fiyatı kullanılır.
+  const gecis = gecisBelgeleri(db);
+  const faturaAlis = new Map<string, { g: string; f: number }[]>();
+  for (const h of db.hareketler) if (h.kaynak === 'fatura' && h.tur === 'alis' && h.alis_fiyati > 0) { const l = faturaAlis.get(h.urun_id) ?? []; l.push({ g: gunu(h.tarih), f: h.alis_fiyati }); faturaAlis.set(h.urun_id, l); }
+  const faturaMaliyet = (h: Hareket) => { const g = gunu(h.tarih); const sinir = gunu(new Date(new Date(g + 'T12:00').getTime() - 180 * 864e5));
+    const l = (faturaAlis.get(h.urun_id) ?? []).filter((x) => x.g <= g && x.g >= sinir).sort((p, q) => q.g.localeCompare(p.g)); return l[0]?.f ?? null; };
+  const zararli: ZararliSatis[] = []; const ucretsiz: ZararliSatis[] = [];
   for (const h of db.hareketler) {
     if (h.kaynak !== 'fatura' || h.tur !== 'satis' || !gercekUrun(h) || !donemde(h.tarih, d) || !(h.alis_fiyati > 0) || h.miktar <= 0) continue;
+    if (h.belge_guid && gecis.has(h.belge_guid)) continue;
     const u = urun.get(h.urun_id);
-    const satisNet = netSatis(h.satis_fiyati, h.kdv), maliyetNet = netAlis(h.alis_fiyati, h.kdv, a);
-    if (satisNet < maliyetNet * 0.999) zararli.push({ h, u, satisNet, maliyetNet, zarar: (maliyetNet - satisNet) * h.miktar });
+    let maliyetNet = netAlis(h.alis_fiyati, h.kdv, a); const fm = faturaMaliyet(h); if (fm && maliyetNet > fm * 1.3) maliyetNet = fm;
+    const satisNet = netSatis(h.satis_fiyati, h.kdv);
+    const z = { h, u, satisNet, maliyetNet, zarar: (maliyetNet - satisNet) * h.miktar };
+    if (!(h.satis_fiyati > 0)) ucretsiz.push(z); else if (satisNet < maliyetNet * 0.999) zararli.push(z);
   }
-  zararli.sort((p, q) => q.zarar - p.zarar);
+  zararli.sort((p, q) => q.zarar - p.zarar); ucretsiz.sort((p, q) => q.zarar - p.zarar);
   const kimeZarar = new Map<string, { ad: string; zarar: number; adet: number }>();
   for (const z of zararli) { const k = z.h.cari_ad || '—'; const x = kimeZarar.get(k) ?? { ad: k, zarar: 0, adet: 0 }; x.zarar += z.zarar; x.adet++; kimeZarar.set(k, x); }
+  const kimeUcretsiz = new Map<string, { ad: string; zarar: number; adet: number }>();
+  for (const z of ucretsiz) { const k = z.h.cari_ad || '—'; const x = kimeUcretsiz.get(k) ?? { ad: k, zarar: 0, adet: 0 }; x.zarar += z.zarar; x.adet++; kimeUcretsiz.set(k, x); }
 
   // 3) Yüksek indirimli satırlar (%20 ve üstü)
-  const indirimli = db.hareketler.filter((h) => h.kaynak === 'fatura' && h.tur === 'satis' && donemde(h.tarih, d) && (h.brut ?? 0) > 0 && (h.indirim ?? 0) / (h.brut ?? 1) >= 0.2)
+  const indirimli = db.hareketler.filter((h) => h.kaynak === 'fatura' && h.tur === 'satis' && donemde(h.tarih, d) && !(h.belge_guid && gecis.has(h.belge_guid)) && (h.brut ?? 0) > 0 && (h.indirim ?? 0) / (h.brut ?? 1) >= 0.2)
     .map((h) => ({ h, u: urun.get(h.urun_id), oran: (h.indirim ?? 0) / (h.brut ?? 1) })).sort((p, q) => (q.h.indirim ?? 0) - (p.h.indirim ?? 0));
 
   // 4) Eksi stok ve depo toplamı farkı
@@ -106,6 +118,7 @@ export function kayipAnalizi(db: DB, a: Ayarlar, d: Donem) {
     pencere, farklar, faturasizCikis, faturasizGiris, stoktanDusmeyen, kapanmis,
     faturasizCikisDeger: faturasizCikis.reduce((t, f) => t + Math.max(0, f.deger), 0),
     zararli, zararToplam: zararli.reduce((t, z) => t + z.zarar, 0), kimeZarar: [...kimeZarar.values()].sort((p, q) => q.zarar - p.zarar),
+    ucretsiz, ucretsizToplam: ucretsiz.reduce((t, z) => t + z.zarar, 0), kimeUcretsiz: [...kimeUcretsiz.values()].sort((p, q) => q.zarar - p.zarar),
     indirimli, indirimToplam: indirimli.reduce((t, x) => t + (x.h.indirim ?? 0), 0),
     eksiStok, depoFarki,
   };
