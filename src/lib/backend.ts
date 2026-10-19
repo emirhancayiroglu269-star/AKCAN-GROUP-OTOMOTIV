@@ -1,5 +1,5 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
-import type { Ayarlar, BhDurum, Cari, CrudTable, DB, Hareket, HesapBakiye, ID, KasaAkisi, Masraf, Urun, VadesiGecen } from './types';
+import type { Ayarlar, BhDurum, Cari, CrudTable, DB, Hareket, HesapBakiye, ID, KasaAkisi, Masraf, OtomarmaraVeri, Urun, VadesiGecen } from './types';
 
 import { SUPABASE_ANON_KEY, SUPABASE_URL } from './baglanti';
 
@@ -19,6 +19,8 @@ export interface Backend {
   ayarKaydet(a: Partial<Ayarlar>): Promise<void>;
   bhEsitle(): Promise<EsitlemeSonucu>;
   urunKodlariYukle(satirlar: { anahtar: string; kodlar: string[]; tur: string }[]): Promise<{ eklenen: number; bulunamayan: number }>;
+  /** Otomarmara'dan OEM/eşdeğer isteği (Otomarmara sekmesindeki betik işler) */
+  omIste(urunIdler: ID[]): Promise<void>;
   subscribe(onChange: () => void): () => void;
   /** Hafif kontrol: verinin değişip değişmediğini anlamak için tek satır okur */
   durum(): Promise<{ son_esitleme?: string | null; imza: string } | null>;
@@ -75,7 +77,7 @@ function supabaseBackend(sb: SupabaseClient): Backend {
       // ürünlerde BizimHesap'ın ham JSON'u (bh_ham) çok büyük ve sitede kullanılmıyor: çekilmez
       const URUN = 'id,kod,barkod,ad,marka,kategori,birim,alis_fiyati,satis_fiyati,kdv,stok,kritik_stok,raf,aktif,olusturma,bh_id,bh_guncelleme,bh_stok';
       // sayfalama kararlı olsun: sıralama sütunu tekrarlı olabildiğinden (ör. aynı anda eklenen ürünler) benzersiz ikinci sıralama eklenir; yoksa sayfalar arasında kayıt tekrarlanır ya da atlanır
-      const ikinci = t === 'urun_depo_stok' ? 'depo_id' : t === 'hesap_bakiyeleri' ? null : 'id';
+      const ikinci = t === 'urun_depo_stok' ? 'depo_id' : t === 'hesap_bakiyeleri' || t === 'otomarmara_veri' ? null : 'id';
       const sor = (kolon: string) => { let q = sb.from(t).select(kolon); if (filtre) q = q.eq(filtre[0], filtre[1]); q = q.order(order, { ascending: asc }); if (ikinci && ikinci !== order) q = q.order(ikinci, { ascending: true }); return q.range(i, i + sayfa - 1); };
       // etiket (OEM/muadil kodları) yalnız bh_ham içindeki tag alanından okunur; okunamazsa onsuz devam edilir
       let r = await sor(t === 'urunler' ? URUN + ',etiket:bh_ham->>tag' : '*');
@@ -89,7 +91,7 @@ function supabaseBackend(sb: SupabaseClient): Backend {
 
   return {
     async load() {
-      const [u, dp, uds, bd, h, fg, c, ch, a, ku, uk, rs, ms, ka, hb, vg, tn, sa] = await Promise.all([
+      const [u, dp, uds, bd, h, fg, c, ch, a, ku, uk, rs, ms, ka, hb, vg, tn, sa, om] = await Promise.all([
         hepsi('urunler', 'olusturma'), hepsi('depolar', 'olusturma', true), hepsi('urun_depo_stok', 'urun_id', true, 200000),
         sb.from('bh_durum').select('id,son_esitleme,son_hata,urun_sayisi,depo_sayisi,cari_sayisi,takip_baslangic,rapor_ilk,rapor_son,rapor_yukleme,masraf_son').eq('id', 1).maybeSingle(),
         hepsi('hareketler', 'tarih', false, 200000), hepsi('fiyat_gecmisi', 'tarih', false, 50000),
@@ -98,13 +100,14 @@ function supabaseBackend(sb: SupabaseClient): Backend {
         hepsi('rapor_satirlari', 'tarih', false, 300000, ['gecersiz', false]), hepsi('masraflar', 'tarih', false, 100000, ['gecersiz', false]),
         hepsi('kasa_akisi', 'tarih', false, 200000, ['gecersiz', false]), hepsi('hesap_bakiyeleri', 'ad', true), hepsi('vadesi_gecen', 'tutar', false, 10000, ['gecersiz', false]),
         hepsi('tahsilat_notlari', 'olusturma', false, 50000), hepsi('stok_aksiyon', 'olusturma', false, 50000),
+        hepsi('otomarmara_veri', 'urun_id', true, 100000).catch(() => []),
       ]);
       const durum = (ok(bd) as BhDurum | null) ?? null;
       return {
         urunler: u, depolar: dp, urun_depo_stok: uds, bh_durum: durum, hareketler: hareketleriBirlestir(h as Hareket[], rs as RaporSatiri[], durum, u as Urun[], ms as Masraf[]), stok_degisim: (h as Hareket[]).map((x) => ({ ...x, kaynak: 'stok' as const })),
         iadeler: (rs as RaporSatiri[]).filter((x) => x.iade && x.urun_id && x.miktar > 0).map((x) => ({ id: -x.id, tarih: `${x.tarih}T12:00:00`, urun_id: x.urun_id!, tur: x.tur, miktar: x.miktar, urun_ad: x.urun_ad, satis_fiyati: x.tur === 'satis' ? (x.toplam || 0) / x.miktar : 0, alis_fiyati: x.tur === 'alis' ? (x.net || 0) / x.miktar : x.alis_fiyati || 0, kdv: 20, yok_say: false, kaynak: 'fatura' as const, cari_ad: (x as unknown as { cari_ad?: string }).cari_ad ?? null })), masraflar: ms,
         kasa_akisi: ka as KasaAkisi[], hesap_bakiyeleri: hb as HesapBakiye[], vadesi_gecen: vg as VadesiGecen[], fiyat_gecmisi: fg, cariler: c, cari_hareketler: ch,
-        ayarlar: (ok(a) as Ayarlar) ?? { id: 1, firma_adi: 'İşletmem' }, kullanicilar: ku, urun_kodlari: uk, tahsilat_notlari: tn, stok_aksiyon: sa,
+        ayarlar: (ok(a) as Ayarlar) ?? { id: 1, firma_adi: 'İşletmem' }, kullanicilar: ku, urun_kodlari: uk, tahsilat_notlari: tn, stok_aksiyon: sa, otomarmara_veri: om as OtomarmaraVeri[],
       } as DB;
     },
     async insert(t, row) { ok(await sb.from(t).insert(row)); },
@@ -112,6 +115,7 @@ function supabaseBackend(sb: SupabaseClient): Backend {
     async remove(t, id) { ok(await sb.from(t).delete().eq('id', id)); },
     async ayarKaydet(a) { ok(await sb.from('ayarlar').upsert({ ...a, id: 1 })); },
     async urunKodlariYukle(satirlar) { return ok(await sb.rpc('urun_kodlari_yukle', { p: satirlar })) as { eklenen: number; bulunamayan: number }; },
+    async omIste(ids) { if (!ids.length) return; const t = new Date().toISOString(); ok(await sb.from('otomarmara_veri').upsert(ids.map((id) => ({ urun_id: id, durum: 'istendi', istendi: t })), { onConflict: 'urun_id' })); },
     async bhEsitle() {
       const { data, error } = await sb.functions.invoke('bizimhesap-esitle', { body: {} });
       if (error) {
@@ -126,7 +130,7 @@ function supabaseBackend(sb: SupabaseClient): Backend {
       const fire = () => { clearTimeout(timer); timer = setTimeout(onChange, 1500); };
       const ch = sb.channel('degisiklikler');
       // BizimHesap eşitlemesinin yazdığı tablolar burada yok: onlar durum() ile 30 sn'de bir kontrol edilir
-      ['ayarlar', 'kullanicilar', 'urun_kodlari', 'tahsilat_notlari', 'stok_aksiyon'].forEach((t) =>
+      ['ayarlar', 'kullanicilar', 'urun_kodlari', 'tahsilat_notlari', 'stok_aksiyon', 'otomarmara_veri'].forEach((t) =>
         ch.on('postgres_changes', { event: '*', schema: 'public', table: t }, fire));
       ch.subscribe();
       return () => { clearTimeout(timer); sb.removeChannel(ch); };
@@ -272,6 +276,7 @@ function demoBackend(): Backend {
       save(); return { eklenen, bulunamayan };
     },
     subscribe(onChange) { listeners.add(onChange); return () => { listeners.delete(onChange); }; },
+    async omIste() { /* demo: yok */ },
     async durum() { return null; },
   };
 }

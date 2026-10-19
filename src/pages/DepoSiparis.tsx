@@ -7,6 +7,7 @@ import { UrunLink } from '../components/DetayKart';
 import { Bos, Kpi, SayfaBaslik } from '../components/ui';
 import { yazdir } from '../components/Yazdir';
 import { muadilBulucu } from '../lib/muadil';
+import { OmIsteDugme } from '../components/OmIsteDugme';
 
 const kisa = (s: string) => s.replace(/ DEPO(SU)?$/i, '');
 
@@ -67,6 +68,7 @@ export default function DepoSiparis() {
   return (
     <div>
       <SayfaBaslik baslik="Depo Siparişleri" alt={`Her depo kendi stoğu ve kendi satışına göre: hangi depoda biterse o deponun siparişine düşer · hedef ${hedefGun} günlük stok`}>
+        <OmIsteDugme urunler={liste.filter((x) => x.neden === 'bitti').map((x) => x.u)} />
         <button className="btn-ghost" disabled={!siparisListe.length} onClick={bas}><Printer size={16} /> Yazdır</button>
         <button className="btn-ghost" disabled={!siparisListe.length} onClick={csv}><Download size={16} /> CSV</button>
         <a className={`btn-primary ${siparisListe.length ? '' : 'pointer-events-none opacity-50'}`} target="_blank" rel="noreferrer" href={`https://wa.me/?text=${encodeURIComponent(metin(siparisListe))}`}><MessageCircle size={16} /> WhatsApp</a>

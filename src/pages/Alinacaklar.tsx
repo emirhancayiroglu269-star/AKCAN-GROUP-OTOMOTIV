@@ -10,6 +10,7 @@ import { yazdir } from '../components/Yazdir';
 import { mevsim, urunTedarikcileri } from '../lib/analiz3';
 import { UrunLink } from '../components/DetayKart';
 import { muadilMetin, stoktakiMuadiller } from '../lib/muadil';
+import { OmIsteDugme } from '../components/OmIsteDugme';
 
 interface Satir { u: Urun; satilan: number; hiz: number; yeter: number; oneri: number; neden: 'kritik' | 'bitti' | 'azaliyor'; mevsim: { ad: string; katsayi: number } | null }
 
@@ -80,6 +81,7 @@ export default function Alinacaklar() {
   return (
     <div>
       <SayfaBaslik baslik="Kritik Stok & Alınacaklar" alt={`Satış hızına göre kaç adet almanız gerektiği · hedef: ${hedefGun} günlük stok`}>
+        <OmIsteDugme urunler={liste.filter((x) => x.u.stok <= 0).map((x) => x.u)} />
         <button className="btn-ghost" disabled={!secili.length} onClick={yazdirListe}><Printer size={16} /> Yazdır</button>
         <button className="btn-ghost" disabled={!secili.length} onClick={csv}><Download size={16} /> Excel (CSV)</button>
         <a className={`btn-primary ${secili.length ? '' : 'pointer-events-none opacity-50'}`} target="_blank" rel="noreferrer" href={`https://wa.me/?text=${encodeURIComponent(secili.length ? metin() : '')}`}><MessageCircle size={16} /> WhatsApp</a>

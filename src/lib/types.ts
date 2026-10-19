@@ -64,8 +64,15 @@ export interface DB {
   kasa_akisi: KasaAkisi[]; hesap_bakiyeleri: HesapBakiye[]; vadesi_gecen: VadesiGecen[]; tahsilat_notlari: TahsilatNot[]; stok_aksiyon: StokAksiyon[];
   /** BizimHesap stok değişimlerinin ham hali (faturayla birleştirilmeden); kayıp-kaçak kontrolü için */
   stok_degisim?: Hareket[];
+  /** Otomarmara B4B'den ihtiyaç anında çekilen OEM / eşdeğer bilgisi */
+  otomarmara_veri?: OtomarmaraVeri[];
   /** iade belgeleri: tur 'alis' = tedarikçiye iade (stoktan çıkar), 'satis' = müşteriden iade (stoğa girer) */
   iadeler?: Hareket[];
+}
+
+export interface OtomarmaraVeri {
+  urun_id: ID; durum: 'istendi' | 'tamam' | 'bulunamadi' | 'hata'; istendi: string; guncelleme: string | null;
+  om_kod: string | null; om_ad: string | null; oemler: string[]; esdegerler: { kod: string; ad?: string | null }[]; hata: string | null;
 }
 
 export type CrudTable = 'urunler' | 'urun_kodlari' | 'kullanicilar' | 'hareketler' | 'tahsilat_notlari' | 'stok_aksiyon';
