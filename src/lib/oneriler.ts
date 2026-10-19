@@ -4,6 +4,7 @@ import { mevsim } from './analiz3';
 import { depoKisa, depoMuadil, muadilMetin, stoktakiMuadiller } from './muadil';
 import { gunu, para, sayi } from './format';
 import { GECIS_RE, abcSinifla, alinacakHesap, birimKar, gecerliHareketler, gelirTablosu, hareketTutar, hizmetMi, netAlis, netSatis, takipGunu, urunOzetleri, type Donem } from './analiz';
+import { stokluMu } from './analiz';
 import { aylikSeri, gecisCarisi, musteriAnalizi, nakitAkisi, oncekiDonem, onerilenFiyat, sonAlislar, sonSatislar, zamanAnalizi } from './analiz2';
 
 export type Alan = 'Fiyat & kâr' | 'Stok' | 'Satın alma' | 'Müşteri' | 'Nakit' | 'Gider' | 'Satış' | 'Veri';
@@ -122,7 +123,6 @@ export function onerileriCikar(db: DB): Oneri[] {
 
   const s30 = urunOzetleri(db, d30); const gun30 = takipGunu(db, d30);
   // işçilik/hizmet kalemleri stok tutulmaz; kategorisi olmayan kartlar da genelde hizmettir
-  const stokluMu = (u: Urun) => !!u.kategori && !/işçilik|iscilik|İŞÇİLİK|IŞÇİLİK|hizmet|HİZMET|revizyon|REVİZYON|prim\b|PRİMİ|montaj|MONTAJ|tamir|TAMİR|torna|TORNA|kaporta|KAPORTA|ücret|ÜCRET/i.test(u.ad);
   const bitmis = aktif.filter((u) => u.stok <= 0 && stokluMu(u)).map((u) => ({ u, x: s30.get(u.id), x90: ozetMap.get(u.id) }))
     .filter((r) => (r.x?.satisSayisi ?? 0) >= 2).map((r) => ({ ...r, aylikKar: (r.x!.kar / gun30) * 30 })).sort((x, y) => y.aylikKar - x.aylikKar);
   // muadili (etiketteki OEM kodlarına göre) stokta olanlar acil sipariş sayılmaz, ayrıca gösterilir

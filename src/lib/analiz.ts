@@ -69,12 +69,24 @@ export function gunlukSeri(db: DB, d: Donem, deger: (h: Hareket) => number, tur:
 }
 
 /** Dönemin takip edilen gün sayısı (takip başlangıcından önce veri yok) */
+const ilkSatisOnbellek = new WeakMap<object, string>();
+/** Verideki ilk satış günü (rapor başlangıcı daha erken görünse de satış verisi bu günden başlıyor) */
+export function ilkSatisGunu(db: DB) {
+  const v = ilkSatisOnbellek.get(db.hareketler); if (v !== undefined) return v || null;
+  let m = ''; for (const h of db.hareketler) if (h.tur === 'satis' && (!m || h.tarih < m)) m = h.tarih;
+  const g = m ? gunu(m) : ''; ilkSatisOnbellek.set(db.hareketler, g); return g || null;
+}
 export function takipGunu(db: DB, d: Donem) {
-  const ilk = db.bh_durum?.rapor_ilk ?? (db.bh_durum?.takip_baslangic ? gunu(db.bh_durum.takip_baslangic) : null);
+  const rapor = db.bh_durum?.rapor_ilk ?? (db.bh_durum?.takip_baslangic ? gunu(db.bh_durum.takip_baslangic) : null);
+  const ilkS = ilkSatisGunu(db);
+  const ilk = rapor && ilkS ? (rapor > ilkS ? rapor : ilkS) : rapor ?? ilkS;
   const bas = ilk ?? d.bas;
   const b = d.bas > bas ? d.bas : bas, s = d.bit < gunu() ? d.bit : gunu();
   return Math.max(1, Math.round((new Date(s + 'T12:00').getTime() - new Date(b + 'T12:00').getTime()) / 864e5) + 1);
 }
+
+/** Stokla takip edilen gerçek ürün mü (işçilik, hizmet, araç alım/satım ve kategorisiz kalemler değil) */
+export const stokluMu = (u: Urun) => !!u.kategori && !GECIS_RE.test(u.ad) && !/işçilik|iscilik|hizmet|revizyon|prim\b|primi|montaj|tamir|torna|kaporta|ücret|rektefiye|değişim|degisim/.test(u.ad.toLocaleLowerCase('tr'));
 
 export type AbcSinif = 'A' | 'B' | 'C';
 /** ABC: değeri büyükten küçüğe sırala; toplamın ilk %80'i A, sonraki %15'i B, kalanı C */
@@ -91,7 +103,9 @@ export function abcSinifla<T>(liste: T[], deger: (x: T) => number, aSinir = 80, 
 export function alinacakHesap(u: Urun, satilan: number, gunSayisi: number, hedefGun: number) {
   const hiz = satilan / Math.max(1, gunSayisi);
   const stok = Math.max(0, u.stok);
-  const hedef = Math.max(Math.ceil(hiz * hedefGun), u.kritik_stok > 0 ? Math.ceil(u.kritik_stok * 1.5) : 0);
+  // hedef sürede yarım adetten az satış bekleniyorsa (ör. yılda bir satılan motor) stok önerilmez
+  const beklenen = hiz * hedefGun;
+  const hedef = Math.max(beklenen >= 0.5 ? Math.ceil(beklenen) : 0, u.kritik_stok > 0 ? Math.ceil(u.kritik_stok * 1.5) : 0);
   const yeterGun = hiz > 0 ? stok / hiz : Infinity;
   return { hiz, hedef, alinacak: Math.max(0, hedef - stok), yeterGun };
 }

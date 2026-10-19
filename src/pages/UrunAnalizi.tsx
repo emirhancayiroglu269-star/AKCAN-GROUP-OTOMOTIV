@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { ArrowDown, ArrowUp, Download, Info } from 'lucide-react';
 import { useStore } from '../lib/store';
-import { abcSinifla, alinacakHesap, birimKar, takipGunu, urunOzetleri, type AbcSinif } from '../lib/analiz';
+import { abcSinifla, alinacakHesap, birimKar, ilkSatisGunu, stokluMu, takipGunu, urunOzetleri, type AbcSinif } from '../lib/analiz';
 import { ara, para, sayi, tarih } from '../lib/format';
 import type { Urun } from '../lib/types';
 import { DonemSecici, useDonem } from '../components/DonemSecici';
@@ -30,9 +30,11 @@ export default function UrunAnalizi() {
   const gun = takipGunu(db, d);
   const hedefGun = a.hedef_gun || 30;
 
+  const oz = useMemo(() => urunOzetleri(db, d), [db, d]);
+  // işçilik/hizmet, araç alım-satım ve kategorisiz kalemler stoklu ürün değil: ABC'ye ve "alınacak"a katılmaz
+  const disarida = useMemo(() => db.urunler.filter((u) => !stokluMu(u)).map((u) => oz.get(u.id)).filter((x) => x && x.ciro > 0).reduce((t, x) => ({ adet: t.adet + 1, ciro: t.ciro + x!.ciro }), { adet: 0, ciro: 0 }), [db.urunler, oz]);
   const satirlar = useMemo<Satir[]>(() => {
-    const oz = urunOzetleri(db, d);
-    const ham = db.urunler.filter((u) => u.aktif).map((u) => {
+    const ham = db.urunler.filter((u) => u.aktif && stokluMu(u)).map((u) => {
       const o = oz.get(u.id); const bk = birimKar(u, a);
       const al = alinacakHesap(u, o?.satilan ?? 0, gun, hedefGun);
       return { u, satilan: o?.satilan ?? 0, ciro: o?.ciro ?? 0, kar: o?.kar ?? 0, marj: bk.marj, birimKar: bk.kar, maliyetYok: bk.maliyetYok,
@@ -42,7 +44,7 @@ export default function UrunAnalizi() {
     const abc = abcSinifla(ham, deger);
     ham.forEach((x) => (x.abc = abc.get(x)!));
     return ham;
-  }, [db, d, a, gun, hedefGun, temel]);
+  }, [db, oz, a, gun, hedefGun, temel]);
 
   const ozet = useMemo(() => {
     const deger = (x: Satir) => (temel === 'ciro' ? x.ciro : temel === 'kar' ? x.kar : temel === 'adet' ? x.satilan : x.stokDeger);
@@ -78,7 +80,7 @@ export default function UrunAnalizi() {
 
   return (
     <div>
-      <SayfaBaslik baslik="Ürün Analizi (ABC)" alt={`Hangi ürün kaç adet sattı, ne kadar kâr bıraktı, stok kaç gün yeter · ${gun} günlük veri`}>
+      <SayfaBaslik baslik="Ürün Analizi (ABC)" alt={`Hangi ürün kaç adet sattı, ne kadar kâr bıraktı, stok kaç gün yeter · ${gun} günlük satış verisi${ilkSatisGunu(db) && ilkSatisGunu(db)! > d.bas ? ` (${tarih(ilkSatisGunu(db)! + 'T12:00')} tarihinden beri)` : ''}`}>
         <button className="btn-ghost" onClick={csv}><Download size={16} /> Excel (CSV)</button>
       </SayfaBaslik>
       <div className="mb-3"><DonemSecici d={d} sec={setD} /></div>
@@ -99,7 +101,7 @@ export default function UrunAnalizi() {
       </div>
       <div className="mb-3 flex items-start gap-2 rounded-xl bg-slate-100 p-3 text-xs text-slate-600 dark:bg-slate-800 dark:text-slate-300">
         <Info size={15} className="mt-0.5 shrink-0" />
-        <span><b>A</b>: toplamın ilk %80'ini getiren az sayıda ürün (asla stoksuz kalmasın) · <b>B</b>: sonraki %15 · <b>C</b>: kalan %5 (az stok yeter). <b>Alınacak</b> = günlük satış × {hedefGun} gün − mevcut stok (hedef gün Ayarlar'dan değişir). Marj ve birim kâr güncel liste fiyatlarıyla, KDV hariç.</span>
+        <span><b>A</b>: toplamın ilk %80'ini getiren az sayıda ürün (asla stoksuz kalmasın) · <b>B</b>: sonraki %15 · <b>C</b>: kalan %5 (az stok yeter). <b>Alınacak</b> = günlük satış × {hedefGun} gün − mevcut stok (hedef gün Ayarlar'dan değişir). Hedef sürede yarım adetten az satış beklenen ürünlere (ör. yılda bir satılan motor) alım önerilmez. Marj ve birim kâr güncel liste fiyatlarıyla, KDV hariç.{disarida.adet > 0 && <> İşçilik, hizmet ve araç alım/satım gibi {disarida.adet} stoksuz kalem ({para(disarida.ciro)}) bu analize katılmadı; bunlar Kâr/Zarar'da hizmet geliri olarak görünür.</>}</span>
       </div>
 
       <div className="card">
