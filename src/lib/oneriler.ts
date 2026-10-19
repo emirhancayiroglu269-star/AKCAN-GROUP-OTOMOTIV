@@ -1,6 +1,6 @@
 import type { DB, ID, Urun } from './types';
 import type { Sayfa } from '../App';
-import { muadilMetin, stoktakiMuadiller } from './muadil';
+import { depoKisa, depoMuadil, muadilMetin, stoktakiMuadiller } from './muadil';
 import { gunu, para, sayi } from './format';
 import { GECIS_RE, abcSinifla, alinacakHesap, birimKar, gecerliHareketler, gelirTablosu, hareketTutar, hizmetMi, netAlis, netSatis, takipGunu, urunOzetleri, type Donem } from './analiz';
 import { aylikSeri, musteriAnalizi, nakitAkisi, oncekiDonem, onerilenFiyat, sonAlislar, sonSatislar, zamanAnalizi } from './analiz2';
@@ -129,8 +129,14 @@ export function onerileriCikar(db: DB): Oneri[] {
       baslik: acil.length ? `Son 30 günde düzenli satılan ${acil.length} ürün stokta kalmadı` : `Biten ${muadilli} ürünün muadili stokta var`,
       aciklama: `${acil.length ? `Müşteri gelip bulamazsa satış kaçar ve müşteri başka dükkâna alışır. Muadili de olmayan bu ürünlerin son 30 gündeki kârı ayda yaklaşık ${para(kayip)}.` : ''}${muadilli ? ` ${muadilli} ürünün BizimHesap etiketindeki OEM kodlarına göre muadili depoda var; müşteriye muadili verilebilir, siparişte acele etmeyin.` : ''}`.trim(),
       adimlar: [...(acil.length ? ['Muadili olmayanları bugün sipariş edin'] : []), ...(muadilli ? ['Muadili stokta olanlarda satışta muadili önerin'] : []), 'Sık bitenlere Ürünler sayfasından kritik stok seviyesi girin'], sayfa: 'alinacaklar',
-      tablo: { basliklar: ['Ürün', 'Stok', '30 günde satılan', '30 günde kâr', 'Muadili stokta'], sag: [1, 2, 3],
-        satirlar: bitmisM.slice(0, 20).map((r) => [urunAd(r.u), sayi(r.u.stok), sayi(r.x!.satilan), para(r.x!.kar), r.muadil.length ? muadilMetin(r.muadil.slice(0, 3)) : '— sipariş gerekli']) } });
+      tablo: { basliklar: ['Ürün', '30 günde satılan', '30 günde kâr', 'Depo durumu (muadil / sipariş)'], sag: [1, 2],
+        satirlar: bitmisM.slice(0, 20).map((r) => {
+          // her depo için: son 30 günde o depodan kaç satıldı, o depoda stokta muadil var mı
+          const sat = new Map<string, number>(); for (const h of gecerliHareketler(db, d30)) if (h.tur === 'satis' && h.urun_id === r.u.id && h.depo) sat.set(depoKisa(h.depo).toLocaleUpperCase('tr'), (sat.get(depoKisa(h.depo).toLocaleUpperCase('tr')) ?? 0) + h.miktar);
+          const durum = depoMuadil(db, r.u).map(({ depo, muadil }) => { const ad = depoKisa(depo.ad); const n = sat.get(ad.toLocaleUpperCase('tr')) ?? 0;
+            return `${ad}${n ? ` (${sayi(n)} satış)` : ''}: ${muadil.length ? 'muadil ' + muadil.slice(0, 2).map((x) => `${x.v.kod || x.v.ad.slice(0, 18)} (${sayi(x.adet)})`).join(', ') : 'sipariş gerekli'}`; });
+          return [urunAd(r.u), sayi(r.x!.satilan), para(r.x!.kar), durum.join(' · ') || (r.muadil.length ? muadilMetin(r.muadil.slice(0, 3)) : '— sipariş gerekli')];
+        }) } });
   }
 
   const azalan = aktif.filter((u) => u.stok > 0 && sinif.get(u.id) !== 'C').map((u) => ({ u, h: alinacakHesap(u, ozetMap.get(u.id)?.satilan ?? 0, gunSay, a.hedef_gun ?? 30) }))
