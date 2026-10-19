@@ -15,7 +15,7 @@ export default function NakitAkisi() {
   const n = useMemo(() => nakitAkisi(db, d), [db, d]);
   const hesap = db.hesap_bakiyeleri;
   const kartMi = (ad: string) => /KRED[İI]\s*KART|KREDİ KARTI|Kredi Kart/i.test(ad);
-  const ortakMi = (ad: string) => /ORTA[ĞG]I|ORTAK/i.test(ad);
+  const ortakMi = (ad: string) => /ORTA[ĞG]I|ORTAK/.test(ad.toLocaleUpperCase('tr'));
   const nakit = hesap.filter((h) => !kartMi(h.ad) && !ortakMi(h.ad)).reduce((t, h) => t + h.bakiye, 0);
   const kart = hesap.filter((h) => kartMi(h.ad)).reduce((t, h) => t + h.bakiye, 0);
   const bugun = gunu();
