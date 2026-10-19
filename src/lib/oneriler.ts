@@ -219,9 +219,9 @@ export function onerileriCikar(db: DB): Oneri[] {
   const ilk10 = [...mus].sort((x, y) => y.ciro - x.ciro).slice(0, 10); const ilk10Pay = topCiro > 0 ? ilk10.reduce((t, m) => t + m.ciro, 0) / topCiro * 100 : 0;
   if (ilk10Pay > 40 && mus.length > 20) o.push({ id: 'musteri-yogunlasma', alan: 'Müşteri', oncelik: 3,
     baslik: `Cari satışların ${yuzde(ilk10Pay)}'si sadece 10 müşteriden geliyor`,
-    aciklama: `Bu müşterilerden biri giderse ciro ciddi düşer. ${sadik.length} sadık müşteriniz var.`,
+    aciklama: `Bu müşterilerden biri giderse ciro ciddi düşer. ${sadik.length} sadık müşteriniz var. Tek fişlik büyük işler (kaporta, motor) düzenli müşteri değildir; "Not" sütununa bakın.`,
     adimlar: ['Bu 10 müşteriyle ilişkiyi koruyun: öncelikli servis, özel fiyat', 'Yeni usta/filo müşterisi kazanmaya çalışın (çevre servisler, taksi durakları, filo şirketleri)'], sayfa: 'musteri',
-    tablo: { basliklar: ['Müşteri', 'Satış', 'Pay', 'Son alış'], sag: [1, 2], satirlar: ilk10.map((m) => [m.ad, para(m.ciro), yuzde(m.ciro / topCiro * 100), `${m.sonGecen} gün önce`]) } });
+    tablo: { basliklar: ['Müşteri', 'Satış', 'Pay', 'Fiş', 'Son alış', 'Not'], sag: [1, 2, 3], satirlar: ilk10.map((m) => [m.ad, para(m.ciro), yuzde(m.ciro / topCiro * 100), sayi(m.belge), `${m.sonGecen} gün önce`, m.belge <= 1 ? 'Tek seferlik iş' : m.sonGecen > 90 ? 'Uzun süredir gelmiyor' : m.belge >= 5 ? 'Düzenli' : '']) } });
 
   // ---------- NAKİT ----------
   const vg = db.vadesi_gecen.filter((v) => v.tutar > 0).sort((x, y) => y.tutar - x.tutar);
