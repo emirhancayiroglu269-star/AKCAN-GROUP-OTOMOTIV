@@ -55,8 +55,11 @@ export function musteriAnalizi(db: DB, d: Donem): MusteriOzet[] {
     const gunler = [...x.gunler].sort();
     const ortAralik = gunler.length > 1 ? gunFark(gunler[gunler.length - 1], gunler[0]) / (gunler.length - 1) : null;
     const sonGecen = gunFark(bugun, x.son);
+    // tek iş: tek gün ya da 14 gün içinde iki gün (aynı aracın tamiri için iki fatura gibi); kaybedilen/riskte için en az 3 farklı gün gerekir
+    const tekIs = gunler.length === 1 || (gunler.length === 2 && gunFark(gunler[1], gunler[0]) <= 14);
     const seg: Segment = PERAKENDE_RE.test(x.ad) ? 'Perakende'
-      : gunler.length === 1 ? (sonGecen <= 30 ? 'Yeni' : 'Tek seferlik')
+      : tekIs ? (sonGecen <= 30 ? 'Yeni' : 'Tek seferlik')
+      : gunler.length === 2 ? (sonGecen <= 90 ? 'Düzenli' : 'Tek seferlik')
       : sonGecen > 90 ? 'Kaybedilen'
       : ortAralik !== null && sonGecen > Math.max(45, ortAralik * 2.5) ? 'Riskte'
       : gunler.length >= 6 ? 'Sadık' : gunFark(bugun, x.ilk) <= 30 ? 'Yeni' : 'Düzenli';

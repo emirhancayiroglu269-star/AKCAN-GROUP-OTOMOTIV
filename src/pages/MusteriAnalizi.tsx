@@ -11,9 +11,9 @@ const SEG: { s: Segment; renk: string; aciklama: string }[] = [
   { s: 'Sadık', renk: 'bg-emerald-100 text-emerald-800', aciklama: '6+ farklı gün alışveriş, düzenli geliyor' },
   { s: 'Düzenli', renk: 'bg-sky-100 text-sky-800', aciklama: 'Tekrar gelen, ritmi bozulmamış' },
   { s: 'Yeni', renk: 'bg-violet-100 text-violet-800', aciklama: 'İlk alışı son 30 gün' },
-  { s: 'Riskte', renk: 'bg-amber-100 text-amber-800', aciklama: 'Her zamanki aralığının 2,5 katıdır gelmiyor' },
-  { s: 'Kaybedilen', renk: 'bg-red-100 text-red-700', aciklama: '90 günden uzun süredir gelmiyor' },
-  { s: 'Tek seferlik', renk: 'bg-slate-100 text-slate-600', aciklama: 'Bir kez gelip dönmedi' },
+  { s: 'Riskte', renk: 'bg-amber-100 text-amber-800', aciklama: 'En az 3 farklı gün gelmiş; her zamanki aralığının 2,5 katıdır gelmiyor' },
+  { s: 'Kaybedilen', renk: 'bg-red-100 text-red-700', aciklama: 'En az 3 farklı gün gelmiş; 90 günden uzun süredir gelmiyor' },
+  { s: 'Tek seferlik', renk: 'bg-slate-100 text-slate-600', aciklama: 'Bir kez (ya da tek iş için birkaç gün arayla iki kez) gelip dönmedi' },
 ];
 type Sutun = 'ad' | 'ciro' | 'kar' | 'belge' | 'ortSepet' | 'son' | 'sonGecen';
 
