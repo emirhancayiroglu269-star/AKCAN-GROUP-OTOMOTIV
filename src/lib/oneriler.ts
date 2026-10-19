@@ -3,7 +3,7 @@ import type { Sayfa } from '../App';
 import { depoKisa, depoMuadil, muadilMetin, stoktakiMuadiller } from './muadil';
 import { gunu, para, sayi } from './format';
 import { GECIS_RE, abcSinifla, alinacakHesap, birimKar, gecerliHareketler, gelirTablosu, hareketTutar, hizmetMi, netAlis, netSatis, takipGunu, urunOzetleri, type Donem } from './analiz';
-import { aylikSeri, musteriAnalizi, nakitAkisi, oncekiDonem, onerilenFiyat, sonAlislar, sonSatislar, zamanAnalizi } from './analiz2';
+import { aylikSeri, gecisCarisi, musteriAnalizi, nakitAkisi, oncekiDonem, onerilenFiyat, sonAlislar, sonSatislar, zamanAnalizi } from './analiz2';
 
 export type Alan = 'Fiyat & kâr' | 'Stok' | 'Satın alma' | 'Müşteri' | 'Nakit' | 'Gider' | 'Satış' | 'Veri';
 export interface Oneri {
@@ -226,7 +226,9 @@ export function onerileriCikar(db: DB): Oneri[] {
     tablo: { basliklar: ['Müşteri', 'Satış', 'Pay', 'Fiş', 'Son alış', 'Not'], sag: [1, 2, 3], satirlar: ilk10.map((m) => [m.ad, para(m.ciro), yuzde(m.ciro / topCiro * 100), sayi(m.belge), `${m.sonGecen} gün önce`, m.belge <= 1 ? 'Tek seferlik iş' : m.sonGecen > 90 ? 'Uzun süredir gelmiyor' : m.belge >= 5 ? 'Düzenli' : '']) } });
 
   // ---------- NAKİT ----------
-  const vg = db.vadesi_gecen.filter((v) => v.tutar > 0).sort((x, y) => y.tutar - x.tutar);
+  // araç alım/satım faturası olan cariler (ör. L200) tahsilat analizine katılmaz: işletmenin normal veresiye alacağı değil
+  const gecisAlacak = db.cariler.filter((c) => c.tur === 'musteri' && c.bakiye > 0 && (gecisCarisi(db, c.bh_id) || gecisCarisi(db, c.ad)));
+  const vg = db.vadesi_gecen.filter((v) => v.tutar > 0 && !gecisCarisi(db, v.cari)).sort((x, y) => y.tutar - x.tutar);
   const vgToplam = vg.reduce((t, v) => t + v.tutar, 0);
   const aylar = aylikSeri(db); const buAy = gunu().slice(0, 7);
   const tamAylar = aylar.filter((x) => x.ay < buAy && x.ciro > 0).slice(-3);
@@ -237,14 +239,14 @@ export function onerileriCikar(db: DB): Oneri[] {
     adimlar: ['En büyük borçluları bu hafta arayın', '60 günü geçenlere ödeme planı yapın; yeni veresiye satışı durdurun', 'Güncel listeyi almak için BizimHesap\'a giriş yapıp "faturaları güncelle" deyin'], sayfa: 'cariler',
     tablo: { basliklar: ['Müşteri', 'Tutar', 'Gecikme', 'Telefon'], sag: [1, 2], satirlar: vg.slice(0, 15).map((v) => [v.cari, para(v.tutar), v.gun != null ? `${v.gun} gün` : '', v.telefon ?? '']) } });
 
-  const alacak = db.cariler.filter((c) => c.tur === 'musteri' && c.bakiye > 0).reduce((t, c) => t + c.bakiye, 0);
+  const alacak = db.cariler.filter((c) => c.tur === 'musteri' && c.bakiye > 0 && !gecisAlacak.includes(c)).reduce((t, c) => t + c.bakiye, 0);
   const borc = -db.cariler.filter((c) => c.tur === 'tedarikci' && c.bakiye < 0).reduce((t, c) => t + c.bakiye, 0);
   const gunlukCiro = ortCiro / 30;
   if (alacak > 0 && gunlukCiro > 0) {
     const dso = alacak / gunlukCiro;
     if (dso > 20) o.push({ id: 'tahsilat-suresi', alan: 'Nakit', oncelik: dso > 45 ? 1 : 2, etki: Math.max(0, alacak - gunlukCiro * 15), etkiTur: 'nakit',
       baslik: `Müşterilerdeki alacak ${Math.round(dso)} günlük satışa eşit`,
-      aciklama: `Müşterilerin size borcu ${para(alacak)}, sizin tedarikçilere borcunuz ${para(borc)}. Satışın parası ortalama ${Math.round(dso)} günde tahsil ediliyor. Bu süre 15 güne inse yaklaşık ${para(Math.max(0, alacak - gunlukCiro * 15))} nakde döner.`,
+      aciklama: `Müşterilerin size borcu ${para(alacak)}, sizin tedarikçilere borcunuz ${para(borc)}. Satışın parası ortalama ${Math.round(dso)} günde tahsil ediliyor. Bu süre 15 güne inse yaklaşık ${para(Math.max(0, alacak - gunlukCiro * 15))} nakde döner.${gecisAlacak.length ? ` Araç alım/satım faturası olan ${gecisAlacak.map((c) => c.ad).join(', ')} carisi (${para(gecisAlacak.reduce((t, c) => t + c.bakiye, 0))}) bu hesaba katılmadı.` : ''}`,
       adimlar: ['Cari müşterilere vade sınırı koyun (örn. 30 gün) ve aşanlara yeni veresiye vermeyin', 'Peşin/kartla ödemeye küçük indirim düşünün', 'Haftalık tahsilat günü belirleyin'], sayfa: 'cariler' });
   }
 

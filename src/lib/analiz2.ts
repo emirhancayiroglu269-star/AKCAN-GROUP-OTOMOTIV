@@ -18,13 +18,25 @@ export interface MusteriOzet {
   guid: string; ad: string; telefon?: string | null; bakiye?: number; ciro: number; net: number; kar: number; belge: number; ilk: string; son: string; /** farklı alış günü sayısı (tüm zamanlar) */ gunSay?: number;
   ortSepet: number; ortAralik: number | null; sonGecen: number; segment: Segment; urunCesit: number;
 }
+/** Araç alım/satım satırı içeren satış faturaları (belge guid) ve bu faturaların carileri */
+const gecisOnbellek = new WeakMap<object, { belge: Set<string>; cari: Set<string> }>();
+function gecisHesapla(db: DB) {
+  const v = gecisOnbellek.get(db.hareketler); if (v) return v;
+  const urun = new Map(db.urunler.map((u) => [u.id, u])); const belge = new Set<string>(); const cari = new Set<string>();
+  for (const h of db.hareketler) if (h.tur === 'satis' && h.belge_guid && GECIS_RE.test(urun.get(h.urun_id)?.ad ?? h.urun_ad ?? '')) { belge.add(h.belge_guid); if (h.cari_guid) cari.add(h.cari_guid); if (h.cari_ad) cari.add(h.cari_ad.trim().toLocaleUpperCase('tr')); }
+  const r = { belge, cari }; gecisOnbellek.set(db.hareketler, r); return r;
+}
+export const gecisBelgeleri = (db: DB) => gecisHesapla(db).belge;
+/** cari guid ya da adı geçiş faturası olan bir cariye mi ait */
+export const gecisCarisi = (db: DB, guidVeyaAd?: string | null) => !!guidVeyaAd && (gecisHesapla(db).cari.has(guidVeyaAd) || gecisHesapla(db).cari.has(guidVeyaAd.trim().toLocaleUpperCase('tr')));
+
 export function musteriAnalizi(db: DB, d: Donem): MusteriOzet[] {
   const urun = new Map(db.urunler.map((u) => [u.id, u]));
   const cari = new Map(db.cariler.filter((c) => c.tur === 'musteri').map((c) => [c.bh_id, c]));
   const m = new Map<string, { ad: string; ciro: number; net: number; kar: number; belgeler: Set<string>; gunler: Set<string>; urunler: Set<string>; ilk: string; son: string }>();
   // tüm zamanlar: ilk/son alış ve aralık için; dönem içi: tutarlar
   // araç alım/satım gibi geçiş faturaları (ve o faturadaki maliyetine aktarılan parçalar) müşteri cirosuna sayılmaz
-  const gecisBelge = new Set(db.hareketler.filter((h) => h.tur === 'satis' && h.belge_guid && GECIS_RE.test(urun.get(h.urun_id)?.ad ?? h.urun_ad ?? '')).map((h) => h.belge_guid!));
+  const gecisBelge = gecisBelgeleri(db);
   const tum = db.hareketler.filter((h) => h.tur === 'satis' && h.cari_guid && !h.yok_say && !(h.belge_guid && gecisBelge.has(h.belge_guid)));
   for (const h of tum) {
     const g = gunu(h.tarih);
@@ -77,8 +89,9 @@ export function aylikSeri(db: DB) {
   const m = new Map<string, { ciro: number; kar: number; masraf: number; alis: number }>();
   const urun = new Map(db.urunler.map((u) => [u.id, u]));
   const al = (k: string) => { let x = m.get(k); if (!x) { x = { ciro: 0, kar: 0, masraf: 0, alis: 0 }; m.set(k, x); } return x; };
+  const gecis = gecisBelgeleri(db);
   for (const h of db.hareketler) {
-    if (h.yok_say) continue;
+    if (h.yok_say || (h.belge_guid && gecis.has(h.belge_guid))) continue;
     const k = gunu(h.tarih).slice(0, 7);
     if (h.tur === 'satis') { const s = satirKar(h, db, urun); al(k).ciro += s.ciro; al(k).kar += s.kar; }
     else al(k).alis += h.miktar * h.alis_fiyati;
