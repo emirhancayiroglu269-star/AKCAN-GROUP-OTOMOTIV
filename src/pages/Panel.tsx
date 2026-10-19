@@ -3,7 +3,7 @@ import { AlertTriangle, ArrowDownRight, ArrowRight, ArrowUpRight, Boxes, Calenda
 import type { Sayfa } from '../App';
 import { useStore } from '../lib/store';
 import { gunu, para, sayi, tarih, tarihSaat } from '../lib/format';
-import { birimKar, gelirTablosu, gunlukSeri, hareketTutar, toplamlar, urunOzetleri, type Donem } from '../lib/analiz';
+import { birimKar, gelirTablosu, gunlukSeri, hareketTutar, toplamlar, urunOzetleri, type Donem, stokluMu } from '../lib/analiz';
 import { donemOzet, satirKar } from '../lib/analiz2';
 import { aySonuTahmini, onerileriCikar } from '../lib/oneriler';
 import type { DB } from '../lib/types';
@@ -44,7 +44,7 @@ export default function Panel({ git }: { git: (s: Sayfa) => void }) {
         if (u.alis_fiyati > 0) { maliyet += u.stok * u.alis_fiyati; kar += u.stok * birimKar(u, a).kar; } else maliyetsiz++;
         const k = u.kategori || 'Kategorisiz'; kat.set(k, (kat.get(k) ?? 0) + u.stok * (u.alis_fiyati || 0));
       }
-      if (u.stok === 0) biten++;
+      if (u.stok <= 0 && stokluMu(u)) biten++;
       if (u.stok < 0) eksi++;
       if (u.kritik_stok > 0 && u.stok <= u.kritik_stok) kritik++;
     }

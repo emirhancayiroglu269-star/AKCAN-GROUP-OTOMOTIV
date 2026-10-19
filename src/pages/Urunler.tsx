@@ -7,7 +7,7 @@ import type { Urun } from '../lib/types';
 import { Alan, Bos, Kpi, Modal, SayfaBaslik } from '../components/ui';
 import { aktifDepolar, stokHaritasi } from '../lib/depo';
 import { kodHaritasi, urunAra } from '../lib/kod';
-import { birimKar, hareketTutar } from '../lib/analiz';
+import { birimKar, hareketTutar, stokluMu } from '../lib/analiz';
 import { EtiketModal, type EtiketKalem } from '../components/StokAraclari';
 import { Plus, X } from 'lucide-react';
 import { UrunLink } from '../components/DetayKart';
@@ -30,7 +30,7 @@ export default function Urunler() {
   const kodlar = useMemo(() => kodHaritasi(db), [db]);
   const liste = useMemo(() => {
     const aday = q.trim() ? urunAra(db, q, kodlar, { sadeceAktif: false }).map((x) => x.urun) : [...db.urunler].sort((a, b) => a.ad.localeCompare(b.ad, 'tr'));
-    return aday.filter((u) => (filtre === 'pasif' ? !u.aktif : u.aktif) && (filtre !== 'stoklu' || u.stok > 0) && (filtre !== 'biten' || u.stok <= 0) &&
+    return aday.filter((u) => (filtre === 'pasif' ? !u.aktif : u.aktif) && (filtre !== 'stoklu' || u.stok > 0) && (filtre !== 'biten' || (u.stok <= 0 && stokluMu(u))) &&
       (filtre !== 'kritik' || (u.kritik_stok > 0 && u.stok <= u.kritik_stok)) && (!kat || u.kategori === kat));
   }, [db, q, kodlar, filtre, kat]);
 
@@ -54,8 +54,8 @@ export default function Urunler() {
       <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
         <button className="text-left" onClick={() => setFiltre('stoklu')}><Kpi etiket="Stoktaki ürün çeşidi" deger={sayi(stoklu.length)} alt={`${sayi(stoklu.reduce((t, u) => t + u.stok, 0))} adet`} /></button>
         <Kpi etiket="Stoğun satış değeri" deger={para(stoklu.reduce((t, u) => t + u.stok * u.satis_fiyati, 0))} renk="blue" />
-        {maliyetGor ? <Kpi etiket="Stok maliyeti" deger={para(stoklu.reduce((t, u) => t + u.stok * u.alis_fiyati, 0))} renk="green" /> : <Kpi etiket="Kategori" deger={sayi(kategoriler.length)} />}
-        <button className="text-left" onClick={() => setFiltre('biten')}><Kpi etiket="Stoğu biten" deger={sayi(aktifler.filter((u) => u.stok <= 0).length)} renk="amber" alt="Listelemek için tıklayın" /></button>
+        {maliyetGor ? <Kpi etiket={`Stok maliyeti (${db.ayarlar.alis_kdv_haric ? 'KDV hariç' : 'KDV dahil'})`} deger={para(stoklu.reduce((t, u) => t + u.stok * u.alis_fiyati, 0))} renk="green" /> : <Kpi etiket="Kategori" deger={sayi(kategoriler.length)} />}
+        <button className="text-left" onClick={() => setFiltre('biten')}><Kpi etiket="Stoğu biten" deger={sayi(aktifler.filter((u) => u.stok <= 0 && stokluMu(u)).length)} renk="amber" alt="İşçilik/hizmet hariç · listelemek için tıklayın" /></button>
       </div>
 
       <div className="card">
@@ -129,7 +129,7 @@ function UrunDuzen({ u, kapat }: { u: Urun; kapat: () => void }) {
 
 function UrunGecmis({ u, kapat }: { u: Urun; kapat: () => void }) {
   const { db, izin } = useStore();
-  const h = db.hareketler.filter((x) => x.urun_id === u.id);
+  const h = db.hareketler.filter((x) => x.urun_id === u.id).sort((p, r) => r.tarih.localeCompare(p.tarih));
   const f = db.fiyat_gecmisi.filter((x) => x.urun_id === u.id);
   const maliyetGor = izin('maliyet');
   return (
@@ -139,7 +139,7 @@ function UrunGecmis({ u, kapat }: { u: Urun; kapat: () => void }) {
         <div className="max-h-72 overflow-auto"><table className="tbl"><thead><tr><th>Tarih</th><th>Tür</th><th className="text-right">Miktar</th><th className="text-right">Stok</th><th className="text-right">Tutar</th></tr></thead>
           <tbody>{h.map((x) => <tr key={x.id} className={x.yok_say ? 'opacity-40' : ''}><td>{tarihSaat(x.tarih)}</td><td>{x.tur === 'satis' ? 'Satış' : 'Alış'}{x.yok_say ? ' (hesap dışı)' : ''}</td>
             <td className="text-right">{x.tur === 'satis' ? '−' : '+'}{sayi(x.miktar)}</td><td className="text-right text-slate-500">{x.onceki != null ? `${sayi(x.onceki)} → ${sayi(x.sonraki ?? 0)}` : ''}</td>
-            <td className="text-right">{para(x.tur === 'satis' ? hareketTutar(x, db.ayarlar).ciro : x.miktar * x.alis_fiyati)}</td></tr>)}</tbody></table></div>
+            <td className="text-right">{x.tur === 'satis' ? para(hareketTutar(x, db.ayarlar).ciro) : maliyetGor ? para(x.miktar * x.alis_fiyati) : ''}</td></tr>)}</tbody></table></div>
       )}
       {maliyetGor && <>
         <h4 className="mb-2 mt-5 text-sm font-semibold">Fiyat değişimleri</h4>
