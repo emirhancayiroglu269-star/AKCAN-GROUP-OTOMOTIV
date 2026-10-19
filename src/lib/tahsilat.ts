@@ -1,14 +1,17 @@
 import type { DB, StokAksiyonTur, TahsilatNot, Urun } from './types';
 import { gunu } from './format';
 import { netAlis } from './analiz';
-import { sonSatislar } from './analiz2';
+import { gecisCarisi, sonSatislar } from './analiz2';
 
 const buyuk = (s?: string | null) => (s ?? '').toLocaleUpperCase('tr').replace(/\s+/g, ' ').trim();
 const gunFark = (a: string, b: string) => Math.round((new Date(a + 'T12:00').getTime() - new Date(b + 'T12:00').getTime()) / 864e5);
 const gunOnce = (n: number) => gunu(new Date(Date.now() - n * 864e5));
 /** Bu haftanın pazartesisi */
 export const haftaBasi = () => { const d = new Date(); const g = (d.getDay() + 6) % 7; d.setDate(d.getDate() - g); return gunu(d); };
-const anaAd = (s: string) => buyuk(s.split('/')[0]);
+// cari adının ilk dolu parçası (ad yoksa plaka): "/ 34 EP 3064 / MEGANE" -> "34 EP 3064"
+const anaAd = (s: string) => buyuk(s.replace(/…$/, '').split('/').map((x) => x.trim()).find((x) => x.length > 0) ?? '');
+// BizimHesap raporu uzun adları "…" ile kısaltıyor; kısaltılmışsa başından eşleştir
+const kisaltma = (s: string) => /…$/.test(s.trim()) ? buyuk(s.trim().slice(0, -1)) : null;
 
 // ======================= TAHSİLAT =======================
 export type TahsilatDurum = 'soz_gecti' | 'soz_bugun' | 'aranacak' | 'soz_bekleniyor' | 'yeni_arandi';
@@ -19,14 +22,16 @@ export interface TahsilatSatir {
 }
 export function tahsilatListesi(db: DB): TahsilatSatir[] {
   const bugun = gunu();
-  const cari = new Map(db.cariler.filter((c) => c.tur === 'musteri').map((c) => [buyuk(c.ad), c]));
+  const musteri = db.cariler.filter((c) => c.tur === 'musteri');
+  const cari = new Map(musteri.map((c) => [buyuk(c.ad), c]));
+  const cariBul = (ad: string) => { const k = kisaltma(ad); if (!k) return cari.get(buyuk(ad)); const l = musteri.filter((c) => buyuk(c.ad).startsWith(k)); return l.length === 1 ? l[0] : undefined; };
   const notlar = new Map<string, TahsilatNot[]>();
   for (const n of db.tahsilat_notlari) { const k = buyuk(n.cari); notlar.set(k, [...(notlar.get(k) ?? []), n]); }
   const tah = db.kasa_akisi.filter((k) => k.giris > 0 && k.tip === 'Tahsilat' && k.karsi && !/PERAKENDE/i.test(k.karsi));
   const sinir14 = gunOnce(13), sinir90 = gunOnce(89);
-  return db.vadesi_gecen.filter((v) => v.tutar > 0).map((v) => {
-    const k = buyuk(v.cari); const ana = anaAd(v.cari); const c = cari.get(k);
-    const nl = [...(notlar.get(k) ?? [])].sort((a, b) => (b.olusturma ?? '').localeCompare(a.olusturma ?? ''));
+  return db.vadesi_gecen.filter((v) => v.tutar > 0 && !tahsilatDisi(db, v.cari)).map((v) => {
+    const c = cariBul(v.cari); const k = buyuk(c?.ad ?? v.cari); const ana = anaAd(v.cari);
+    const nl = [...(notlar.get(k) ?? []), ...(c && buyuk(v.cari) !== k ? notlar.get(buyuk(v.cari)) ?? [] : [])].sort((a, b) => (b.olusturma ?? '').localeCompare(a.olusturma ?? ''));
     const acikSoz = nl.find((n) => n.tur === 'soz' && (n.durum ?? 'acik') === 'acik') ?? null;
     const sonTemas = nl.find((n) => n.tur === 'arama' || n.tur === 'mesaj' || n.tur === 'soz')?.olusturma ?? null;
     const t = tah.filter((x) => ana.length > 3 && buyuk(x.karsi).includes(ana)).sort((a, b) => b.tarih.localeCompare(a.tarih));
@@ -40,6 +45,9 @@ export function tahsilatListesi(db: DB): TahsilatSatir[] {
       sonTahsilat: t[0] ? { tarih: t[0].tarih, tutar: t[0].giris } : null, son90Tahsilat: t.filter((x) => x.tarih >= sinir90).reduce((s, x) => s + x.giris, 0), son14Satis, durum, puan, tutulmayanSoz };
   }).sort((a, b) => b.puan - a.puan);
 }
+/** Araç alım/satım (geçiş) carileri tahsilat listesine girmez: bu bir proje hesabı, müşteri borcu değil */
+export const tahsilatDisi = (db: DB, ad: string) => gecisCarisi(db, ad);
+export const tahsilatDisiListe = (db: DB) => db.vadesi_gecen.filter((v) => v.tutar > 0 && tahsilatDisi(db, v.cari));
 /** Bu haftaki cari tahsilatlar (kasa/banka "Tahsilat" hareketleri, perakende hariç) */
 export function haftalikTahsilat(db: DB) {
   const bas = haftaBasi();

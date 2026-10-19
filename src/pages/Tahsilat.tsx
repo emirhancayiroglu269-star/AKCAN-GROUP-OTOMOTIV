@@ -3,7 +3,7 @@ import { AlertTriangle, CalendarCheck, Check, ChevronDown, HandCoins, Info, Mess
 import { useStore } from '../lib/store';
 import { backend } from '../lib/backend';
 import { gunu, para, parse, tarih, tarihSaat, telLink } from '../lib/format';
-import { haftalikTahsilat, MESAJLAR, tahsilatListesi, type TahsilatDurum, type TahsilatSatir } from '../lib/tahsilat';
+import { haftalikTahsilat, MESAJLAR, tahsilatDisiListe, tahsilatListesi, type TahsilatDurum, type TahsilatSatir } from '../lib/tahsilat';
 import type { TahsilatNot } from '../lib/types';
 import { MusteriLink } from '../components/DetayKart';
 import { Alan, Bos, Kpi, Modal, SayfaBaslik } from '../components/ui';
@@ -22,6 +22,7 @@ export default function Tahsilat() {
   const { db, personel, calistir } = useStore();
   const liste = useMemo(() => tahsilatListesi(db), [db]);
   const hafta = useMemo(() => haftalikTahsilat(db), [db]);
+  const disi = useMemo(() => tahsilatDisiListe(db), [db]);
   const [filtre, setFiltre] = useState<'bugun' | 'hepsi'>('bugun');
   const [acik, setAcik] = useState<string | null>(null);
   const [form, setForm] = useState<Form>(null);
@@ -141,7 +142,7 @@ export default function Tahsilat() {
       )}
       <div className="mt-4 flex items-start gap-2 rounded-xl bg-slate-100 p-3 text-xs text-slate-600 dark:bg-slate-800 dark:text-slate-300">
         <Info size={15} className="mt-0.5 shrink-0" />
-        <span>Sıralama: borç tutarı × gecikme süresi; sözü geçenler ve bugün ödeyecekler en üstte, son 3 günde görüşülenler ve ileri tarihli söz verenler altta. Notlar ve sözler programın kendi veritabanında tutulur, BizimHesap'a yazılmaz. Ödeme gelince BizimHesap'ta tahsilatı girin; vadesi geçen listesi ve "Bu hafta tahsilat" "verileri güncelle" ile yenilenir.</span>
+        <span>{disi.length > 0 && <>Araç alım/satım faturası olan {disi.map((v) => `${v.cari.replace(/\s*\/\s*$/, '')} (${para(v.tutar)})`).join(', ')} carisi proje hesabı olduğu için listeye ve toplama katılmadı. </>}Sıralama: borç tutarı × gecikme süresi; sözü geçenler ve bugün ödeyecekler en üstte, son 3 günde görüşülenler ve ileri tarihli söz verenler altta. Notlar ve sözler programın kendi veritabanında tutulur, BizimHesap'a yazılmaz. Ödeme gelince BizimHesap'ta tahsilatı girin; vadesi geçen listesi ve "Bu hafta tahsilat" "verileri güncelle" ile yenilenir.</span>
       </div>
 
       {form && (
