@@ -60,7 +60,10 @@ export interface EritmeSatir {
 const yukari5 = (x: number) => Math.ceil(x / 5) * 5;
 /** N günden uzun süredir satılmayan stok ve her ürün için önerilen aksiyon */
 export function eritmeListesi(db: DB, esik = 90, kampanyaOran = 10): EritmeSatir[] {
-  const son = sonSatislar(db); const bugun = gunu(); const ilk = db.bh_durum?.rapor_ilk ?? gunOnce(esik);
+  const son = sonSatislar(db); const bugun = gunu();
+  // satış verisinin gerçekten başladığı gün (ilk satış faturası); rapor_ilk bundan erken olabilir
+  const ilkSatis = db.hareketler.reduce((m, h) => (h.tur === 'satis' && h.kaynak === 'fatura' && gunu(h.tarih) < m ? gunu(h.tarih) : m), bugun);
+  const ilk = [db.bh_durum?.rapor_ilk ?? gunOnce(esik), ilkSatis].sort().pop()!;
   const alis = new Map<string, { tarih: string; ted: string; adet: number }>();
   for (const h of db.hareketler) {
     if (h.tur !== 'alis' || h.kaynak !== 'fatura' || !h.cari_ad) continue; const g = gunu(h.tarih); const o = alis.get(h.urun_id);
@@ -73,11 +76,13 @@ export function eritmeListesi(db: DB, esik = 90, kampanyaOran = 10): EritmeSatir
     if (s ? gecen! < esik : veriGun < Math.min(esik, 30)) return [];
     const maliyet = netAlis(u.alis_fiyati, u.kdv, db.ayarlar); const deger = u.stok * maliyet;
     const a = alis.get(u.id); const alisGun = a ? gunFark(bugun, a.tarih) : null;
+    // eşikten yeni alınmış ürün henüz satılmamış olabilir; ölü sayılmaz
+    if (alisGun !== null && alisGun < esik) return [];
     let oneri: StokAksiyonTur, neden: string, fiyat: number | null = null;
     if (deger < 300) { oneri = 'beklet'; neden = 'Bağlı para küçük; uğraşmaya değmez, rafta kalsın.'; }
-    else if (a && alisGun !== null && alisGun <= 120) { oneri = 'iade'; neden = `${alisGun} gün önce ${a.ted}'den alındı ve satılmadı; iade/değişim isteyin.`; fiyat = maliyet; }
+    else if (a && alisGun !== null && alisGun <= 150) { oneri = 'iade'; neden = `${alisGun} gün önce ${a.ted}'den alındı ve satılmadı; iade/değişim isteyin.`; fiyat = maliyet; }
     else if (satildiMi.has(u.id)) { oneri = 'kampanya'; fiyat = Math.min(u.satis_fiyati, yukari5(maliyet * (1 + kampanyaOran / 100) * (1 + u.kdv / 100))); neden = `Daha önce satılmış ama durdu; ${kampanyaOran ? `maliyetin %${kampanyaOran} üstüne` : 'maliyetine'} kampanya.`; }
-    else { oneri = 'toplu'; fiyat = yukari5(maliyet * (1 + u.kdv / 100)); neden = 'Hiç satılmadı; diğer dükkânlara/ustalara maliyetine toplu satış.'; }
+    else { oneri = 'toplu'; fiyat = yukari5(maliyet * (1 + u.kdv / 100)); neden = `${ilk.slice(8, 10)}.${ilk.slice(5, 7)}'ten (satış kayıtlarının başladığı gün) beri hiç satılmadı; diğer dükkânlara/ustalara maliyetine toplu satış.`; }
     return [{ u, stok: u.stok, maliyet, deger, sonSatis: s, gecen, hicSatilmadi: !s, oneri, neden, fiyat, tedarikci: a?.ted, alisTarih: a?.tarih, alinan: a?.adet }];
   }).sort((x, y) => y.deger - x.deger);
 }

@@ -9,7 +9,7 @@ import { UrunLink } from '../components/DetayKart';
 import { Bos, Kpi, SayfaBaslik } from '../components/ui';
 
 const AKSIYON: Record<StokAksiyonTur, { ad: string; aciklama: string; cls: string }> = {
-  iade: { ad: 'Tedarikçiye iade', aciklama: 'Son 120 günde alınıp satılmayanlar — iade/değişim isteyin', cls: 'bg-violet-50 text-violet-700 dark:bg-violet-500/15 dark:text-violet-300' },
+  iade: { ad: 'Tedarikçiye iade', aciklama: '90–150 gün önce alınıp hiç satılmayanlar — iade/değişim isteyin', cls: 'bg-violet-50 text-violet-700 dark:bg-violet-500/15 dark:text-violet-300' },
   kampanya: { ad: 'Kampanya', aciklama: 'Daha önce satılmış ama durmuş — maliyetine yakın fiyatla kampanya (oranı sağdan seçin)', cls: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300' },
   toplu: { ad: 'Toplu satış', aciklama: 'Hiç satılmamış — diğer dükkânlara/ustalara maliyetine', cls: 'bg-sky-50 text-sky-700 dark:bg-sky-500/15 dark:text-sky-300' },
   beklet: { ad: 'Beklet', aciklama: 'Bağlı para küçük — uğraşmaya değmez', cls: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300' },
