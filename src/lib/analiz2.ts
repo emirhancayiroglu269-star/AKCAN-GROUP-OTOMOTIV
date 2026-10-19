@@ -1,6 +1,6 @@
 import type { DB, Hareket, ID, Urun } from './types';
 import { gunu } from './format';
-import { GECIS_RE, gecerliHareketler, hareketTutar, hizmetMi, netAlis, netSatis, type Donem, takipGunu } from './analiz';
+import { GECIS_RE, gecerliHareketler, hareketTutar, hizmetMi, netAlis, netSatis, type Donem, takipGunu, stokluMu } from './analiz';
 
 const gunFark = (a: string, b: string) => Math.round((new Date(a + 'T12:00').getTime() - new Date(b + 'T12:00').getTime()) / 864e5);
 export const PERAKENDE_RE = /PERAKENDE/i;
@@ -158,21 +158,23 @@ export function devirHizi(db: DB, d: Donem) {
 }
 
 // ======================= TEDARİKÇİ =======================
-export interface TedarikciOzet { guid: string; ad: string; alis: number; belge: number; cesit: number; satilanAdet: number; alinanAdet: number; kar: number; bakiye?: number }
+export interface TedarikciOzet { guid: string; ad: string; alis: number; belge: number; cesit: number; satilanAdet: number; alinanAdet: number; kar: number; bakiye?: number; toplu?: { tarih: string; satir: number; tutar: number } }
 export function tedarikciAnalizi(db: DB, d: Donem) {
   const urun = new Map(db.urunler.map((u) => [u.id, u]));
   const cari = new Map(db.cariler.filter((c) => c.tur === 'tedarikci').map((c) => [c.bh_id, c]));
   // ürün → tedarikçi bazında alınan adet (dönem içi)
   const urunTed = new Map<ID, Map<string, number>>();
-  const t = new Map<string, { ad: string; alis: number; belgeler: Set<string>; urunler: Set<string>; alinan: number }>();
-  const fiyatlar = new Map<ID, Map<string, number[]>>();
+  const t = new Map<string, { ad: string; alis: number; belgeler: Map<string, { g: string; satir: number; tutar: number }>; urunler: Set<string>; alinan: number }>();
+  const alimlar = new Map<ID, { g: string; ted: string; fiyat: number; miktar: number }[]>();
   for (const h of gecerliHareketler(db, d)) {
     if (h.tur !== 'alis' || h.kaynak !== 'fatura' || !h.cari_guid) continue;
-    const x = t.get(h.cari_guid) ?? { ad: h.cari_ad ?? '—', alis: 0, belgeler: new Set(), urunler: new Set(), alinan: 0 };
-    x.alis += h.miktar * h.alis_fiyati; x.belgeler.add(h.belge_guid ?? h.tarih); x.alinan += h.miktar; x.urunler.add(h.urun_id); t.set(h.cari_guid, x);
-    if (urun.has(h.urun_id)) {
+    const x = t.get(h.cari_guid) ?? { ad: h.cari_ad ?? '—', alis: 0, belgeler: new Map(), urunler: new Set(), alinan: 0 };
+    const bk = h.belge_guid ?? h.tarih; const bl = x.belgeler.get(bk) ?? { g: gunu(h.tarih), satir: 0, tutar: 0 }; bl.satir++; bl.tutar += h.miktar * h.alis_fiyati; x.belgeler.set(bk, bl);
+    x.alis += h.miktar * h.alis_fiyati; x.alinan += h.miktar; x.urunler.add(h.urun_id); t.set(h.cari_guid, x);
+    const u = urun.get(h.urun_id);
+    if (u) {
       const m = urunTed.get(h.urun_id) ?? new Map(); m.set(h.cari_guid, (m.get(h.cari_guid) ?? 0) + h.miktar); urunTed.set(h.urun_id, m);
-      const f = fiyatlar.get(h.urun_id) ?? new Map(); const l = f.get(h.cari_guid) ?? []; l.push(h.alis_fiyati); f.set(h.cari_guid, l); fiyatlar.set(h.urun_id, f);
+      if (h.alis_fiyati > 0 && stokluMu(u)) { const l = alimlar.get(h.urun_id) ?? []; l.push({ g: gunu(h.tarih), ted: h.cari_guid, fiyat: h.alis_fiyati, miktar: h.miktar }); alimlar.set(h.urun_id, l); }
     }
   }
   // satışları, ürünün alındığı tedarikçilere alım payına göre dağıt
@@ -184,14 +186,25 @@ export function tedarikciAnalizi(db: DB, d: Donem) {
     const k = hareketTutar(h, db.ayarlar).kar;
     for (const [g, q] of m) { const s = sat.get(g) ?? { adet: 0, kar: 0 }; s.adet += (h.miktar * q) / top; s.kar += (k * q) / top; sat.set(g, s); }
   }
-  const liste: TedarikciOzet[] = [...t.entries()].map(([guid, x]) => ({ guid, ad: cari.get(guid)?.ad ?? x.ad, alis: x.alis, belge: x.belgeler.size, cesit: x.urunler.size, alinanAdet: x.alinan,
-    satilanAdet: sat.get(guid)?.adet ?? 0, kar: sat.get(guid)?.kar ?? 0, bakiye: cari.get(guid)?.bakiye })).sort((a, b) => b.alis - a.alis);
-  // aynı ürün farklı tedarikçi fiyat karşılaştırması
+  const liste: TedarikciOzet[] = [...t.entries()].map(([guid, x]) => {
+    // tek faturada 100+ kalem: depo dolumu / toplu stok alımı (satılma oranı kısa dönemde düşük görünür)
+    const toplu = [...x.belgeler.values()].filter((bl) => bl.satir >= 100).sort((p, q) => q.satir - p.satir)[0];
+    return { guid, ad: cari.get(guid)?.ad ?? x.ad, alis: x.alis, belge: x.belgeler.size, cesit: x.urunler.size, alinanAdet: x.alinan,
+      satilanAdet: sat.get(guid)?.adet ?? 0, kar: sat.get(guid)?.kar ?? 0, bakiye: cari.get(guid)?.bakiye, toplu: toplu ? { tarih: toplu.g, satir: toplu.satir, tutar: toplu.tutar } : undefined };
+  }).sort((a, b) => b.alis - a.alis);
+  // aynı ürün farklı tedarikçi: her tedarikçinin son alış fiyatı, en son alımdan en fazla 45 gün önceki alımlar karşılaştırılır (enflasyon farkı sayılmasın)
   const ad = new Map([...t.entries()].map(([g, x]) => [g, cari.get(g)?.ad ?? x.ad]));
-  const karsilastirma = [...fiyatlar.entries()].filter(([, f]) => f.size > 1).map(([uid, f]) => {
-    const l = [...f.entries()].map(([g, p]) => ({ ad: ad.get(g) ?? '—', ort: p.reduce((a, b) => a + b, 0) / p.length, adet: p.length })).sort((a, b) => a.ort - b.ort);
-    return { urun: urun.get(uid)!, liste: l, fark: l[l.length - 1].ort - l[0].ort, farkYuzde: l[0].ort > 0 ? ((l[l.length - 1].ort - l[0].ort) / l[0].ort) * 100 : 0 };
-  }).sort((a, b) => b.fark - a.fark);
+  const karsilastirma = [...alimlar.entries()].map(([uid, l]) => {
+    const son = l.reduce((m, x) => (x.g > m ? x.g : m), ''); const sinir = gunu(new Date(new Date(son + 'T12:00').getTime() - 45 * 864e5));
+    const pencere = l.filter((x) => x.g >= sinir);
+    const tedSon = new Map<string, { g: string; fiyat: number }>();
+    for (const x of pencere) { const o = tedSon.get(x.ted); if (!o || x.g > o.g) tedSon.set(x.ted, { g: x.g, fiyat: x.fiyat }); }
+    if (tedSon.size < 2) return null;
+    const ll = [...tedSon.entries()].map(([g, v]) => ({ ad: ad.get(g) ?? '—', ort: v.fiyat, tarih: v.g, adet: pencere.filter((x) => x.ted === g).reduce((s2, x) => s2 + x.miktar, 0) })).sort((p, q) => p.ort - q.ort);
+    const enUcuz = ll[0].ort;
+    const tasarruf = pencere.reduce((s2, x) => s2 + Math.max(0, x.fiyat - enUcuz) * x.miktar, 0);
+    return { urun: urun.get(uid)!, liste: ll, fark: ll[ll.length - 1].ort - enUcuz, farkYuzde: enUcuz > 0 ? ((ll[ll.length - 1].ort - enUcuz) / enUcuz) * 100 : 0, tasarruf };
+  }).filter((x): x is NonNullable<typeof x> => !!x && x.farkYuzde >= 2 && x.farkYuzde <= 200).sort((a, b) => b.tasarruf - a.tasarruf);
   return { liste, karsilastirma };
 }
 
