@@ -1,6 +1,6 @@
 import type { DB, Hareket, ID, Urun } from './types';
 import { gunu } from './format';
-import { GECIS_RE, gecerliHareketler, hareketTutar, hizmetMi, netAlis, netSatis, type Donem } from './analiz';
+import { GECIS_RE, gecerliHareketler, hareketTutar, hizmetMi, netAlis, netSatis, type Donem, takipGunu } from './analiz';
 
 const gunFark = (a: string, b: string) => Math.round((new Date(a + 'T12:00').getTime() - new Date(b + 'T12:00').getTime()) / 864e5);
 export const PERAKENDE_RE = /PERAKENDE/i;
@@ -141,7 +141,7 @@ export function sonAlislar(db: DB) {
 }
 
 export function devirHizi(db: DB, d: Donem) {
-  const gun = Math.max(1, gunFark(d.bit < gunu() ? d.bit : gunu(), d.bas) + 1);
+  const gun = takipGunu(db, d); // satış verisi başlamadan önceki günler sayılmaz
   const kat = new Map<string, { smm: number; stok: number; urun: number }>();
   const urun = new Map(db.urunler.map((u) => [u.id, u]));
   for (const u of db.urunler) {
