@@ -246,7 +246,7 @@ export function musteriKarti(db: DB, guid: string | null, ad: string) {
 // ======================= MEVSİMSELLİK =======================
 /** Kategori/ad için aylık talep profili (1 = normal). Türkiye iklimine göre genel kabul; veri biriktikçe kendi satışlarınızla karşılaştırın. */
 const MEVSIM: { re: RegExp; ad: string; ay: number[] }[] = [
-  { re: /ANTIFRIZ|ANTI-FRIZ|ANTİFRİZ/, ad: 'Antifriz', ay: [1.4, 1.2, 0.9, 0.6, 0.5, 0.5, 0.5, 0.6, 0.9, 1.4, 1.6, 1.5] },
+  { re: /ANT[Iİ]-?F[Iİ]?R[Iİ]Z/, ad: 'Antifriz', ay: [1.4, 1.2, 0.9, 0.6, 0.5, 0.5, 0.5, 0.6, 0.9, 1.4, 1.6, 1.5] },
   { re: /AKU|AKÜ/, ad: 'Akü', ay: [1.3, 1.2, 1.0, 0.9, 0.85, 0.9, 1.0, 1.0, 0.95, 1.1, 1.3, 1.35] },
   { re: /KLIMA|KLİMA|POLEN|KABIN FILT|KABİN FİLT|KOMPRESOR|KOMPRESÖR/, ad: 'Klima', ay: [0.5, 0.6, 0.8, 1.0, 1.3, 1.6, 1.7, 1.5, 1.0, 0.7, 0.5, 0.5] },
   { re: /SILECEK|SİLECEK/, ad: 'Silecek', ay: [1.2, 1.1, 1.0, 0.9, 0.8, 0.7, 0.7, 0.7, 0.9, 1.3, 1.5, 1.3] },
