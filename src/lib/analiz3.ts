@@ -1,6 +1,6 @@
 import type { DB, Hareket, ID, Urun } from './types';
 import { gunu } from './format';
-import { gecerliHareketler, hareketTutar, netAlis, netSatis, takipGunu, type Donem } from './analiz';
+import { gecerliHareketler, hareketTutar, netAlis, netSatis, stokluMu, takipGunu, type Donem } from './analiz';
 import { PERAKENDE_RE, satirKar } from './analiz2';
 
 const gunOnce = (n: number) => gunu(new Date(Date.now() - n * 864e5));
@@ -283,7 +283,7 @@ export const kdvHaricListe = (u: Urun) => netSatis(u.satis_fiyati, u.kdv);
 // ======================= DEPO BAZLI SİPARİŞ =======================
 export interface DepoSiparisSatir {
   u: Urun; stok: number; satilan: number; hiz: number; hedef: number; ihtiyac: number; transfer: number; siparis: number;
-  digerStok: { ad: string; stok: number; fazla: number }[]; neden: 'bitti' | 'azaliyor'; yeterGun: number; mevsim: { ad: string; katsayi: number } | null;
+  digerStok: { ad: string; stok: number; fazla: number }[]; neden: 'bitti' | 'azaliyor'; yeterGun: number; mevsim: { ad: string; katsayi: number } | null; /** bu depoda kaç ayrı faturada satıldı */ belgeSay: number;
 }
 export interface DepoSiparis { anahtar: string; ad: string; satirlar: DepoSiparisSatir[] }
 /** Her depo için kendi stoğu ve kendi satış hızına göre sipariş listesi; diğer depoda fazlası olan kısım transfer olarak ayrılır */
@@ -293,22 +293,26 @@ export function depoSiparisleri(db: DB, gunSec = 60, hedefGun = 30, mevsimAcik =
   const stok = new Map<string, Map<ID, number>>();
   for (const s of db.urun_depo_stok) { const d = depolar.find((x) => x.id === s.depo_id); if (!d) continue; const m = stok.get(d.k) ?? new Map(); m.set(s.urun_id, (m.get(s.urun_id) ?? 0) + s.miktar); stok.set(d.k, m); }
   const d: Donem = { bas: gunOnce(gunSec - 1), bit: gunu() }; const gun = takipGunu(db, d);
-  const satis = new Map<string, Map<ID, number>>();
-  for (const h of gecerliHareketler(db, d)) { if (h.tur !== 'satis') continue; const k = depoAd(h.depo); if (!kIdx.has(k)) continue; const m = satis.get(k) ?? new Map(); m.set(h.urun_id, (m.get(h.urun_id) ?? 0) + h.miktar); satis.set(k, m); }
+  const satis = new Map<string, Map<ID, number>>(); const belge = new Map<string, Set<string>>();
+  for (const h of gecerliHareketler(db, d)) { if (h.tur !== 'satis') continue; const k = depoAd(h.depo); if (!kIdx.has(k)) continue; const m = satis.get(k) ?? new Map(); m.set(h.urun_id, (m.get(h.urun_id) ?? 0) + h.miktar); satis.set(k, m);
+    const bk = `${k}|${h.urun_id}`; const st = belge.get(bk) ?? new Set(); st.add(h.belge_guid ?? h.tarih.slice(0, 10)); belge.set(bk, st); }
   const ihtiyacHesap = (u: Urun, k: string, ms: number) => { const st = stok.get(k)?.get(u.id) ?? 0, sat = satis.get(k)?.get(u.id) ?? 0, hiz = (sat / gun) * ms; return { st, sat, hiz, hedef: sat > 0 ? Math.max(1, Math.ceil(hiz * hedefGun)) : 0 }; };
   return depolar.map((dp) => {
     const satirlar: DepoSiparisSatir[] = [];
     for (const u of db.urunler) {
-      if (!u.aktif) continue;
+      if (!u.aktif || !stokluMu(u)) continue;
       const ms = mevsimAcik ? mevsim(u) : null; const kat = ms?.katsayi ?? 1;
       const b = ihtiyacHesap(u, dp.k, kat);
       if (b.sat <= 0) continue;
+      // dönemde bu depoda tek faturada satılan ürün (ör. bir kerelik motor, özel parça) kritik stok tanımlı değilse sipariş önerilmez
+      const belgeSay = belge.get(`${dp.k}|${u.id}`)?.size ?? 0;
+      if (belgeSay < 2 && !(u.kritik_stok > 0)) continue;
       const ihtiyac = Math.max(0, b.hedef - Math.max(0, b.st));
       if (b.st > 0 && ihtiyac <= 0) continue;
       const diger = depolar.filter((o) => o.k !== dp.k).map((o) => { const x = ihtiyacHesap(u, o.k, kat); return { ad: o.ad, stok: x.st, fazla: Math.max(0, x.st - x.hedef) }; });
       const transfer = Math.min(ihtiyac, diger.reduce((t, x) => t + x.fazla, 0));
       satirlar.push({ u, stok: b.st, satilan: b.sat, hiz: b.hiz, hedef: b.hedef, ihtiyac, transfer, siparis: Math.max(0, ihtiyac - transfer), digerStok: diger,
-        neden: b.st <= 0 ? 'bitti' : 'azaliyor', yeterGun: b.hiz > 0 ? Math.max(0, b.st) / b.hiz : Infinity, mevsim: ms && ms.katsayi !== 1 ? ms : null });
+        neden: b.st <= 0 ? 'bitti' : 'azaliyor', yeterGun: b.hiz > 0 ? Math.max(0, b.st) / b.hiz : Infinity, mevsim: ms && ms.katsayi !== 1 ? ms : null, belgeSay });
     }
     satirlar.sort((x, y) => (x.neden === y.neden ? 0 : x.neden === 'bitti' ? -1 : 1) || y.satilan - x.satilan);
     return { anahtar: dp.k, ad: dp.ad, satirlar };

@@ -6,6 +6,7 @@ import { ara, gunu, para, parse, sayi, tarih } from '../lib/format';
 import { UrunLink } from '../components/DetayKart';
 import { Bos, Kpi, SayfaBaslik } from '../components/ui';
 import { yazdir } from '../components/Yazdir';
+import { muadilBulucu } from '../lib/muadil';
 
 const kisa = (s: string) => s.replace(/ DEPO(SU)?$/i, '');
 
@@ -23,10 +24,20 @@ export default function DepoSiparis() {
   const [adet, setAdet] = useState<Record<string, string>>({});
   const [cikar, setCikar] = useState<Set<string>>(new Set());
   const dp = depolar.find((x) => x.anahtar === secili) ?? depolar[0];
+  // bu depoda stokta muadili (etiketteki OEM kodlarına göre) olan ürünler: sipariş varsayılanı 0
+  const muadil = useMemo(() => {
+    const m = new Map<string, { kod: string; adet: number }[]>(); if (!dp) return m;
+    const depo = db.depolar.find((x) => x.aktif && x.ad === dp.ad); if (!depo) return m;
+    const ds = new Map<string, number>(); for (const x of db.urun_depo_stok) if (x.depo_id === depo.id) ds.set(x.urun_id, Number(x.miktar) || 0);
+    const bul = muadilBulucu(db);
+    for (const x of dp.satirlar) { const l = bul(x.u).map((v) => ({ kod: v.kod || v.ad.slice(0, 20), adet: ds.get(v.id) ?? 0 })).filter((v) => v.adet > 0); if (l.length) m.set(x.u.id, l); }
+    return m;
+  }, [db, dp]);
   if (!dp) return <div><SayfaBaslik baslik="Depo Siparişleri" /><div className="card"><Bos metin="Depo bilgisi yok." /></div></div>;
 
   const anahtar = (x: DepoSiparisSatir) => `${dp.anahtar}|${x.u.id}`;
-  const sipAdet = (x: DepoSiparisSatir) => (adet[anahtar(x)] !== undefined ? parse(adet[anahtar(x)]) : x.siparis);
+  const varsayilan = (x: DepoSiparisSatir) => { const md = muadil.get(x.u.id); return md && md.reduce((t, v) => t + v.adet, 0) >= x.ihtiyac ? 0 : x.siparis; };
+  const sipAdet = (x: DepoSiparisSatir) => (adet[anahtar(x)] !== undefined ? parse(adet[anahtar(x)]) : varsayilan(x));
   const liste = dp.satirlar.filter((x) => (!neden || x.neden === neden) && ara(q, x.u.ad, x.u.kod, x.u.marka, x.u.kategori));
   const siparisListe = liste.filter((x) => !cikar.has(anahtar(x)) && sipAdet(x) > 0);
   const transferListe = liste.filter((x) => x.transfer > 0);
@@ -118,13 +129,14 @@ export default function DepoSiparis() {
                       <div className="text-xs text-slate-500">{[x.u.kod, x.u.marka].filter(Boolean).join(' · ')}
                         <span className={`ml-1.5 rozet ${x.neden === 'bitti' ? 'bg-red-50 text-red-600' : 'bg-amber-50 text-amber-700'}`}>{x.neden === 'bitti' ? 'bu depoda bitti' : 'azalıyor'}</span>
                         {x.mevsim && <span className="ml-1 rozet bg-sky-50 text-sky-700">{x.mevsim.ad} {x.mevsim.katsayi > 1 ? '↑' : '↓'}</span>}
+                        {muadil.get(x.u.id) && <span className="ml-1 rozet bg-emerald-50 text-emerald-700" title="Etiketteki OEM kodlarına göre aynı parça">muadili bu depoda: {muadil.get(x.u.id)!.map((v) => `${v.kod} (${sayi(v.adet)})`).join(', ')}</span>}
                         {t && <span className="ml-1.5 text-slate-400">· {t.ucuz.ad}{maliyetGor ? ` ${para(t.ucuz.fiyat)}` : ''}</span>}</div></td>
                     <td className={`text-right font-semibold ${x.stok <= 0 ? 'text-red-600' : 'text-amber-700'}`}>{sayi(x.stok)}</td>
                     <td className="text-right text-xs">{x.digerStok.map((o) => <div key={o.ad} className={o.fazla > 0 ? 'font-semibold text-sky-700' : 'text-slate-500'}>{kisa(o.ad)}: {sayi(o.stok)}</div>)}</td>
                     <td className="text-right text-slate-500">{sayi(x.satilan)}</td>
                     <td className={`text-right ${x.yeterGun < 7 ? 'text-red-600' : 'text-slate-500'}`}>{x.stok <= 0 ? '—' : Number.isFinite(x.yeterGun) ? `${Math.round(x.yeterGun)} gün` : '—'}</td>
                     <td className="text-right">{x.transfer > 0 ? <span className="font-semibold text-sky-700">{sayi(x.transfer)}</span> : <span className="text-slate-300">—</span>}</td>
-                    <td><input className="inp py-1 text-right" value={adet[k] ?? String(x.siparis)} onChange={(e) => setAdet({ ...adet, [k]: e.target.value })} onFocus={(e) => e.target.select()} /></td>
+                    <td><input className="inp py-1 text-right" value={adet[k] ?? String(varsayilan(x))} onChange={(e) => setAdet({ ...adet, [k]: e.target.value })} onFocus={(e) => e.target.select()} /></td>
                   </tr>
                 );
               })}</tbody>
@@ -142,7 +154,7 @@ export default function DepoSiparis() {
       )}
 
       <div className="flex items-start gap-2 rounded-xl bg-slate-100 p-3 text-xs text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-        <Info size={15} className="mt-0.5 shrink-0" /><span>Her depo ayrı hesaplanır: o depoda satılan adet (faturadaki depo bilgisine göre) → günlük satış hızı × {hedefGun} gün = o deponun hedef stoğu. Hedefin altına inen ya da sıfırlanan ürün o deponun listesine düşer. Diğer depoda kendi {hedefGun} günlük ihtiyacından fazlası varsa o kadarı "Transfer" sütununa yazılır ve siparişten düşülür; kalanı sipariş edilir. Depo seçilmeden kesilen faturalar (hizmet vb.) hesaba katılmaz. Depo stokları BizimHesap'tan 3 dakikada bir gelir.</span>
+        <Info size={15} className="mt-0.5 shrink-0" /><span>Her depo ayrı hesaplanır: o depoda satılan adet (faturadaki depo bilgisine göre) → günlük satış hızı × {hedefGun} gün = o deponun hedef stoğu. Hedefin altına inen ya da sıfırlanan ürün o deponun listesine düşer. Diğer depoda kendi {hedefGun} günlük ihtiyacından fazlası varsa o kadarı "Transfer" sütununa yazılır ve siparişten düşülür; kalanı sipariş edilir. Seçilen dönemde bu depoda tek faturada satılan ürünler (kritik stok tanımlı değilse) ve işçilik/hizmet kalemleri listelenmez. Bu depoda stokta muadili olan ürünlerin sipariş adedi 0 gelir; isterseniz değiştirin. Depo seçilmeden kesilen faturalar hesaba katılmaz. Depo stokları BizimHesap'tan 3 dakikada bir gelir.</span>
       </div>
     </div>
   );
