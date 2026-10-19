@@ -66,7 +66,7 @@ async function ara(t: string) {
 async function oemler(id: string) {
   const { t } = await istek('/musteri/anasayfa/getoems/' + id); oturumKontrol(t);
   const d = ayristir(t); d.querySelectorAll('h4,h5,h6,button,script,style').forEach((e) => (e as Element).remove());
-  return [...new Set(metin(d.body).split(/\s+/).map((x) => x.trim()).filter((x) => /\d/.test(x) && norm(x).length >= 4 && !/TL$/i.test(x) && !/:$/.test(x)))];
+  return [...new Set(metin(d.body).split(/\s+/).map((x) => x.trim()).filter((x) => /\d/.test(x) && norm(x).length >= 4 && x.length <= 40 && !/TL$/i.test(x) && !/:$/.test(x)))];
 }
 async function esdegerler(id: string) {
   const { t } = await istek('/musteri/anasayfa/getsimilargroupids/' + id); oturumKontrol(t);
@@ -111,7 +111,10 @@ Deno.serve(async (req) => {
       const u = { urun_id: x.urun_id as string, kod: String((x as unknown as { urunler: { kod: string } }).urunler?.kod ?? '') };
       let s: Record<string, unknown>;
       try { s = await isle(u); } catch (e) { if (e instanceof OturumYok) throw e; s = { urun_id: u.urun_id, durum: 'hata', hata: String((e as Error).message).slice(0, 200) }; }
-      const { error: e2 } = await db.rpc('om_sonuc_yaz', { p: s }); if (e2) throw new Error(e2.message);
+      let { error: e2 } = await db.rpc('om_sonuc_yaz', { p: s });
+      // tek ürünün sonucu yazılamazsa kuyruk tıkanmasın: o ürün "hata" olarak işaretlenir, sıradakine geçilir
+      if (e2) ({ error: e2 } = await db.rpc('om_sonuc_yaz', { p: { urun_id: u.urun_id, durum: 'hata', hata: ('Sonuç kaydedilemedi: ' + e2.message).slice(0, 200) } }));
+      if (e2) throw new Error(e2.message);
       islenen++; await bekle(1500);
     }
     await durum({ son_calisma: new Date().toISOString(), son_hata: null, kilit: null, islenen: (Number(kilit[0].islenen) || 0) + islenen });
