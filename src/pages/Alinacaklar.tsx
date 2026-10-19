@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { Download, Info, MessageCircle, Printer, Snowflake, Sun, Truck } from 'lucide-react';
 import { useStore } from '../lib/store';
 import { backend } from '../lib/backend';
-import { alinacakHesap, takipGunu, urunOzetleri, type Donem } from '../lib/analiz';
+import { alinacakHesap, stokluMu, takipGunu, urunOzetleri, type Donem } from '../lib/analiz';
 import { ara, gunu, para, parse, sayi, tarih } from '../lib/format';
 import type { Urun } from '../lib/types';
 import { Bos, Kpi, SayfaBaslik } from '../components/ui';
@@ -31,12 +31,13 @@ export default function Alinacaklar() {
 
   const satirlar = useMemo<Satir[]>(() => {
     const oz = urunOzetleri(db, d);
-    return db.urunler.filter((u) => u.aktif).flatMap((u) => {
-      const satilan = oz.get(u.id)?.satilan ?? 0;
+    return db.urunler.filter((u) => u.aktif && stokluMu(u)).flatMap((u) => {
+      const satilan = oz.get(u.id)?.satilan ?? 0; const satisSay = oz.get(u.id)?.satisSayisi ?? 0;
       const ms = mevsimAcik ? mevsim(u) : null;
       const h = alinacakHesap(u, satilan * (ms?.katsayi ?? 1), gun, hedefGun);
       const kritik = u.kritik_stok > 0 && u.stok <= u.kritik_stok;
-      const bitti = u.stok <= 0 && satilan > 0;
+      // dönemde tek kez satılan ürün (kritik stok tanımlı değilse) "bitti" listesine girmez: bir kerelik parça yeniden alınmaz
+      const bitti = u.stok <= 0 && satisSay >= 2;
       if (!kritik && !bitti && h.alinacak <= 0) return [];
       return [{ u, satilan, hiz: h.hiz, yeter: h.yeterGun, oneri: Math.max(h.alinacak, kritik ? Math.max(1, u.kritik_stok * 2 - Math.max(0, u.stok)) : 1), neden: kritik ? 'kritik' as const : bitti ? 'bitti' as const : 'azaliyor' as const, mevsim: ms && ms.katsayi !== 1 ? ms : null }];
     });
@@ -47,7 +48,10 @@ export default function Alinacaklar() {
   const kategoriler = useMemo(() => Array.from(new Set(satirlar.map((x) => x.u.kategori).filter(Boolean))).sort() as string[], [satirlar]);
   const liste = satirlar.filter((x) => (!marka || x.u.marka === marka) && (!kat || x.u.kategori === kat) && ara(q, x.u.ad, x.u.kod, x.u.marka))
     .sort((a, b) => (a.yeter - b.yeter) || a.u.ad.localeCompare(b.u.ad, 'tr'));
-  const adet = (x: Satir) => (miktar[x.u.id] !== undefined ? parse(miktar[x.u.id]) : x.oneri);
+  // stokta muadili (etiketteki OEM kodlarına göre) yeterince olan bitmiş ürünün sipariş varsayılanı 0
+  const muadilStok = useMemo(() => { const m = new Map<string, number>(); for (const x of satirlar) if (x.u.stok <= 0) { const t = stoktakiMuadiller(db, x.u).reduce((a, v) => a + v.stok, 0); if (t > 0) m.set(x.u.id, t); } return m; }, [db, satirlar]);
+  const varsayilan = (x: Satir) => ((muadilStok.get(x.u.id) ?? 0) >= x.oneri ? 0 : x.oneri);
+  const adet = (x: Satir) => (miktar[x.u.id] !== undefined ? parse(miktar[x.u.id]) : varsayilan(x));
   const secili = liste.filter((x) => !cikar.has(x.u.id) && adet(x) > 0);
   const tutar = secili.reduce((t, x) => t + adet(x) * x.u.alis_fiyati, 0);
 
@@ -87,7 +91,7 @@ export default function Alinacaklar() {
       </div>
       <div className="mb-3 flex items-start gap-2 rounded-xl bg-slate-100 p-3 text-xs text-slate-600 dark:bg-slate-800 dark:text-slate-300">
         <Info size={15} className="mt-0.5 shrink-0" />
-        <span>Önerilen adet = son {gunSec} günün günlük satışı × {hedefGun} gün − mevcut stok ({gun} günlük veriyle). "Mevsime göre ayarla" açıkken akü, antifriz, klima, silecek gibi mevsimlik ürünlerde satış hızı gelecek ayın beklenen talebine göre artırılır/azaltılır. Tedarikçi, son 6 ayın alış faturalarında bu ürünü en ucuza aldığınız firmadır. Kritik seviye tanımladığınız ürünler o seviyenin altına inince de listelenir; kritik seviyeyi tablodan değiştirebilirsiniz (BizimHesap'a yazılmaz).</span>
+        <span>Önerilen adet = son {gunSec} günün günlük satışı × {hedefGun} gün − mevcut stok ({gun} günlük veriyle). "Mevsime göre ayarla" açıkken akü, antifriz, klima, silecek gibi mevsimlik ürünlerde satış hızı gelecek ayın beklenen talebine göre artırılır/azaltılır. Tedarikçi, son 6 ayın alış faturalarında bu ürünü en ucuza aldığınız firmadır. Kritik seviye tanımladığınız ürünler stok o seviyeye inince de listelenir. Dönemde tek kez satılan ürünler (kritik seviyesi yoksa), {hedefGun} günde yarım adetten az satış beklenenler ve işçilik/hizmet kalemleri önerilmez; stokta muadili yeterince olan bitmiş ürünlerin sipariş adedi 0 gelir. kritik seviyeyi tablodan değiştirebilirsiniz (BizimHesap'a yazılmaz).</span>
       </div>
       {grupla && secili.length > 0 && (
         <div className="mb-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
@@ -127,7 +131,7 @@ export default function Alinacaklar() {
                   <td className="text-right text-slate-500">{sayi(x.satilan)}</td>
                   <td className={`text-right ${x.yeter < 7 ? 'text-red-600' : 'text-slate-500'}`}>{Number.isFinite(x.yeter) ? `${Math.round(x.yeter)} gün` : '—'}</td>
                   {maliyetGor && <td className="text-right text-slate-500">{para(x.u.alis_fiyati)}</td>}
-                  <td><input className="inp py-1 text-right" value={miktar[x.u.id] ?? String(x.oneri)} onChange={(e) => setMiktar({ ...miktar, [x.u.id]: e.target.value })} onFocus={(e) => e.target.select()} /></td>
+                  <td><input className="inp py-1 text-right" value={miktar[x.u.id] ?? String(varsayilan(x))} onChange={(e) => setMiktar({ ...miktar, [x.u.id]: e.target.value })} onFocus={(e) => e.target.select()} /></td>
                 </tr>
               ))}</tbody>
             </table>
