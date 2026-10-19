@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { Download, MessageCircle } from 'lucide-react';
 import { useStore } from '../lib/store';
 import { donemde } from '../lib/analiz';
+import { gecisCarisi } from '../lib/analiz2';
 import { ara, para, sayi, tarih, tarihSaat, telLink } from '../lib/format';
 import type { Cari } from '../lib/types';
 import { DonemSecici, useDonem } from '../components/DonemSecici';
@@ -27,12 +28,17 @@ export default function Cariler() {
   }, [db.cari_hareketler, d]);
 
   const hepsi = db.cariler.filter((c) => c.tur === tur);
+  // araç alım/satım (proje) carileri müşteri toplamlarına katılmaz
+  const gecis = tur === 'musteri' ? hepsi.filter((c) => gecisCarisi(db, c.bh_id) || gecisCarisi(db, c.ad)) : [];
+  const sayilan = hepsi.filter((c) => !gecis.includes(c));
+  const takipBas = db.cari_hareketler.reduce((m, h) => (!m || h.tarih < m ? h.tarih : m), '' as string);
+  const takipNot = takipBas && takipBas.slice(0, 10) > d.bas ? ` · takip ${tarih(takipBas)} tarihinden beri` : '';
   const liste = hepsi.filter((c) => (!sadece || Math.abs(c.bakiye) > 0.009) && ara(q, c.ad, c.telefon, c.kod, c.vergi_no))
     .sort((a, b) => Math.abs(b.bakiye) - Math.abs(a.bakiye));
-  const arti = hepsi.filter((c) => c.bakiye > 0).reduce((t, c) => t + c.bakiye, 0);
-  const eksi = hepsi.filter((c) => c.bakiye < 0).reduce((t, c) => t + c.bakiye, 0);
-  const donemArtis = hepsi.reduce((t, c) => t + (degisim.get(c.id)?.artis ?? 0), 0);
-  const donemAzalis = hepsi.reduce((t, c) => t + (degisim.get(c.id)?.azalis ?? 0), 0);
+  const arti = sayilan.filter((c) => c.bakiye > 0).reduce((t, c) => t + c.bakiye, 0);
+  const eksi = sayilan.filter((c) => c.bakiye < 0).reduce((t, c) => t + c.bakiye, 0);
+  const donemArtis = sayilan.reduce((t, c) => t + (degisim.get(c.id)?.artis ?? 0), 0);
+  const donemAzalis = sayilan.reduce((t, c) => t + (degisim.get(c.id)?.azalis ?? 0), 0);
   const csv = () => {
     const sat = (x: (string | number | null | undefined)[]) => x.map((v) => `"${String(v ?? '').replace(/"/g, '""')}"`).join(';');
     const icerik = [sat(['Cari', 'Kod', 'Telefon', 'Vergi no', 'Bakiye', 'Çek/Senet']), ...liste.map((c) => sat([c.ad, c.kod, c.telefon, c.vergi_no, c.bakiye.toFixed(2), c.cek_senet.toFixed(2)]))].join('\n');
@@ -53,34 +59,41 @@ export default function Cariler() {
       </div>
       {tur === 'vadesi' ? <VadesiGecenler /> : <>
       <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Kpi etiket={tur === 'musteri' ? 'Toplam alacak (borçlu müşteriler)' : 'Pozitif bakiyeler'} deger={para(arti)} alt={`${hepsi.filter((c) => c.bakiye > 0).length} cari`} renk="amber" />
-        <Kpi etiket={tur === 'musteri' ? 'Müşteri avansları / fazla ödeme' : 'Negatif bakiyeler'} deger={para(eksi)} alt={`${hepsi.filter((c) => c.bakiye < 0).length} cari`} />
-        <Kpi etiket="Dönemde bakiye artışı" deger={para(donemArtis)} alt={tur === 'musteri' ? 'Veresiye satışlar' : 'BizimHesap kayıtlarına göre'} renk="blue" />
-        <Kpi etiket="Dönemde bakiye azalışı" deger={para(donemAzalis)} alt={tur === 'musteri' ? 'Tahsilatlar' : 'Ödemeler'} renk="green" />
+        {tur === 'musteri' ? <>
+          <Kpi etiket="Müşterilerden alacağınız" deger={para(arti)} alt={`${sayilan.filter((c) => c.bakiye > 0).length} cari${gecis.length ? ` · ${gecis.map((c) => c.ad.replace(/\s*\/\s*$/, '')).join(', ')} (${para(gecis.reduce((t, c) => t + c.bakiye, 0))}) proje carisi, hariç` : ''}`} renk="amber" />
+          <Kpi etiket="Müşteri carilerinde sizin borcunuz" deger={para(-eksi)} alt={`${sayilan.filter((c) => c.bakiye < 0).length} cari · avans, size yapılan iş veya borç para`} />
+          <Kpi etiket="Dönemde alacak artışı" deger={para(donemArtis)} alt={`Veresiye satışlar${takipNot}`} renk="blue" />
+          <Kpi etiket="Dönemde alacak azalışı" deger={para(donemAzalis)} alt={`Tahsilatlar${takipNot}`} renk="green" />
+        </> : <>
+          <Kpi etiket="Tedarikçilere borcunuz" deger={para(-eksi)} alt={`${hepsi.filter((c) => c.bakiye < 0).length} cari`} renk="red" />
+          <Kpi etiket="Tedarikçide alacağınız" deger={para(arti)} alt={`${hepsi.filter((c) => c.bakiye > 0).length} cari · fazla ödeme veya iade`} />
+          <Kpi etiket="Dönemde yeni borç" deger={para(donemAzalis)} alt={`Alış faturaları${takipNot}`} renk="blue" />
+          <Kpi etiket="Dönemde ödenen" deger={para(donemArtis)} alt={`Tedarikçi ödemeleri${takipNot}`} renk="green" />
+        </>}
       </div>
       <div className="mb-3"><DonemSecici d={d} sec={setD} /></div>
       <div className="card">
         <div className="flex flex-wrap items-center gap-3 border-b border-slate-200 p-3 dark:border-slate-800">
           <input className="inp max-w-sm" placeholder="Cari adı, telefon, vergi no…" value={q} onChange={(e) => setQ(e.target.value)} />
           <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={sadece} onChange={(e) => setSadece(e.target.checked)} /> Sadece bakiyesi olanlar</label>
-          <span className="ml-auto text-xs text-slate-500">{liste.length} cari · bakiyeler BizimHesap'taki işaretle gösterilir</span>
+          <span className="ml-auto text-xs text-slate-500">{liste.length} cari · {tur === 'musteri' ? 'artı bakiye = müşteri size borçlu, eksi = siz borçlusunuz' : 'eksi bakiye = siz borçlusunuz, artı = tedarikçide alacağınız var'}</span>
         </div>
         <div className="max-h-[60vh] overflow-auto">
           {liste.length === 0 ? <Bos metin={db.cariler.length ? 'Cari bulunamadı.' : 'Cari bilgisi henüz gelmedi; ilk eşitlemeden sonra burada görünür.'} /> : (
             <table className="tbl">
-              <thead><tr><th>Cari</th><th>Telefon</th><th className="text-right">Dönemde +</th><th className="text-right">Dönemde −</th><th>Son değişim</th><th className="text-right">Çek/Senet</th><th className="text-right">Bakiye</th><th className="w-10" /></tr></thead>
+              <thead><tr><th>Cari</th><th>Telefon</th><th className="text-right">{tur === 'musteri' ? 'Dönemde satış' : 'Dönemde ödenen'}</th><th className="text-right">{tur === 'musteri' ? 'Dönemde tahsilat' : 'Dönemde alış'}</th><th>Son değişim</th><th className="text-right">Çek/Senet</th><th className="text-right">Bakiye</th><th className="w-10" /></tr></thead>
               <tbody>{liste.map((c) => {
                 const g = degisim.get(c.id); const tel = telLink(c.telefon);
                 return (
                   <tr key={c.id} className="cursor-pointer" onClick={() => setSecili(c)}>
-                    <td><div className="font-medium">{c.ad}</div>{c.vergi_no && <div className="text-xs text-slate-500">VN {c.vergi_no}</div>}</td>
+                    <td><div className="font-medium">{c.ad}{gecis.includes(c) && <span className="rozet ml-1.5 bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">proje carisi</span>}</div>{c.vergi_no && <div className="text-xs text-slate-500">VN {c.vergi_no}</div>}</td>
                     <td className="text-slate-500">{c.telefon}</td>
-                    <td className="text-right text-slate-600">{g?.artis ? para(g.artis) : ''}</td>
-                    <td className="text-right text-emerald-700">{g?.azalis ? para(g.azalis) : ''}</td>
+                    <td className={`text-right ${tur === 'musteri' ? 'text-slate-600' : 'text-emerald-700'}`}>{g?.artis ? para(g.artis) : ''}</td>
+                    <td className={`text-right ${tur === 'musteri' ? 'text-emerald-700' : 'text-slate-600'}`}>{g?.azalis ? para(g.azalis) : ''}</td>
                     <td className="text-slate-500">{g?.son ? tarihSaat(g.son) : '—'}</td>
                     <td className="text-right text-slate-500">{c.cek_senet ? para(c.cek_senet) : ''}</td>
-                    <td className={`text-right font-semibold ${c.bakiye > 0 ? 'text-amber-700' : c.bakiye < 0 ? 'text-sky-700' : 'text-slate-400'}`}>{para(c.bakiye)}</td>
-                    <td onClick={(e) => e.stopPropagation()}>{tur === 'musteri' && tel && c.bakiye > 0 && <a className="text-slate-400 hover:text-emerald-600" title="WhatsApp ile hatırlat" target="_blank" rel="noreferrer"
+                    <td className={`text-right font-semibold ${(tur === 'musteri' ? c.bakiye > 0 : c.bakiye < 0) ? 'text-amber-700' : c.bakiye !== 0 ? 'text-sky-700' : 'text-slate-400'}`}>{para(c.bakiye)}</td>
+                    <td onClick={(e) => e.stopPropagation()}>{tur === 'musteri' && tel && c.bakiye > 0 && !gecis.includes(c) && <a className="text-slate-400 hover:text-emerald-600" title="WhatsApp ile hatırlat" target="_blank" rel="noreferrer"
                       href={`https://wa.me/${tel}?text=${encodeURIComponent(`Merhaba ${c.ad}, ${db.ayarlar.firma_adi} cari hesabınızda ${para(c.bakiye)} bakiye bulunmaktadır. Bilginize sunarız.`)}`}><MessageCircle size={16} /></a>}</td>
                   </tr>
                 );

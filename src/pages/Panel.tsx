@@ -12,6 +12,7 @@ import { CubukGrafik, GrupluCubuk, PayCubugu, YatayListe } from '../components/g
 import { Degisim } from '../components/Degisim';
 import { Kpi, SayfaBaslik } from '../components/ui';
 import { tahsilatDisi } from '../lib/tahsilat';
+import { gecisCarisi } from '../lib/analiz2';
 
 const AY = ['Oca', 'Şub', 'Mar', 'Nis', 'May', 'Haz', 'Tem', 'Ağu', 'Eyl', 'Eki', 'Kas', 'Ara'];
 const gunOnce = (n: number) => gunu(new Date(Date.now() - n * 864e5));
@@ -79,7 +80,7 @@ export default function Panel({ git }: { git: (s: Sayfa) => void }) {
     return l;
   }, [db]);
 
-  const alacak = db.cariler.filter((c) => c.tur === 'musteri' && c.bakiye > 0).reduce((s, c) => s + c.bakiye, 0);
+  const alacak = db.cariler.filter((c) => c.tur === 'musteri' && c.bakiye > 0 && !gecisCarisi(db, c.bh_id) && !gecisCarisi(db, c.ad)).reduce((s, c) => s + c.bakiye, 0);
   const tedarikciBakiye = db.cariler.filter((c) => c.tur === 'tedarikci').reduce((s, c) => s + c.bakiye, 0);
   const vadesiGecen = db.vadesi_gecen.reduce((s, v) => s + (v.tutar > 0 && !tahsilatDisi(db, v.cari) ? v.tutar : 0), 0);
   const urun = new Map(db.urunler.map((u) => [u.id, u]));
@@ -201,7 +202,7 @@ export default function Panel({ git }: { git: (s: Sayfa) => void }) {
         <button className="text-left" onClick={() => git('hareketler')}><Kpi etiket="Satış tutarı (KDV dahil)" deger={para(t.ciro)} alt={`${sayi(t.satilanAdet)} adet · ${dz.belge} fiş`} renk="green" ikon={<ArrowUpRight size={16} />} /></button>
         <button className="text-left" onClick={() => git('karzarar')}><Kpi etiket="Brüt kâr (ürün + hizmet)" deger={para(g.brutKar)} alt={`Ürün ${para(g.urunKar)} · hizmet ${para(g.hizmetKar)}`} renk={g.brutKar >= 0 ? 'green' : 'red'} ikon={<TrendingUp size={16} />} /></button>
         <button className="text-left" onClick={() => git('karzarar')}><Kpi etiket="Net kâr (gider sonrası)" deger={para(g.netKar)} alt={`Giderler ${para(g.masraf)} · alış ${para(t.alisTutar)}`} renk={g.netKar >= 0 ? 'green' : 'red'} ikon={<ArrowDownRight size={16} />} /></button>
-        <button className="text-left" onClick={() => git('cariler')}><Kpi etiket="Müşteri alacakları" deger={para(alacak)} alt={`Tedarikçi bakiyeleri: ${para(tedarikciBakiye)}`} renk="amber" ikon={<Users size={16} />} /></button>
+        <button className="text-left" onClick={() => git('cariler')}><Kpi etiket="Müşteri alacakları" deger={para(alacak)} alt={`Tedarikçilere borç: ${para(-tedarikciBakiye)} · proje carisi hariç`} renk="amber" ikon={<Users size={16} />} /></button>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-3">
