@@ -35,7 +35,9 @@ export function tahsilatListesi(db: DB): TahsilatSatir[] {
     const acikSoz = nl.find((n) => n.tur === 'soz' && (n.durum ?? 'acik') === 'acik') ?? null;
     const sonTemas = nl.find((n) => n.tur === 'arama' || n.tur === 'mesaj' || n.tur === 'soz')?.olusturma ?? null;
     const t = tah.filter((x) => ana.length > 3 && buyuk(x.karsi).includes(ana)).sort((a, b) => b.tarih.localeCompare(a.tarih));
-    const son14Satis = db.hareketler.filter((h) => h.tur === 'satis' && !h.yok_say && h.cari_ad && buyuk(h.cari_ad) === k && gunu(h.tarih) >= sinir14).reduce((s, h) => s + h.miktar * h.satis_fiyati, 0);
+    // vade tarihinden SONRA yapılan satışlar (borcu oluşturan fatura sayılmaz)
+    const vadeSonra = v.gun != null ? gunOnce(v.gun - 1) : sinir14; const sinirS = vadeSonra > sinir14 ? vadeSonra : sinir14;
+    const son14Satis = db.hareketler.filter((h) => h.tur === 'satis' && !h.yok_say && h.cari_ad && buyuk(h.cari_ad) === k && gunu(h.tarih) >= sinirS).reduce((s, h) => s + h.miktar * h.satis_fiyati, 0);
     let durum: TahsilatDurum = 'aranacak';
     if (acikSoz?.soz_tarih) durum = acikSoz.soz_tarih < bugun ? 'soz_gecti' : acikSoz.soz_tarih === bugun ? 'soz_bugun' : 'soz_bekleniyor';
     else if (sonTemas && gunFark(bugun, gunu(sonTemas)) < 3) durum = 'yeni_arandi';

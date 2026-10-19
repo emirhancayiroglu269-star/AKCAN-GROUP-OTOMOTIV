@@ -69,7 +69,7 @@ export default function Tahsilat() {
       {riskli.length > 0 && (
         <div className="mb-4 flex items-start gap-2 rounded-xl bg-red-50 p-3 text-sm text-red-900 dark:bg-red-500/10 dark:text-red-200">
           <AlertTriangle size={18} className="mt-0.5 shrink-0" />
-          <div><b>Borcu gecikmişken almaya devam edenler:</b> {riskli.slice(0, 6).map((x) => `${x.cari.split('/')[0].trim()} (son 14 günde ${para(x.son14Satis)})`).join(', ')}{riskli.length > 6 ? ` ve ${riskli.length - 6} kişi daha` : ''}. Yeni veresiye vermeden önce tahsilat isteyin.</div>
+          <div><b>Borcunun vadesi geçtikten sonra yeniden alışveriş yapanlar (son 14 gün):</b> {riskli.slice(0, 6).map((x) => `${x.cari.split('/').map((p) => p.trim()).find(Boolean)} (vadeden sonra ${para(x.son14Satis)})`).join(', ')}{riskli.length > 6 ? ` ve ${riskli.length - 6} kişi daha` : ''}. Yeni veresiye vermeden önce tahsilat isteyin.</div>
         </div>
       )}
       <div className="mb-3 flex flex-wrap items-center gap-1.5">
