@@ -69,8 +69,9 @@ export function musteriAnalizi(db: DB, d: Donem): MusteriOzet[] {
 export function zamanAnalizi(db: DB, d: Donem) {
   const gunler = Array.from({ length: 7 }, () => ({ ciro: 0, belge: new Set<string>(), gunSay: new Set<string>(), gunluk: new Map<string, number>() }));
   const saatler = Array.from({ length: 24 }, () => ({ ciro: 0, belge: new Set<string>() }));
+  const gecis = gecisBelgeleri(db);
   for (const h of gecerliHareketler(db, d)) {
-    if (h.tur !== 'satis') continue;
+    if (h.tur !== 'satis' || (h.belge_guid && gecis.has(h.belge_guid))) continue;
     const t = new Date(h.tarih); const ciro = h.miktar * h.satis_fiyati;
     const gi = (t.getDay() + 6) % 7; // Pazartesi = 0
     gunler[gi].ciro += ciro; gunler[gi].belge.add(h.belge_guid ?? h.tarih); gunler[gi].gunSay.add(gunu(h.tarih)); gunler[gi].gunluk.set(gunu(h.tarih), (gunler[gi].gunluk.get(gunu(h.tarih)) ?? 0) + ciro);
@@ -112,8 +113,9 @@ export function donemOzet(db: DB, d: Donem) {
   const urun = new Map(db.urunler.map((u) => [u.id, u]));
   let ciro = 0, kar = 0, adet = 0; const belge = new Set<string>(), musteri = new Set<string>();
   const kat = new Map<string, number>(), urn = new Map<string, { ad: string; ciro: number; adet: number }>(), kisi = new Map<string, { ciro: number; kar: number; belge: Set<string> }>();
+  const gecis = gecisBelgeleri(db); // araç alım/satım faturaları satış analizine katılmaz
   for (const h of gecerliHareketler(db, d)) {
-    if (h.tur !== 'satis') continue;
+    if (h.tur !== 'satis' || (h.belge_guid && gecis.has(h.belge_guid))) continue;
     const s = satirKar(h, db, urun); const u = urun.get(h.urun_id);
     ciro += s.ciro; kar += s.kar; adet += h.miktar; belge.add(h.belge_guid ?? h.tarih); if (h.cari_guid && !PERAKENDE_RE.test(h.cari_ad ?? '')) musteri.add(h.cari_guid);
     const k = u?.kategori || (hizmetMi(h, u) ? 'Hizmet / işçilik' : 'Kategorisiz'); kat.set(k, (kat.get(k) ?? 0) + s.ciro);

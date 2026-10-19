@@ -48,8 +48,8 @@ export default function SatisAnalizi() {
         <div className="space-y-4">
           <div className="card p-4">
             <h3 className="mb-1 font-semibold">Haftanın günleri</h3>
-            <p className="mb-2 text-xs text-slate-500">O günün ortalama satışı</p>
-            <YatayListe veri={z.gunler.map((g) => ({ ad: g.ad, deger: g.ortalama, alt: `${sayi(g.belge)} fiş · toplam ${para(g.ciro)}` }))} bicim={para} limit={7} />
+            <p className="mb-2 text-xs text-slate-500">Tipik (ortanca) günlük satış; tek seferlik büyük satışlar sonucu şişirmesin diye ortalama yerine ortanca gün alınır</p>
+            <YatayListe veri={z.gunler.map((g) => ({ ad: g.ad, deger: g.medyan, alt: `${sayi(g.gunSayisi)} gün · ${sayi(g.belge)} fiş · ortalama ${para(g.ortalama)}` }))} bicim={para} limit={7} />
           </div>
         </div>
 
