@@ -168,15 +168,18 @@ export function onerileriCikar(db: DB): Oneri[] {
   const alim = new Map<ID, Map<string, { ad: string; tutar: number; adet: number }>>();
   for (const h of gecerliHareketler(db, d180)) {
     if (h.tur !== 'alis' || h.kaynak !== 'fatura' || !h.cari_guid || !(h.alis_fiyati > 0) || !(h.miktar > 0)) continue;
-    const m = alim.get(h.urun_id) ?? new Map(); const x = m.get(h.cari_guid) ?? { ad: h.cari_ad ?? '—', tutar: 0, adet: 0 };
-    x.tutar += h.miktar * h.alis_fiyati; x.adet += h.miktar; m.set(h.cari_guid, x); alim.set(h.urun_id, m);
+    // aynı adlı iki cari hesabı (ör. şube hesapları) tek tedarikçi sayılır
+    const tk = (h.cari_ad ?? h.cari_guid).toLocaleUpperCase('tr').replace(/\s+/g, ' ').trim();
+    const m = alim.get(h.urun_id) ?? new Map(); const x = m.get(tk) ?? { ad: h.cari_ad ?? '—', tutar: 0, adet: 0 };
+    x.tutar += h.miktar * h.alis_fiyati; x.adet += h.miktar; m.set(tk, x); alim.set(h.urun_id, m);
   }
   const urunMap = new Map(db.urunler.map((u) => [u.id, u]));
-  const tasarruf = [...alim.entries()].filter(([id, m]) => m.size > 1 && urunMap.has(id)).map(([id, m]) => {
+  // işçilik/nakliye gibi stoksuz kalemler her iş için farklı fiyatlanır; %200'den büyük farklar da genelde birim (metre/top, adet/koli) farkıdır
+  const tasarruf = [...alim.entries()].filter(([id, m]) => m.size > 1 && urunMap.has(id) && stokluMu(urunMap.get(id)!)).map(([id, m]) => {
     const l = [...m.values()].map((x) => ({ ...x, ort: x.tutar / x.adet })).sort((p, q) => p.ort - q.ort);
     const ucuz = l[0]; const fazlaOdenen = l.slice(1).reduce((t, x) => t + (x.ort - ucuz.ort) * x.adet, 0);
     return { u: urunMap.get(id)!, ucuz, pahali: l[l.length - 1], fazlaOdenen, yuzde: ((l[l.length - 1].ort - ucuz.ort) / ucuz.ort) * 100 };
-  }).filter((x) => x.yuzde > 5 && x.fazlaOdenen > 100).sort((x, y) => y.fazlaOdenen - x.fazlaOdenen);
+  }).filter((x) => x.yuzde > 5 && x.yuzde <= 200 && x.fazlaOdenen > 100).sort((x, y) => y.fazlaOdenen - x.fazlaOdenen);
   if (tasarruf.length) {
     const toplam = tasarruf.reduce((t, x) => t + x.fazlaOdenen, 0); const aylik = toplam * 30 / takipGunu(db, d180);
     o.push({ id: 'tedarikci-fark', alan: 'Satın alma', oncelik: aylik > 3000 ? 1 : 2, etki: aylik, etkiTur: 'kar',
