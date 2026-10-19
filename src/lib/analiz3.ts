@@ -1,7 +1,7 @@
 import type { DB, Hareket, ID, Urun } from './types';
 import { gunu } from './format';
 import { gecerliHareketler, hareketTutar, netAlis, netSatis, stokluMu, takipGunu, type Donem } from './analiz';
-import { PERAKENDE_RE, satirKar } from './analiz2';
+import { gecisBelgeleri, PERAKENDE_RE, satirKar, sonAlislar } from './analiz2';
 
 const gunOnce = (n: number) => gunu(new Date(Date.now() - n * 864e5));
 const buyuk = (s?: string | null) => (s ?? '').toLocaleUpperCase('tr').replace(/İ/g, 'I').replace(/Ş/g, 'S').replace(/Ğ/g, 'G').replace(/Ü/g, 'U').replace(/Ö/g, 'O').replace(/Ç/g, 'C').replace(/\s+/g, ' ').trim();
@@ -117,23 +117,25 @@ export function aracAnalizi(db: DB, d: Donem) {
 
 // ======================= DEPO =======================
 const depoAd = (s?: string | null) => buyuk(s).replace(/ DEPO(SU)?$/, '') || '';
-export interface DepoOzet { ad: string; ciro: number; kar: number; fis: number; alis: number; stokDeger: number; stokCesit: number; oluDeger: number; oluCesit: number; enCok: { ad: string; ciro: number }[] }
+export interface DepoOzet { ad: string; ciro: number; /** KDV hariç satış */ net: number; kar: number; fis: number; alis: number; stokDeger: number; stokCesit: number; oluDeger: number; oluCesit: number; enCok: { ad: string; ciro: number }[] }
 export interface Transfer { u: Urun; kaynak: string; hedef: string; adet: number; kaynakStok: number; hedefStok: number; hedefSatis: number; kaynakSatis: number }
 export function depoAnalizi(db: DB, d: Donem) {
   const urun = new Map(db.urunler.map((u) => [u.id, u]));
   const depoMap = new Map(db.depolar.filter((x) => x.aktif).map((x) => [x.id, x.ad]));
   const goster = new Map<string, string>(); // normal ad → gösterilen ad
   for (const ad of depoMap.values()) goster.set(depoAd(ad), ad);
-  const o = new Map<string, { ciro: number; kar: number; fis: Set<string>; alis: number; urun: Map<string, { ad: string; ciro: number }> }>();
-  const al = (k: string) => { let x = o.get(k); if (!x) { x = { ciro: 0, kar: 0, fis: new Set(), alis: 0, urun: new Map() }; o.set(k, x); } return x; };
+  const o = new Map<string, { ciro: number; net: number; kar: number; fis: Set<string>; alis: number; urun: Map<string, { ad: string; ciro: number }> }>();
+  const al = (k: string) => { let x = o.get(k); if (!x) { x = { ciro: 0, net: 0, kar: 0, fis: new Set(), alis: 0, urun: new Map() }; o.set(k, x); } return x; };
+  const gecis = gecisBelgeleri(db);
   let belirsiz = 0, belirsizKar = 0;
   for (const h of gecerliHareketler(db, d)) {
     const k = depoAd(h.depo);
     if (h.tur === 'satis') {
+      if (h.belge_guid && gecis.has(h.belge_guid)) continue; // araç alım/satım faturası depo satışı değil
       const s = satirKar(h, db, urun);
       if (!k) { belirsiz += s.ciro; belirsizKar += s.kar; continue; }
       if (!goster.has(k)) goster.set(k, h.depo!);
-      const x = al(k); x.ciro += s.ciro; x.kar += s.kar; x.fis.add(h.belge_guid ?? h.tarih);
+      const x = al(k); x.ciro += s.ciro; x.net += s.net; x.kar += s.kar; x.fis.add(h.belge_guid ?? h.tarih);
       const ad = urun.get(h.urun_id)?.ad ?? h.urun_ad ?? '—'; const y = x.urun.get(h.urun_id) ?? { ad, ciro: 0 }; y.ciro += s.ciro; x.urun.set(h.urun_id, y);
     } else if (k) { if (!goster.has(k)) goster.set(k, h.depo!); al(k).alis += h.miktar * h.alis_fiyati; }
   }
@@ -150,11 +152,13 @@ export function depoAnalizi(db: DB, d: Donem) {
   const anahtarlar = [...new Set([...goster.keys()])];
   const maliyet = (u: Urun) => (u.alis_fiyati > 0 ? netAlis(u.alis_fiyati, u.kdv, db.ayarlar) : 0);
   const sinir90 = gunOnce(90);
+  // hiç satılmamış ürün son 90 günde alındıysa (ör. yeni depo dolumu) ölü sayılmaz
+  const sonAlis = sonAlislar(db);
   const depolar: DepoOzet[] = anahtarlar.map((k) => {
     const x = o.get(k); const st = stok.get(k) ?? new Map(); let deger = 0, cesit = 0, olu = 0, oluC = 0;
     for (const [id, q] of st) { if (q <= 0) continue; const u = urun.get(id); if (!u?.aktif) continue; const v = q * maliyet(u); deger += v; cesit++;
-      const son = sonSatis.get(k)?.get(id); if (!son || son < sinir90) { olu += v; oluC++; } }
-    return { ad: goster.get(k) ?? k, ciro: x?.ciro ?? 0, kar: x?.kar ?? 0, fis: x?.fis.size ?? 0, alis: x?.alis ?? 0, stokDeger: deger, stokCesit: cesit, oluDeger: olu, oluCesit: oluC,
+      const son = sonSatis.get(k)?.get(id); const alg = sonAlis.get(id)?.tarih; if ((!son || son < sinir90) && !(alg && alg >= sinir90)) { olu += v; oluC++; } }
+    return { ad: goster.get(k) ?? k, ciro: x?.ciro ?? 0, net: x?.net ?? 0, kar: x?.kar ?? 0, fis: x?.fis.size ?? 0, alis: x?.alis ?? 0, stokDeger: deger, stokCesit: cesit, oluDeger: olu, oluCesit: oluC,
       enCok: x ? [...x.urun.values()].sort((a, b) => b.ciro - a.ciro).slice(0, 10) : [] };
   }).sort((a, b) => b.ciro - a.ciro);
   // transfer önerisi: bir depoda bitmiş ama orada satılıyor, diğer depoda ihtiyaçtan fazla var
