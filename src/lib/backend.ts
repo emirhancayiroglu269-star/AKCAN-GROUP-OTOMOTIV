@@ -21,7 +21,9 @@ export interface Backend {
   urunKodlariYukle(satirlar: { anahtar: string; kodlar: string[]; tur: string }[]): Promise<{ eklenen: number; bulunamayan: number }>;
   /** Otomarmara'dan OEM/eşdeğer isteği (Otomarmara sekmesindeki betik işler) */
   omIste(urunIdler: ID[]): Promise<void>;
-  subscribe(onChange: () => void): () => void;
+  subscribe(onChange: () => void, onOm?: () => void): () => void;
+  /** yalnız Otomarmara verisini oku (arka plan servisi sık yazdığı için tüm veri yeniden yüklenmez) */
+  omVeri(): Promise<OtomarmaraVeri[]>;
   /** Hafif kontrol: verinin değişip değişmediğini anlamak için tek satır okur */
   durum(): Promise<{ son_esitleme?: string | null; imza: string } | null>;
 }
@@ -115,6 +117,7 @@ function supabaseBackend(sb: SupabaseClient): Backend {
     async remove(t, id) { ok(await sb.from(t).delete().eq('id', id)); },
     async ayarKaydet(a) { ok(await sb.from('ayarlar').upsert({ ...a, id: 1 })); },
     async urunKodlariYukle(satirlar) { return ok(await sb.rpc('urun_kodlari_yukle', { p: satirlar })) as { eklenen: number; bulunamayan: number }; },
+    async omVeri() { return (await hepsi('otomarmara_veri', 'urun_id', true, 100000)) as OtomarmaraVeri[]; },
     async omIste(ids) {
       if (!ids.length) return; const t = new Date().toISOString();
       ok(await sb.from('otomarmara_veri').upsert(ids.map((id) => ({ urun_id: id, durum: 'istendi', istendi: t, oncelik: 1 })), { onConflict: 'urun_id' }));
@@ -130,15 +133,17 @@ function supabaseBackend(sb: SupabaseClient): Backend {
       }
       return data as EsitlemeSonucu;
     },
-    subscribe(onChange) {
-      let timer: ReturnType<typeof setTimeout> | undefined;
+    subscribe(onChange, onOm) {
+      let timer: ReturnType<typeof setTimeout> | undefined; let omTimer: ReturnType<typeof setTimeout> | undefined;
       const fire = () => { clearTimeout(timer); timer = setTimeout(onChange, 1500); };
       const ch = sb.channel('degisiklikler');
       // BizimHesap eşitlemesinin yazdığı tablolar burada yok: onlar durum() ile 30 sn'de bir kontrol edilir
-      ['ayarlar', 'kullanicilar', 'urun_kodlari', 'tahsilat_notlari', 'stok_aksiyon', 'otomarmara_veri'].forEach((t) =>
+      ['ayarlar', 'kullanicilar', 'urun_kodlari', 'tahsilat_notlari', 'stok_aksiyon'].forEach((t) =>
         ch.on('postgres_changes', { event: '*', schema: 'public', table: t }, fire));
+      // Otomarmara servisi arka planda sürekli yazar: tüm veriyi değil yalnız bu tabloyu, en sık 20 sn'de bir tazele
+      if (onOm) ch.on('postgres_changes', { event: '*', schema: 'public', table: 'otomarmara_veri' }, () => { if (!omTimer) omTimer = setTimeout(() => { omTimer = undefined; if (document.visibilityState === 'visible') onOm(); }, 20000); });
       ch.subscribe();
-      return () => { clearTimeout(timer); sb.removeChannel(ch); };
+      return () => { clearTimeout(timer); clearTimeout(omTimer); sb.removeChannel(ch); };
     },
     async durum() {
       const { data } = await sb.from('bh_durum').select('son_esitleme,son_degisim,rapor_yukleme,masraf_son,son_hata').eq('id', 1).maybeSingle();
@@ -282,6 +287,7 @@ function demoBackend(): Backend {
     },
     subscribe(onChange) { listeners.add(onChange); return () => { listeners.delete(onChange); }; },
     async omIste() { /* demo: yok */ },
+    async omVeri() { return []; },
     async durum() { return null; },
   };
 }

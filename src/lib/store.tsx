@@ -26,6 +26,18 @@ export function Toasts() {
   );
 }
 
+/** İlk yükleme uzun sürerse (yavaş mobil bağlantı) kullanıcı ne olduğunu görsün */
+function YukleniyorEkrani() {
+  const [sn, setSn] = useState(0);
+  useEffect(() => { const t = setInterval(() => setSn((x) => x + 1), 1000); return () => clearInterval(t); }, []);
+  return (
+    <div className="grid h-screen place-items-center p-6 text-center text-slate-500">
+      <div><div>Veriler yükleniyor…{sn >= 5 ? ` (${sn} sn)` : ''}</div>
+        {sn >= 25 && <div className="mt-3 max-w-xs text-xs">Bağlantı yavaş görünüyor. Bekleyebilir ya da <button className="text-marka-600 underline" onClick={() => location.reload()}>sayfayı yenileyebilirsiniz</button>.</div>}</div>
+    </div>
+  );
+}
+
 export function StoreProvider({ personel: varsayilanAd, eposta = null, children }: { personel: string; eposta?: string | null; children: ReactNode }) {
   const [db, setDb] = useState<DB | null>(null);
   const [hata, setHata] = useState<string | null>(null);
@@ -38,7 +50,8 @@ export function StoreProvider({ personel: varsayilanAd, eposta = null, children 
   }, []);
   useEffect(() => {
     yenile();
-    const kapat = backend.subscribe(yenile);
+    const omTazele = async () => { try { const om = await backend.omVeri(); setDb((x) => (x ? { ...x, otomarmara_veri: om } : x)); } catch { /* sonraki olayda */ } };
+    const kapat = backend.subscribe(yenile, omTazele);
     // BizimHesap her dakika eşitlenir. 30 sn'de bir tek satırlık durum okunur; yalnız veri değiştiyse tamamı yeniden yüklenir.
     // Veri değişince tamamı yeniden yüklenir, ama en sık 3 dakikada bir (gün içinde stok her dakika değişebiliyor)
     const ENAZ = 3 * 60 * 1000;
@@ -76,7 +89,7 @@ export function StoreProvider({ personel: varsayilanAd, eposta = null, children 
       </div>
     </div>
   );
-  if (!db) return <div className="grid h-screen place-items-center text-slate-500">Yükleniyor…</div>;
+  if (!db) return <YukleniyorEkrani />;
   const { rol, kayit } = MODE === 'demo' ? { rol: 'yonetici' as const, kayit: undefined } : rolBul(db, eposta);
   const personel = kayit?.ad || varsayilanAd;
   const izin = (y: Yetki) => yetkili(rol, y);
