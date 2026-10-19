@@ -1,3 +1,4 @@
+import { asama } from './lib/hataKayit';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import {
@@ -76,7 +77,7 @@ export default function App() {
   const [session, setSession] = useState<Session | null | undefined>(MODE === 'demo' ? null : undefined);
   useEffect(() => {
     if (!supabase) return;
-    supabase.auth.getSession().then(({ data }) => setSession(data.session));
+    supabase.auth.getSession().then(({ data }) => { asama('oturum ' + (data.session ? 'var' : 'yok')); setSession(data.session); });
     const { data } = supabase.auth.onAuthStateChange((_e, s) => setSession(s));
     return () => data.subscription.unsubscribe();
   }, []);
@@ -107,8 +108,9 @@ function Kabuk() {
     const f = () => setKonum(cozumle(location.hash.slice(1) || 'panel'));
     window.addEventListener('hashchange', f); return () => window.removeEventListener('hashchange', f);
   }, []);
-  const onemliOneri = useMemo(() => (rol === 'yonetici' ? onerileriCikar(db).filter((x) => x.oncelik === 1).length : 0), [db, rol]);
-  const tahsilatSay = useMemo(() => (rol === 'yonetici' ? tahsilatListesi(db).filter((x) => x.durum === 'soz_gecti' || x.durum === 'soz_bugun').length : 0), [db, rol]);
+  const onemliOneri = useMemo(() => { asama('oneriler basla'); const n = rol === 'yonetici' ? onerileriCikar(db).filter((x) => x.oncelik === 1).length : 0; asama('oneriler bitti'); return n; }, [db, rol]);
+  const tahsilatSay = useMemo(() => { const n = rol === 'yonetici' ? tahsilatListesi(db).filter((x) => x.durum === 'soz_gecti' || x.durum === 'soz_bugun').length : 0; asama('tahsilat bitti'); return n; }, [db, rol]);
+  useEffect(() => { asama('ekran cizildi ' + location.hash); }, []);
   const temaDegis = () => {
     const y = !koyu; setKoyu(y); document.documentElement.classList.toggle('dark', y);
     try { localStorage.setItem('tema', y ? 'koyu' : 'acik'); } catch { /* yok */ }

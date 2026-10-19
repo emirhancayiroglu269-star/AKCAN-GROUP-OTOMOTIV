@@ -1,4 +1,4 @@
-import { hataKaydet } from './hataKayit';
+import { asama, hataKaydet } from './hataKayit';
 import { useRef, createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
 import { faturaAlisUygula } from './efektifAlis';
 import { backend, MODE } from './backend';
@@ -47,7 +47,7 @@ export function StoreProvider({ personel: varsayilanAd, eposta = null, children 
   const yenile = useCallback(async () => {
     if (yukleniyor.current) return;
     yukleniyor.current = true;
-    try { setDb(faturaAlisUygula(await backend.load())); setHata(null); } catch (e) { hataKaydet(e, 'yukleme'); setHata((e as Error).message); } finally { yukleniyor.current = false; }
+    try { const t0 = performance.now(); const ham = await backend.load(); const t1 = performance.now(); const d = faturaAlisUygula(ham); const t2 = performance.now(); setDb(d); setHata(null); asama(`yuklendi ag=${Math.round(t1 - t0)}ms islem=${Math.round(t2 - t1)}ms`); } catch (e) { hataKaydet(e, 'yukleme'); setHata((e as Error).message); } finally { yukleniyor.current = false; }
   }, []);
   useEffect(() => {
     yenile();
