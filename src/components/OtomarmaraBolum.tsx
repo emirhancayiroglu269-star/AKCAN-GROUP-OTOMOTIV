@@ -23,7 +23,7 @@ export function OtomarmaraBolum({ u }: { u: Urun }) {
         <button className="btn-ghost ml-auto px-2 py-1 text-xs" onClick={iste} disabled={v?.durum === 'istendi'}><RefreshCw size={13} /> {v ? (v.durum === 'istendi' ? 'İstendi, bekleniyor' : 'Yeniden getir') : "Otomarmara'dan getir"}</button>
       </div>
       {!v && <p className="text-xs text-slate-500">Bu ürünün OEM kodları ve eşdeğerleri henüz alınmadı.</p>}
-      {v?.durum === 'istendi' && <p className="text-xs text-amber-700">Sırada. Otomarmara B4B sekmesinde "Otomarmara Muadil" yer imi açık olmalı (Ayarlar'dan hazırlanır).</p>}
+      {v?.durum === 'istendi' && <p className="text-xs text-amber-700">Sırada; sunucu birkaç dakika içinde Otomarmara'dan alır. Gelmezse Ayarlar → "Otomarmara muadil / OEM servisi" bölümüne bakın.</p>}
       {v?.durum === 'bulunamadi' && <p className="text-xs text-slate-500">{v.hata ?? "Otomarmara'da bulunamadı."}</p>}
       {v?.durum === 'hata' && <p className="text-xs text-red-600">Hata: {v.hata}</p>}
       {v?.durum === 'tamam' && <div className="space-y-2 text-xs">

@@ -13,7 +13,7 @@ export function OmIsteDugme({ urunler }: { urunler: Urun[] }) {
   const bekleyen = urunler.filter((u) => v.get(String(u.id))?.durum === 'istendi').length;
   if (!aday.length && !bekleyen) return null;
   return (
-    <button className="btn-ghost" disabled={!aday.length} title="Otomarmara B4B sekmesinde 'Otomarmara Muadil' yer imi açıkken sırayla işlenir"
+    <button className="btn-ghost" disabled={!aday.length} title="Sunucu 2 dakikada bir, turda 8 ürün olmak üzere sırayla işler"
       onClick={() => calistir(() => backend.omIste(aday.map((u) => u.id)), `${aday.length} ürün Otomarmara'ya soruldu`)}>
       <RefreshCw size={16} /> {aday.length ? `Bitenlerin muadillerini Otomarmara'dan iste (${aday.length})` : `Otomarmara'da sırada: ${bekleyen}`}
     </button>

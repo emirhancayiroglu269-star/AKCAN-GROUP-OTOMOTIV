@@ -7,7 +7,7 @@ import { Alan, SayfaBaslik, onayla } from '../components/ui';
 import { BizimHesapPanel } from '../components/BizimHesapPanel';
 import { KullaniciPanel } from '../components/KullaniciPanel';
 import { AktarimYerImi } from '../components/AktarimYerImi';
-import { OtomarmaraYerImi } from '../components/OtomarmaraYerImi';
+import { OtomarmaraDurum } from '../components/OtomarmaraDurum';
 
 export default function AyarlarSayfa() {
   const { db, mode, calistir } = useStore();
@@ -46,7 +46,7 @@ export default function AyarlarSayfa() {
 
       <BizimHesapPanel />
       {mode === 'bulut' && <AktarimYerImi />}
-      {mode === 'bulut' && <OtomarmaraYerImi />}
+      {mode === 'bulut' && <OtomarmaraDurum />}
       <KullaniciPanel />
 
       <div className="card p-5">

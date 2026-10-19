@@ -115,7 +115,12 @@ function supabaseBackend(sb: SupabaseClient): Backend {
     async remove(t, id) { ok(await sb.from(t).delete().eq('id', id)); },
     async ayarKaydet(a) { ok(await sb.from('ayarlar').upsert({ ...a, id: 1 })); },
     async urunKodlariYukle(satirlar) { return ok(await sb.rpc('urun_kodlari_yukle', { p: satirlar })) as { eklenen: number; bulunamayan: number }; },
-    async omIste(ids) { if (!ids.length) return; const t = new Date().toISOString(); ok(await sb.from('otomarmara_veri').upsert(ids.map((id) => ({ urun_id: id, durum: 'istendi', istendi: t })), { onConflict: 'urun_id' })); },
+    async omIste(ids) {
+      if (!ids.length) return; const t = new Date().toISOString();
+      ok(await sb.from('otomarmara_veri').upsert(ids.map((id) => ({ urun_id: id, durum: 'istendi', istendi: t })), { onConflict: 'urun_id' }));
+      // sunucu hemen işlemeye başlasın (cron da 2 dakikada bir bakar); yanıt beklenmez
+      sb.functions.invoke('otomarmara-muadil', { body: {} }).catch(() => undefined);
+    },
     async bhEsitle() {
       const { data, error } = await sb.functions.invoke('bizimhesap-esitle', { body: {} });
       if (error) {
