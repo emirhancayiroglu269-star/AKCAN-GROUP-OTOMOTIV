@@ -165,29 +165,37 @@ export function onerileriCikar(db: DB): Oneri[] {
 
   // ---------- SATIN ALMA: tedarikçi fiyat farkı ----------
   const d180: Donem = { bas: gun(179) > ilk ? gun(179) : ilk, bit: gunu() };
-  const alim = new Map<ID, Map<string, { ad: string; tutar: number; adet: number }>>();
+  // alımlar satır satır; her alım, ±45 gün içinde BAŞKA tedarikçiden yapılan en ucuz alımla karşılaştırılır
+  // (aylar arası karşılaştırma fiyat artışını "pahalı tedarikçi" sanır; aynı tedarikçinin zaman içindeki zammı sayılmaz)
+  type Alim = { tk: string; ad: string; tarih: string; fiyat: number; adet: number };
+  const alim = new Map<ID, Alim[]>();
   for (const h of gecerliHareketler(db, d180)) {
     if (h.tur !== 'alis' || h.kaynak !== 'fatura' || !h.cari_guid || !(h.alis_fiyati > 0) || !(h.miktar > 0)) continue;
-    // aynı adlı iki cari hesabı (ör. şube hesapları) tek tedarikçi sayılır
     const tk = (h.cari_ad ?? h.cari_guid).toLocaleUpperCase('tr').replace(/\s+/g, ' ').trim();
-    const m = alim.get(h.urun_id) ?? new Map(); const x = m.get(tk) ?? { ad: h.cari_ad ?? '—', tutar: 0, adet: 0 };
-    x.tutar += h.miktar * h.alis_fiyati; x.adet += h.miktar; m.set(tk, x); alim.set(h.urun_id, m);
+    const l = alim.get(h.urun_id) ?? []; l.push({ tk, ad: h.cari_ad ?? '—', tarih: gunu(h.tarih), fiyat: h.alis_fiyati, adet: h.miktar }); alim.set(h.urun_id, l);
   }
   const urunMap = new Map(db.urunler.map((u) => [u.id, u]));
+  const tarihK = (t: string) => `${t.slice(8, 10)}.${t.slice(5, 7)}`;
   // işçilik/nakliye gibi stoksuz kalemler her iş için farklı fiyatlanır; %200'den büyük farklar da genelde birim (metre/top, adet/koli) farkıdır
-  const tasarruf = [...alim.entries()].filter(([id, m]) => m.size > 1 && urunMap.has(id) && stokluMu(urunMap.get(id)!)).map(([id, m]) => {
-    const l = [...m.values()].map((x) => ({ ...x, ort: x.tutar / x.adet })).sort((p, q) => p.ort - q.ort);
-    const ucuz = l[0]; const fazlaOdenen = l.slice(1).reduce((t, x) => t + (x.ort - ucuz.ort) * x.adet, 0);
-    return { u: urunMap.get(id)!, ucuz, pahali: l[l.length - 1], fazlaOdenen, yuzde: ((l[l.length - 1].ort - ucuz.ort) / ucuz.ort) * 100 };
-  }).filter((x) => x.yuzde > 5 && x.yuzde <= 200 && x.fazlaOdenen > 100).sort((x, y) => y.fazlaOdenen - x.fazlaOdenen);
+  const tasarruf = [...alim.entries()].filter(([id, l]) => new Set(l.map((x) => x.tk)).size > 1 && urunMap.has(id) && stokluMu(urunMap.get(id)!)).flatMap(([id, l]) => {
+    let fazlaOdenen = 0; let enIyi: { ucuz: Alim; pahali: Alim; yuzde: number; fazla: number } | null = null;
+    for (const p of l) {
+      const yakin = l.filter((q) => q.tk !== p.tk && Math.abs(gunFark(q.tarih, p.tarih)) <= 45).sort((x, y) => x.fiyat - y.fiyat)[0];
+      if (!yakin || !(p.fiyat > yakin.fiyat * 1.05) || p.fiyat > yakin.fiyat * 3) continue;
+      const fazla = (p.fiyat - yakin.fiyat) * p.adet; fazlaOdenen += fazla;
+      if (!enIyi || fazla > enIyi.fazla) enIyi = { ucuz: yakin, pahali: p, yuzde: (p.fiyat / yakin.fiyat - 1) * 100, fazla };
+    }
+    const son = [...l].sort((x, y) => y.tarih.localeCompare(x.tarih))[0];
+    return enIyi && fazlaOdenen > 100 ? [{ u: urunMap.get(id)!, ...enIyi, fazlaOdenen, sonUcuzdan: son.tk === enIyi.ucuz.tk }] : [];
+  }).sort((x, y) => y.fazlaOdenen - x.fazlaOdenen);
   if (tasarruf.length) {
     const toplam = tasarruf.reduce((t, x) => t + x.fazlaOdenen, 0); const aylik = toplam * 30 / takipGunu(db, d180);
     o.push({ id: 'tedarikci-fark', alan: 'Satın alma', oncelik: aylik > 3000 ? 1 : 2, etki: aylik, etkiTur: 'kar',
-      baslik: `Aynı ürünü farklı tedarikçilerden farklı fiyata almışsınız`,
-      aciklama: `Son 6 ayda ${tasarruf.length} üründe pahalı tedarikçiden alım yüzünden yaklaşık ${para(toplam)} fazla ödendi (ayda ${para(aylik)}). Hep en ucuzdan alınsaydı bu kâra eklenirdi.`,
-      adimlar: ['Sipariş vermeden önce bu ürünlerde ucuz tedarikçiyi tercih edin', 'Pahalı tedarikçiden diğerinin fiyatını söyleyerek indirim isteyin'], sayfa: 'tedarikci',
-      tablo: { basliklar: ['Ürün', 'En ucuz', 'En pahalı', 'Fark', 'Fazla ödenen'], sag: [3, 4],
-        satirlar: tasarruf.slice(0, 15).map((x) => [urunAd(x.u), `${x.ucuz.ad} · ${para(x.ucuz.ort)}`, `${x.pahali.ad} · ${para(x.pahali.ort)}`, yuzde(x.yuzde), para(x.fazlaOdenen)]) } });
+      baslik: `Aynı ürünü aynı dönemde farklı tedarikçilerden farklı fiyata almışsınız`,
+      aciklama: `Son 6 ayda ${tasarruf.length} üründe, aynı ürün birbirine yakın tarihlerde (45 gün içinde) başka tedarikçiden daha ucuza alınabiliyorken pahalıdan alınmış; yaklaşık ${para(toplam)} fazla ödendi (ayda ${para(aylik)}). Aylar arası zamlar sayılmadı.`,
+      adimlar: ['Sipariş vermeden önce bu ürünlerde ucuz tedarikçiyi tercih edin', 'Pahalı tedarikçiden diğerinin fiyatını söyleyerek indirim isteyin', '"Son alış ucuzdan" yazanlarda zaten ucuz tedarikçiye geçmişsiniz'], sayfa: 'tedarikci',
+      tablo: { basliklar: ['Ürün', 'Ucuz alım', 'Pahalı alım', 'Fark', 'Fazla ödenen', 'Durum'], sag: [3, 4],
+        satirlar: tasarruf.slice(0, 20).map((x) => [urunAd(x.u), `${x.ucuz.ad} · ${para(x.ucuz.fiyat)} (${tarihK(x.ucuz.tarih)})`, `${x.pahali.ad} · ${para(x.pahali.fiyat)} (${tarihK(x.pahali.tarih)})`, yuzde(x.yuzde), para(x.fazlaOdenen), x.sonUcuzdan ? 'Son alış ucuzdan ✓' : 'Dikkat']) } });
   }
 
   // ---------- MÜŞTERİ ----------
