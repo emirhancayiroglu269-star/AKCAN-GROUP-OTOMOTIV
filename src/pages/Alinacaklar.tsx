@@ -9,6 +9,7 @@ import { Bos, Kpi, SayfaBaslik } from '../components/ui';
 import { yazdir } from '../components/Yazdir';
 import { mevsim, urunTedarikcileri } from '../lib/analiz3';
 import { UrunLink } from '../components/DetayKart';
+import { muadilMetin, stoktakiMuadiller } from '../lib/muadil';
 
 interface Satir { u: Urun; satilan: number; hiz: number; yeter: number; oneri: number; neden: 'kritik' | 'bitti' | 'azaliyor'; mevsim: { ad: string; katsayi: number } | null }
 
@@ -119,6 +120,7 @@ export default function Alinacaklar() {
                   <td><div className="font-medium"><UrunLink id={x.u.id}>{x.u.ad}</UrunLink></div><div className="text-xs text-slate-500">{[x.u.kod, x.u.marka].filter(Boolean).join(' · ')}
                     {x.mevsim && <span className={`ml-1.5 rozet ${x.mevsim.katsayi > 1 ? 'bg-sky-50 text-sky-700' : 'bg-orange-50 text-orange-700'}`} title={`${x.mevsim.ad}: gelecek ay talep bu aya göre ×${x.mevsim.katsayi}`}>{x.mevsim.katsayi > 1 ? <Snowflake size={11} className="mr-0.5" /> : <Sun size={11} className="mr-0.5" />}{x.mevsim.ad} {x.mevsim.katsayi > 1 ? '↑' : '↓'}%{Math.round(Math.abs(x.mevsim.katsayi - 1) * 100)}</span>}
                     {ted.get(x.u.id) && <span className="ml-1.5 text-slate-400">· {ted.get(x.u.id)!.ucuz.ad}{maliyetGor ? ` ${para(ted.get(x.u.id)!.ucuz.fiyat)}` : ''}{ted.get(x.u.id)!.secenek > 1 ? ` (${ted.get(x.u.id)!.secenek} tedarikçi)` : ''}</span>}
+                    {x.u.stok <= 0 && (() => { const m = stoktakiMuadiller(db, x.u); return m.length ? <span className="ml-1.5 rozet bg-emerald-50 text-emerald-700" title="BizimHesap etiketindeki OEM kodlarına göre">muadili stokta: {muadilMetin(m.slice(0, 2))}</span> : null; })()}
                     <span className={`ml-1.5 rozet ${x.neden === 'kritik' ? 'bg-amber-100 text-amber-800' : x.neden === 'bitti' ? 'bg-red-50 text-red-600' : 'bg-slate-100 text-slate-600'}`}>{x.neden === 'kritik' ? 'kritik seviye' : x.neden === 'bitti' ? 'stok bitti' : 'azalıyor'}</span></div></td>
                   <td className={`text-right font-medium ${x.u.stok <= 0 ? 'text-red-600' : 'text-amber-700'}`}>{sayi(x.u.stok)}</td>
                   <td>{duzenle ? <input className="inp py-1 text-right" defaultValue={x.u.kritik_stok || ''} placeholder="—" key={x.u.kritik_stok} onBlur={(e) => kritikKaydet(x.u, e.target.value)} /> : <div className="text-right">{x.u.kritik_stok || '—'}</div>}</td>

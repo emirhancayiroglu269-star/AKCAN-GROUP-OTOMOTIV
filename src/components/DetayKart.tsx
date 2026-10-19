@@ -6,6 +6,7 @@ import { musteriKarti, mevsim, urunKarti } from '../lib/analiz3';
 import { onerilenFiyat } from '../lib/analiz2';
 import { gunu, para, sayi, tarih, telLink } from '../lib/format';
 import { CubukGrafik } from './grafik';
+import { muadilBulucu } from '../lib/muadil';
 import { Modal } from './ui';
 
 type Detay = { tur: 'urun'; id: string } | { tur: 'musteri'; guid: string | null; ad: string };
@@ -46,6 +47,9 @@ function UrunIcerik({ id }: { id: string }) {
         <Bilgi e="Toplam satış" v={`${sayi(k.adet)} adet`} alt={`${para(k.ciro)}${maliyet ? ` · kâr ${para(k.kar)}` : ''}`} />
       </div>
       {ms && <div className="rounded-lg bg-sky-50 px-3 py-2 text-xs text-sky-900 dark:bg-sky-500/10 dark:text-sky-200">Mevsimlik ürün ({ms.ad}): önümüzdeki ay talebin bu aya göre yaklaşık <b>{ms.katsayi >= 1 ? '%' + Math.round((ms.katsayi - 1) * 100) + ' artması' : '%' + Math.round((1 - ms.katsayi) * 100) + ' düşmesi'}</b> beklenir.</div>}
+      {(() => { const m = muadilBulucu(db)(u); return m.length ? (
+        <div><div className="mb-1 text-sm font-semibold">Muadiller <span className="text-xs font-normal text-slate-500">(BizimHesap etiketindeki OEM kodlarına göre)</span></div>
+          <div className="flex flex-wrap gap-1.5">{m.slice(0, 12).map((v) => <span key={v.id} className={`rozet ${v.stok > 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}><UrunLink id={String(v.id)}>{v.kod || v.ad.slice(0, 24)}</UrunLink>&nbsp;· stok {sayi(v.stok)}</span>)}</div></div>) : null; })()}
       <div><div className="mb-1 text-sm font-semibold">Aylık satış adedi</div><CubukGrafik veri={k.ay.map((x) => ({ etiket: ayEtiket(x.ay), deger: x.adet, alt: `${x.ay} · ${para(x.ciro)}` }))} bicim={(v) => `${sayi(v)} adet`} yukseklik={120} bos="Satış yok" /></div>
       <div className="grid gap-4 md:grid-cols-2">
         <div>

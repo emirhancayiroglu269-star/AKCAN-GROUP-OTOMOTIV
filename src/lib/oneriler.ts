@@ -1,5 +1,6 @@
 import type { DB, ID, Urun } from './types';
 import type { Sayfa } from '../App';
+import { muadilMetin, stoktakiMuadiller } from './muadil';
 import { gunu, para, sayi } from './format';
 import { GECIS_RE, abcSinifla, alinacakHesap, birimKar, gecerliHareketler, gelirTablosu, hareketTutar, hizmetMi, netAlis, netSatis, takipGunu, urunOzetleri, type Donem } from './analiz';
 import { aylikSeri, musteriAnalizi, nakitAkisi, oncekiDonem, onerilenFiyat, sonAlislar, sonSatislar, zamanAnalizi } from './analiz2';
@@ -119,14 +120,17 @@ export function onerileriCikar(db: DB): Oneri[] {
   const stokluMu = (u: Urun) => !!u.kategori && !/işçilik|iscilik|İŞÇİLİK|IŞÇİLİK|hizmet|HİZMET|revizyon|REVİZYON|prim\b|PRİMİ|montaj|MONTAJ|tamir|TAMİR|torna|TORNA|kaporta|KAPORTA|ücret|ÜCRET/i.test(u.ad);
   const bitmis = aktif.filter((u) => u.stok <= 0 && stokluMu(u)).map((u) => ({ u, x: s30.get(u.id), x90: ozetMap.get(u.id) }))
     .filter((r) => (r.x?.satisSayisi ?? 0) >= 2).map((r) => ({ ...r, aylikKar: (r.x!.kar / gun30) * 30 })).sort((x, y) => y.aylikKar - x.aylikKar);
-  if (bitmis.length) {
-    const kayip = bitmis.reduce((t, r) => t + Math.max(0, r.aylikKar), 0);
-    o.push({ id: 'bitmis', alan: 'Satın alma', oncelik: 1, etki: kayip || undefined, etkiTur: 'kar',
-      baslik: `Son 30 günde düzenli satılan ${bitmis.length} ürün stokta kalmadı`,
-      aciklama: `Müşteri gelip bulamazsa satış kaçar ve müşteri başka dükkâna alışır. Bu ürünlerin son 30 gündeki kârı ayda yaklaşık ${para(kayip)}.`,
-      adimlar: ['Bu listeyi bugün sipariş edin', 'Sık bitenlere Ürünler sayfasından kritik stok seviyesi girin'], sayfa: 'alinacaklar',
-      tablo: { basliklar: ['Ürün', 'Stok', '30 günde satılan', '30 günde kâr'], sag: [1, 2, 3],
-        satirlar: bitmis.slice(0, 20).map((r) => [urunAd(r.u), sayi(r.u.stok), sayi(r.x!.satilan), para(r.x!.kar)]) } });
+  // muadili (etiketteki OEM kodlarına göre) stokta olanlar acil sipariş sayılmaz, ayrıca gösterilir
+  const bitmisM = bitmis.map((r) => ({ ...r, muadil: stoktakiMuadiller(db, r.u) })).sort((x, y) => (x.muadil.length ? 1 : 0) - (y.muadil.length ? 1 : 0) || y.aylikKar - x.aylikKar);
+  const acil = bitmisM.filter((r) => !r.muadil.length);
+  if (bitmisM.length) {
+    const kayip = acil.reduce((t, r) => t + Math.max(0, r.aylikKar), 0); const muadilli = bitmisM.length - acil.length;
+    o.push({ id: 'bitmis', alan: 'Satın alma', oncelik: acil.length ? 1 : 3, etki: kayip || undefined, etkiTur: 'kar',
+      baslik: acil.length ? `Son 30 günde düzenli satılan ${acil.length} ürün stokta kalmadı` : `Biten ${muadilli} ürünün muadili stokta var`,
+      aciklama: `${acil.length ? `Müşteri gelip bulamazsa satış kaçar ve müşteri başka dükkâna alışır. Muadili de olmayan bu ürünlerin son 30 gündeki kârı ayda yaklaşık ${para(kayip)}.` : ''}${muadilli ? ` ${muadilli} ürünün BizimHesap etiketindeki OEM kodlarına göre muadili depoda var; müşteriye muadili verilebilir, siparişte acele etmeyin.` : ''}`.trim(),
+      adimlar: [...(acil.length ? ['Muadili olmayanları bugün sipariş edin'] : []), ...(muadilli ? ['Muadili stokta olanlarda satışta muadili önerin'] : []), 'Sık bitenlere Ürünler sayfasından kritik stok seviyesi girin'], sayfa: 'alinacaklar',
+      tablo: { basliklar: ['Ürün', 'Stok', '30 günde satılan', '30 günde kâr', 'Muadili stokta'], sag: [1, 2, 3],
+        satirlar: bitmisM.slice(0, 20).map((r) => [urunAd(r.u), sayi(r.u.stok), sayi(r.x!.satilan), para(r.x!.kar), r.muadil.length ? muadilMetin(r.muadil.slice(0, 3)) : '— sipariş gerekli']) } });
   }
 
   const azalan = aktif.filter((u) => u.stok > 0 && sinif.get(u.id) !== 'C').map((u) => ({ u, h: alinacakHesap(u, ozetMap.get(u.id)?.satilan ?? 0, gunSay, a.hedef_gun ?? 30) }))

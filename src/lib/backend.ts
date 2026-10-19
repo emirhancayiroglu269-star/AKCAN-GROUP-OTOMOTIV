@@ -73,9 +73,12 @@ function supabaseBackend(sb: SupabaseClient): Backend {
     const sayfa = 1000; const sonuc: unknown[] = [];
     for (let i = 0; i < sinir; i += sayfa) {
       // ürünlerde BizimHesap'ın ham JSON'u (bh_ham) çok büyük ve sitede kullanılmıyor: çekilmez
-      let q = sb.from(t).select(t === 'urunler' ? 'id,kod,barkod,ad,marka,kategori,birim,alis_fiyati,satis_fiyati,kdv,stok,kritik_stok,raf,aktif,olusturma,bh_id,bh_guncelleme,bh_stok' : '*');
-      if (filtre) q = q.eq(filtre[0], filtre[1]);
-      const d = ok(await q.order(order, { ascending: asc }).range(i, i + sayfa - 1)) as unknown[];
+      const URUN = 'id,kod,barkod,ad,marka,kategori,birim,alis_fiyati,satis_fiyati,kdv,stok,kritik_stok,raf,aktif,olusturma,bh_id,bh_guncelleme,bh_stok';
+      const sor = (kolon: string) => { let q = sb.from(t).select(kolon); if (filtre) q = q.eq(filtre[0], filtre[1]); return q.order(order, { ascending: asc }).range(i, i + sayfa - 1); };
+      // etiket (OEM/muadil kodları) yalnız bh_ham içindeki tag alanından okunur; okunamazsa onsuz devam edilir
+      let r = await sor(t === 'urunler' ? URUN + ',etiket:bh_ham->>tag' : '*');
+      if (r.error && t === 'urunler') r = await sor(URUN);
+      const d = ok(r) as unknown[];
       sonuc.push(...d);
       if (d.length < sayfa) break;
     }
