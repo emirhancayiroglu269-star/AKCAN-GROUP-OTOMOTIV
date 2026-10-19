@@ -263,7 +263,7 @@ export function onerileriCikar(db: DB): Oneri[] {
   if (n30.giris > 0 && n30.cikis > n30.giris * 1.05) o.push({ id: 'nakit-acik', alan: 'Nakit', oncelik: 1, etki: n30.cikis - n30.giris, etkiTur: 'nakit',
     baslik: `Son 30 günde kasadan çıkan para girenden ${para(n30.cikis - n30.giris)} fazla`,
     tablo: { basliklar: ['Hareket türü', 'Giriş', 'Çıkış'], sag: [1, 2], satirlar: [...n30.tip.entries()].sort((x, y) => (y[1].giris + y[1].cikis) - (x[1].giris + x[1].cikis)).map(([t, v]) => [t === 'Para Çıkışı' ? 'Para çıkışı (maaş, avans, komisyon vb. dışarıya aktarım)' : t === 'Para Girişi' ? 'Para girişi (dışarıdan aktarım)' : t === 'Ödeme' ? 'Ödeme (tedarikçi, masraf, cari)' : t === 'Tahsilat' ? 'Tahsilat (müşterilerden)' : t, v.giris ? para(v.giris) : '—', v.cikis ? para(v.cikis) : '—']) },
-    aciklama: `Kasa/banka girişi ${para(n30.giris)}, çıkışı ${para(n30.cikis)} (kendi hesaplarınız arasındaki aktarımlar hariç). Bu devam ederse nakit sıkışır.`,
+    aciklama: `Müşterilerden ve diğer gelirlerden giren ${para(n30.giris)}, tedarikçi/masraf/cari ödemesi olarak çıkan ${para(n30.cikis)}. Kendi hesaplarınız arasındaki aktarımlar (POS → banka, banka → kredi kartı, ortak hesabı) hariç; kredi kartıyla yapılan ödemeler harcama günü çıkış sayılır. Bu devam ederse nakit sıkışır.`,
     adimlar: ['Tedarikçi ödemelerini tahsilatlarla eşleştirin', 'Büyük alımları erteleyin, ölü stoğu nakde çevirin'], sayfa: 'nakit' });
 
   // ---------- GİDER ----------
