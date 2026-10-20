@@ -1,7 +1,8 @@
 // Otomarmara B4B → Analiz (Supabase Edge Function): yalnız İSTENEN ürünlerin OEM / eşdeğer bilgisini okur.
 // Otomarmara'da hiçbir şey değiştirmez (sepete eklemez, sipariş vermez): ürün arar, OEM ve eşdeğer listesini okur.
 // Gizli değerler (Supabase > Edge Functions > Secrets) — kullanıcı kendisi girer: OM_MUSTERI_KODU, OM_KULLANICI, OM_SIFRE
-// Tetikleme: site "Otomarmara'dan getir" deyince + cron (bekleyen varsa işler). Bir turda en fazla 8 ürün, aralarında bekleme.
+// Tetikleme: site "Otomarmara'dan getir" deyince + cron (her dakika, bekleyen varsa işler). Bir tur ~50 sn sürer (en fazla 12 ürün), aralarında bekleme.
+// Stoktaki ürünler 12 saatte bir yeniden sıraya alınır (veritabanında om_kuyruk_besle / om_yenile).
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { DOMParser, type Element, type Node } from 'jsr:@b-fuze/deno-dom';
 
@@ -10,7 +11,9 @@ const MUSTERI = Deno.env.get('OM_MUSTERI_KODU') ?? '';
 const KULLANICI = Deno.env.get('OM_KULLANICI') ?? '';
 const SIFRE = Deno.env.get('OM_SIFRE') ?? '';
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0 Safari/537.36';
-const TUR_LIMIT = 8;
+const TUR_LIMIT = 12;
+/** bir tur bu süreyi geçince yeni ürüne başlamaz: cron her dakika çalışır, turlar üst üste binmez */
+const TUR_SURE_MS = 50_000;
 const SAYFA_SINIR = 300_000;
 /** bir ürün bu kadar denemede bitirilemezse (servis o üründe kapanıyorsa) atlanır */
 const DENEME_SINIR = 2;
@@ -114,7 +117,9 @@ Deno.serve(async (req) => {
     const { data: l, error } = await db.from('otomarmara_veri').select('urun_id, deneme, urunler!inner(kod)').eq('durum', 'istendi').order('oncelik', { ascending: false }).order('istendi').limit(TUR_LIMIT);
     if (error) throw new Error(error.message);
     await girisYap();
+    const basla = Date.now();
     for (const x of l ?? []) {
+      if (Date.now() - basla > TUR_SURE_MS) break;
       const u = { urun_id: x.urun_id as string, kod: String((x as unknown as { urunler: { kod: string } }).urunler?.kod ?? '') };
       let s: Record<string, unknown>;
       await db.from('otomarmara_veri').update({ deneme: (Number((x as { deneme?: number }).deneme) || 0) + 1 }).eq('urun_id', u.urun_id);
@@ -126,7 +131,7 @@ Deno.serve(async (req) => {
       islenen++; await bekle(1500);
     }
     await durum({ son_calisma: new Date().toISOString(), son_hata: null, kilit: null, islenen: (Number(kilit[0].islenen) || 0) + islenen });
-    // kullanıcının istediği (öncelikli) ürün kaldıysa hemen devam et; toplu doldurma ise cron hızında (2 dk'da 8 ürün) yavaş ilerler
+    // kullanıcının istediği (öncelikli) ürün kaldıysa hemen devam et; toplu doldurma / 12 saatlik yenileme cron hızında (dakikada bir tur) ilerler
     const { count } = await db.from('otomarmara_veri').select('urun_id', { count: 'exact', head: true }).eq('durum', 'istendi');
     const { count: oncelikli } = await db.from('otomarmara_veri').select('urun_id', { count: 'exact', head: true }).eq('durum', 'istendi').eq('oncelik', 1);
     if ((oncelikli ?? 0) > 0) {

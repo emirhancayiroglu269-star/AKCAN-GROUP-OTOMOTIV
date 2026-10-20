@@ -13,7 +13,7 @@ function otomarmaraEsdeger(db: DB) {
   const m = new Map<string, Set<string>>(); const veri = db.otomarmara_veri ?? []; if (!veri.length) return m;
   const kodIdx = new Map<string, string>(); for (const u of db.urunler) if (u.aktif && u.kod) kodIdx.set(norm(u.kod), String(u.id));
   const ekle = (a: string, b: string) => { if (a === b) return; (m.get(a) ?? m.set(a, new Set()).get(a)!).add(b); (m.get(b) ?? m.set(b, new Set()).get(b)!).add(a); };
-  for (const v of veri) if (v.durum === 'tamam') for (const e of v.esdegerler ?? []) { const id = kodIdx.get(norm(e.kod)); if (id) ekle(String(v.urun_id), id); }
+  for (const v of veri) for (const e of v.esdegerler ?? []) { const id = kodIdx.get(norm(e.kod)); if (id) ekle(String(v.urun_id), id); }
   return m;
 }
 
