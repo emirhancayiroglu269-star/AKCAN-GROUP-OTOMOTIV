@@ -78,8 +78,8 @@ export function StoreProvider({ personel: varsayilanAd, eposta = null, children 
     };
     const kapat = backend.subscribe(yenile, omTazele);
     // BizimHesap her dakika eşitlenir. 30 sn'de bir tek satırlık durum okunur; yalnız veri değiştiyse tamamı yeniden yüklenir.
-    // Veri değişince tamamı yeniden yüklenir, ama en sık 3 dakikada bir (gün içinde stok her dakika değişebiliyor)
-    const ENAZ = 3 * 60 * 1000;
+    // Veri değişince tamamı yeniden yüklenir, ama en sık 10 dakikada bir (her yenileme ≈10 MB; Supabase ücretsiz planın aylık 5 GB veri çıkış sınırı için)
+    const ENAZ = 10 * 60 * 1000;
     let imza: string | null = null; let tamYukleme = Date.now(); let bekleyen = false;
     const kontrol = async () => {
       if (document.visibilityState !== 'visible') return;
@@ -88,13 +88,13 @@ export function StoreProvider({ personel: varsayilanAd, eposta = null, children 
         if (imza !== null && d.imza !== imza) bekleyen = true;
         imza = d.imza;
         const gecen = Date.now() - tamYukleme;
-        if ((bekleyen && gecen > ENAZ) || gecen > 15 * 60 * 1000) { bekleyen = false; tamYukleme = Date.now(); yenile(); return; }
+        if ((bekleyen && gecen > ENAZ) || gecen > 30 * 60 * 1000) { bekleyen = false; tamYukleme = Date.now(); yenile(); return; }
         setDb((x) => (x && x.bh_durum && x.bh_durum.son_esitleme !== d.son_esitleme ? { ...x, bh_durum: { ...x.bh_durum, son_esitleme: d.son_esitleme } } : x));
       } catch { /* bağlantı yoksa sonraki turda */ }
     };
     const t = setInterval(kontrol, 30 * 1000);
     let son = Date.now();
-    const gorunur = () => { if (document.visibilityState === 'visible' && Date.now() - son > 3 * 60 * 1000 && Date.now() - tamYukleme > 3 * 60 * 1000) { son = Date.now(); tamYukleme = Date.now(); yenile(); } };
+    const gorunur = () => { if (document.visibilityState === 'visible' && Date.now() - son > ENAZ && Date.now() - tamYukleme > ENAZ) { son = Date.now(); tamYukleme = Date.now(); yenile(); } };
     document.addEventListener('visibilitychange', gorunur); window.addEventListener('focus', gorunur);
     return () => { kapat(); clearInterval(t); document.removeEventListener('visibilitychange', gorunur); window.removeEventListener('focus', gorunur); };
   }, [yenile]);
