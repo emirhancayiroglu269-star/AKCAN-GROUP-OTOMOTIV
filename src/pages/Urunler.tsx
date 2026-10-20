@@ -1,24 +1,33 @@
 import { useMemo, useState } from 'react';
-import { Download, History, KeyRound, Link2, Pencil, Tag } from 'lucide-react';
+import { Download, History, KeyRound, Link2, Pencil, RefreshCw, Tag } from 'lucide-react';
 import { useStore, toast } from '../lib/store';
 import { backend } from '../lib/backend';
-import { kodNorm, para, parse, sayi, tarihSaat } from '../lib/format';
+import { gunu, kodNorm, para, parse, sayi, tarih, tarihSaat } from '../lib/format';
 import type { Urun } from '../lib/types';
 import { Alan, Bos, Kpi, Modal, SayfaBaslik } from '../components/ui';
 import { aktifDepolar, stokHaritasi } from '../lib/depo';
 import { kodHaritasi, urunAra } from '../lib/kod';
-import { birimKar, hareketTutar, stokluMu, kritikAltinda } from '../lib/analiz';
+import { birimKar, hareketTutar, stokluMu, kritikAltinda, takipGunu, urunOzetleri } from '../lib/analiz';
 import { EtiketModal, type EtiketKalem } from '../components/StokAraclari';
 import { Plus, X } from 'lucide-react';
 import { UrunLink } from '../components/DetayKart';
 import { OtoparcasanLink } from '../components/DisLink';
 
+type Filtre = 'hepsi' | 'stoklu' | 'kritik' | 'biten' | 'hareketsiz' | 'eksi' | 'oemsiz' | 'markasiz' | 'barkodsuz' | 'pasif';
+type SiraAlan = 'ad' | 'stok' | 'satis90' | 'son' | 'yeter' | 'fiyat' | 'marj';
+
 export default function Urunler() {
-  const { db, izin } = useStore();
+  const { db, izin, calistir, mode } = useStore();
   const yonet = izin('urun'), maliyetGor = izin('maliyet');
   const [q, setQ] = useState('');
   const [kat, setKat] = useState('');
-  const [filtre, setFiltre] = useState<'hepsi' | 'stoklu' | 'kritik' | 'biten' | 'pasif'>('hepsi');
+  const [marka, setMarka] = useState('');
+  const [depoF, setDepoF] = useState('');
+  const [filtre, setFiltre] = useState<Filtre>('hepsi');
+  const [sira, setSira] = useState<{ alan: SiraAlan; artan: boolean } | null>(null);
+  const [secim, setSecim] = useState<Set<string>>(new Set());
+  const [topluKritik, setTopluKritik] = useState('');
+  const [topluRaf, setTopluRaf] = useState('');
   const [duzen, setDuzen] = useState<Urun | null>(null);
   const [gecmis, setGecmis] = useState<Urun | null>(null);
   const [etiket, setEtiket] = useState<EtiketKalem[] | null>(null);
@@ -28,21 +37,67 @@ export default function Urunler() {
   const depolar = aktifDepolar(db);
   const harita = useMemo(() => stokHaritasi(db), [db]);
   const kategoriler = useMemo(() => Array.from(new Set(db.urunler.map((u) => u.kategori).filter(Boolean))).sort() as string[], [db.urunler]);
+  const markalar = useMemo(() => Array.from(new Set(db.urunler.filter((u) => u.aktif).map((u) => u.marka).filter(Boolean))).sort((a, b) => a!.localeCompare(b!, 'tr')) as string[], [db.urunler]);
   const kodlar = useMemo(() => kodHaritasi(db), [db]);
+  const omVar = useMemo(() => new Set((db.otomarmara_veri ?? []).filter((x) => x.oemler?.length || x.esdegerler?.length).map((x) => String(x.urun_id))), [db.otomarmara_veri]);
+  const oemYok = (u: Urun) => !(u.etiket ?? '').trim() && !kodlar.get(u.id)?.length && !omVar.has(String(u.id));
+  // son 90 günün satışı: adet, son satış, stok kaç gün yeter
+  const d90 = useMemo(() => ({ bas: gunu(new Date(Date.now() - 89 * 864e5)), bit: gunu() }), []);
+  const oz = useMemo(() => urunOzetleri(db, d90), [db, d90]);
+  const gun90 = useMemo(() => takipGunu(db, d90), [db, d90]);
+  const sb = (u: Urun) => { const o = oz.get(u.id); const s = o?.satilan ?? 0; const hiz = s / Math.max(1, gun90); return { s, son: o?.sonSatis, yeter: hiz > 0 ? Math.max(0, u.stok) / hiz : Infinity }; };
+
   const liste = useMemo(() => {
     const aday = q.trim() ? urunAra(db, q, kodlar, { sadeceAktif: false }).map((x) => x.urun) : [...db.urunler].sort((a, b) => a.ad.localeCompare(b.ad, 'tr'));
-    return aday.filter((u) => (filtre === 'pasif' ? !u.aktif : u.aktif) && (filtre !== 'stoklu' || u.stok > 0) && (filtre !== 'biten' || (u.stok <= 0 && stokluMu(u))) &&
-      (filtre !== 'kritik' || kritikAltinda(u)) && (!kat || u.kategori === kat));
-  }, [db, q, kodlar, filtre, kat]);
+    const [dId, dTur] = depoF.split(':');
+    const l = aday.filter((u) => {
+      if (filtre === 'pasif' ? u.aktif : !u.aktif) return false;
+      if (kat && u.kategori !== kat) return false;
+      if (marka && u.marka !== marka) return false;
+      if (dId) { const m = harita.get(u.id); const bu = m?.get(dId) ?? 0; if (bu <= 0) return false; if (dTur === 'yalniz' && depolar.some((d) => d.id !== dId && (m?.get(d.id) ?? 0) > 0)) return false; }
+      switch (filtre) {
+        case 'stoklu': return u.stok > 0;
+        case 'biten': return u.stok <= 0 && stokluMu(u);
+        case 'kritik': return kritikAltinda(u);
+        case 'hareketsiz': return u.stok > 0 && stokluMu(u) && !(oz.get(u.id)?.satilan);
+        case 'eksi': return u.stok < 0;
+        case 'oemsiz': return stokluMu(u) && oemYok(u);
+        case 'markasiz': return stokluMu(u) && !(u.marka ?? '').trim();
+        case 'barkodsuz': return stokluMu(u) && !(u.barkod ?? '').trim();
+        default: return true;
+      }
+    });
+    if (!sira) return l;
+    const deger = (u: Urun): number | string => { switch (sira.alan) {
+      case 'ad': return u.ad; case 'stok': return u.stok; case 'satis90': return sb(u).s; case 'son': return sb(u).son ?? '';
+      case 'yeter': { const y = sb(u).yeter; return Number.isFinite(y) ? y : 1e9; } case 'fiyat': return u.satis_fiyati; case 'marj': { const b = birimKar(u, db.ayarlar); return b.maliyetYok ? -1e9 : b.marj; } } };
+    const k = sira.artan ? 1 : -1;
+    return [...l].sort((a, b) => { const x = deger(a), y = deger(b); return (typeof x === 'string' ? x.localeCompare(y as string, 'tr') : x - (y as number)) * k; });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [db, q, kodlar, filtre, kat, marka, depoF, harita, oz, sira, omVar]);
 
   const aktifler = db.urunler.filter((u) => u.aktif);
   const stoklu = aktifler.filter((u) => u.stok > 0);
+  const hareketsiz = useMemo(() => aktifler.filter((u) => u.stok > 0 && stokluMu(u) && !(oz.get(u.id)?.satilan)), [aktifler, oz]);
+  const seciliUrunler = liste.filter((u) => secim.has(u.id));
+  const say = (f: Filtre) => f === 'oemsiz' ? aktifler.filter((u) => stokluMu(u) && oemYok(u)).length : f === 'markasiz' ? aktifler.filter((u) => stokluMu(u) && !(u.marka ?? '').trim()).length : f === 'barkodsuz' ? aktifler.filter((u) => stokluMu(u) && !(u.barkod ?? '').trim()).length : f === 'eksi' ? aktifler.filter((u) => u.stok < 0).length : f === 'hareketsiz' ? hareketsiz.length : null;
+  const filtreAd: [Filtre, string][] = [['hepsi', 'Aktif ürünler'], ['stoklu', 'Stoktakiler'], ['biten', 'Stoğu bitenler'], ['kritik', 'Kritik stok'], ['hareketsiz', '90 gündür satılmayan (stokta)'], ['eksi', 'Eksi stok'], ['oemsiz', 'OEM/muadil kodu yok'], ['markasiz', 'Markası yok'], ['barkodsuz', 'Barkodu yok'], ['pasif', 'Pasif ürünler']];
+
   const csvIndir = () => {
     const satir = (a: (string | number | null | undefined)[]) => a.map((x) => `"${String(x ?? '').replace(/"/g, '""')}"`).join(';');
-    const csv = [satir(['Kod', 'Barkod', 'Ad', 'Marka', 'Kategori', 'Birim', 'Alış', 'Satış', 'Marj % (KDV hariç)', 'KDV', 'Stok', ...depolar.map((d) => d.ad), 'Kritik', 'Raf']),
-      ...liste.map((u) => satir([u.kod, u.barkod, u.ad, u.marka, u.kategori, u.birim, u.alis_fiyati, u.satis_fiyati, birimKar(u, db.ayarlar).marj.toFixed(1), u.kdv, u.stok, ...depolar.map((d) => harita.get(u.id)?.get(d.id) ?? 0), u.kritik_stok, u.raf]))].join('\n');
-    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['\ufeff' + csv], { type: 'text/csv' })); a.download = 'urunler.csv'; a.click();
+    const csv = [satir(['Kod', 'Barkod', 'Ad', 'Marka', 'Kategori', 'Birim', 'Alış', 'Satış', 'Marj % (KDV hariç)', 'KDV', 'Stok', ...depolar.map((d) => d.ad), 'Kritik', 'Raf', '90 gün satış', 'Son satış', 'Kaç gün yeter']),
+      ...liste.map((u) => { const x = sb(u); return satir([u.kod, u.barkod, u.ad, u.marka, u.kategori, u.birim, u.alis_fiyati, u.satis_fiyati, birimKar(u, db.ayarlar).marj.toFixed(1), u.kdv, u.stok, ...depolar.map((d) => harita.get(u.id)?.get(d.id) ?? 0), u.kritik_stok, u.raf, x.s, x.son ? tarih(x.son) : '', Number.isFinite(x.yeter) ? Math.round(x.yeter) : '']); })].join('\n');
+    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv' })); a.download = 'urunler.csv'; a.click();
   };
+  const topluGuncelle = (patch: Partial<Urun>, mesaj: string) => calistir(async () => { for (const u of seciliUrunler) await backend.update<Urun>('urunler', u.id, patch); }, `${seciliUrunler.length} üründe ${mesaj}`);
+  const omIste = () => calistir(() => backend.omIste(seciliUrunler.slice(0, 100).map((u) => u.id)), `${Math.min(100, seciliUrunler.length)} ürün Otomarmara'ya soruldu (2 dakikada 8 ürün işlenir)`);
+  const secDegis = (id: string) => { const s = new Set(secim); if (s.has(id)) s.delete(id); else s.add(id); setSecim(s); };
+  const gorunen = liste.slice(0, gosterilen);
+  const hepsiSecili = gorunen.length > 0 && gorunen.every((u) => secim.has(u.id));
+  const Baslik = ({ alan, children, sag }: { alan: SiraAlan; children: React.ReactNode; sag?: boolean }) => (
+    <th className={`whitespace-nowrap ${sag ? 'text-right' : ''}`}><button className="inline-flex items-center gap-0.5 uppercase hover:text-slate-900 dark:hover:text-white" onClick={() => setSira(sira?.alan === alan ? (sira.artan ? { alan, artan: false } : null) : { alan, artan: alan === 'ad' || alan === 'yeter' || alan === 'son' })}>
+      {children}{sira?.alan === alan ? (sira.artan ? ' ↑' : ' ↓') : ''}</button></th>
+  );
 
   return (
     <div>
@@ -52,36 +107,60 @@ export default function Urunler() {
         {maliyetGor && <button className="btn-ghost" onClick={csvIndir}><Download size={16} /> Excel (CSV)</button>}
       </SayfaBaslik>
 
-      <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-5">
         <button className="text-left" onClick={() => setFiltre('stoklu')}><Kpi etiket="Stoktaki ürün çeşidi" deger={sayi(stoklu.length)} alt={`${sayi(stoklu.reduce((t, u) => t + u.stok, 0))} adet`} /></button>
         <Kpi etiket="Stoğun satış değeri" deger={para(stoklu.reduce((t, u) => t + u.stok * u.satis_fiyati, 0))} renk="blue" />
         {maliyetGor ? <Kpi etiket={`Stok maliyeti (${db.ayarlar.alis_kdv_haric ? 'KDV hariç' : 'KDV dahil'})`} deger={para(stoklu.reduce((t, u) => t + u.stok * u.alis_fiyati, 0))} renk="green" /> : <Kpi etiket="Kategori" deger={sayi(kategoriler.length)} />}
         <button className="text-left" onClick={() => setFiltre('biten')}><Kpi etiket="Stoğu biten" deger={sayi(aktifler.filter((u) => u.stok <= 0 && stokluMu(u)).length)} renk="amber" alt="İşçilik/hizmet hariç · listelemek için tıklayın" /></button>
+        <button className="text-left" onClick={() => { setFiltre('hareketsiz'); setSira({ alan: 'stok', artan: false }); }}><Kpi etiket="90 gündür satılmayan" deger={sayi(hareketsiz.length)} renk="red"
+          alt={maliyetGor ? `Bağlı para ${para(hareketsiz.reduce((t, u) => t + u.stok * u.alis_fiyati, 0))}` : 'Stokta duran · tıklayın'} /></button>
       </div>
 
       <div className="card">
         <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 p-3 dark:border-slate-800">
           <input className="inp max-w-sm" placeholder="Ad, kod, barkod, marka, raf veya OEM / muadil kodu…" value={q} onChange={(e) => { setQ(e.target.value); setGosterilen(200); }} autoFocus />
-          <select className="inp w-44" value={kat} onChange={(e) => setKat(e.target.value)}><option value="">Tüm kategoriler</option>{kategoriler.map((k) => <option key={k}>{k}</option>)}</select>
-          <select className="inp w-40" value={filtre} onChange={(e) => setFiltre(e.target.value as typeof filtre)}><option value="hepsi">Aktif ürünler</option><option value="stoklu">Stoktakiler</option><option value="biten">Stoğu bitenler</option><option value="kritik">Kritik stok</option><option value="pasif">Pasif ürünler</option></select>
+          <select className="inp w-40" value={kat} onChange={(e) => setKat(e.target.value)}><option value="">Tüm kategoriler</option>{kategoriler.map((k) => <option key={k}>{k}</option>)}</select>
+          <select className="inp w-36" value={marka} onChange={(e) => setMarka(e.target.value)}><option value="">Tüm markalar</option>{markalar.map((k) => <option key={k}>{k}</option>)}</select>
+          {depolar.length > 1 && <select className="inp w-44" value={depoF} onChange={(e) => setDepoF(e.target.value)}><option value="">Tüm depolar</option>{depolar.map((d) => [<option key={d.id} value={`${d.id}:var`}>{d.ad}'da stoklu</option>, <option key={d.id + 'y'} value={`${d.id}:yalniz`}>Yalnız {d.ad}'da</option>])}</select>}
+          <select className="inp w-52" value={filtre} onChange={(e) => { setFiltre(e.target.value as Filtre); setSecim(new Set()); }}>{filtreAd.map(([f, ad]) => { const n = say(f); return <option key={f} value={f}>{ad}{n !== null ? ` (${sayi(n)})` : ''}</option>; })}</select>
           <span className="ml-auto text-xs text-slate-500">{sayi(liste.length)} sonuç</span>
         </div>
+        {secim.size > 0 && (
+          <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 bg-sky-50 p-2.5 text-sm dark:border-slate-800 dark:bg-sky-500/10">
+            <b>{sayi(secim.size)} ürün seçili</b>
+            <button className="btn-ghost px-2 py-1 text-xs" onClick={() => setEtiket(seciliUrunler.map((u) => ({ urun: u, adet: 1 })))}><Tag size={14} /> Etiket yazdır</button>
+            {yonet && <>
+              <span className="ml-2 flex items-center gap-1">Kritik <input className="inp w-16 py-1 text-right" value={topluKritik} onChange={(e) => setTopluKritik(e.target.value)} placeholder="0" />
+                <button className="btn-ghost px-2 py-1 text-xs" disabled={topluKritik === ''} onClick={() => topluGuncelle({ kritik_stok: parse(topluKritik) }, 'kritik seviye güncellendi')}>Uygula</button></span>
+              <span className="flex items-center gap-1">Raf <input className="inp w-24 py-1" value={topluRaf} onChange={(e) => setTopluRaf(e.target.value)} placeholder="ör. A-3" />
+                <button className="btn-ghost px-2 py-1 text-xs" onClick={() => topluGuncelle({ raf: topluRaf.trim() || null }, topluRaf.trim() ? 'raf yazıldı' : 'raf silindi')}>Uygula</button></span>
+              {mode === 'bulut' && <button className="btn-ghost px-2 py-1 text-xs" onClick={omIste} title="En fazla 100 ürün; sunucu 2 dakikada 8 ürün işler"><RefreshCw size={14} /> OEM/muadil Otomarmara'dan iste</button>}
+            </>}
+            <button className="ml-auto text-xs text-slate-500 hover:underline" onClick={() => setSecim(new Set())}>Seçimi temizle</button>
+          </div>
+        )}
         <div className="max-h-[65vh] overflow-auto">
           {liste.length === 0 ? <Bos metin="Ürün bulunamadı." /> : (
             <table className="tbl">
-              <thead><tr><th>Kod</th><th>Ürün</th><th>Marka</th><th>Raf</th>{maliyetGor && <th className="text-right">Alış</th>}<th className="text-right">Satış</th>{maliyetGor && <th className="text-right">Marj</th>}{depolar.length > 1 && depolar.map((d) => <th key={d.id} className="text-right">{d.ad}</th>)}<th className="text-right">{depolar.length > 1 ? 'Toplam' : 'Stok'}</th><th className="w-24" /></tr></thead>
+              <thead><tr><th className="w-8"><input type="checkbox" checked={hepsiSecili} title="Görünenlerin hepsini seç" onChange={() => { const s = new Set(secim); gorunen.forEach((u) => (hepsiSecili ? s.delete(u.id) : s.add(u.id))); setSecim(s); }} /></th>
+                <Baslik alan="ad">Ürün</Baslik><th>Marka</th><th>Raf</th>{maliyetGor && <th className="text-right">Alış</th>}<Baslik alan="fiyat" sag>Satış</Baslik>{maliyetGor && <Baslik alan="marj" sag>Marj</Baslik>}
+                {depolar.length > 1 && depolar.map((d) => <th key={d.id} className="text-right">{d.ad}</th>)}<Baslik alan="stok" sag>{depolar.length > 1 ? 'Toplam' : 'Stok'}</Baslik>
+                <Baslik alan="satis90" sag>90 gün</Baslik><Baslik alan="son" sag>Son satış</Baslik><Baslik alan="yeter" sag>Yeter</Baslik><th className="w-24" /></tr></thead>
               <tbody>
-                {liste.slice(0, gosterilen).map((u) => {
-                  const bk = birimKar(u, db.ayarlar);
+                {gorunen.map((u) => {
+                  const bk = birimKar(u, db.ayarlar); const x = sb(u); const sonGun = x.son ? Math.floor((Date.now() - new Date(x.son).getTime()) / 864e5) : null;
                   return (
-                    <tr key={u.id}>
-                      <td className="font-mono text-xs text-slate-500">{u.kod}<div>{u.barkod}</div></td>
-                      <td><div className="flex items-center gap-1 font-medium"><UrunLink id={u.id}>{u.ad}</UrunLink>{u.bh_id && <span title="BizimHesap'tan eşitleniyor"><Link2 size={13} className="text-sky-500" /></span>}</div><div className="text-xs text-slate-500">{u.kategori} <OtoparcasanLink u={u} kisa />{kodlar.get(u.id)?.length ? <span className="ml-1.5 rozet bg-sky-50 text-sky-700" title={kodlar.get(u.id)!.map((k) => k.kod).join(', ')}>{kodlar.get(u.id)!.length} OEM/muadil</span> : null}</div></td>
-                      <td>{u.marka}</td><td>{u.raf}</td>
+                    <tr key={u.id} className={secim.has(u.id) ? 'bg-sky-50/60 dark:bg-sky-500/5' : ''}>
+                      <td><input type="checkbox" checked={secim.has(u.id)} onChange={() => secDegis(u.id)} /></td>
+                      <td className="min-w-[17rem]"><div className="flex items-center gap-1 font-medium"><UrunLink id={u.id}>{u.ad}</UrunLink>{u.bh_id && <span title="BizimHesap'tan eşitleniyor"><Link2 size={13} className="text-sky-500" /></span>}</div><div className="text-xs text-slate-500" title={u.barkod ? `Barkod: ${u.barkod}` : undefined}>{u.kod && <span className="mr-1.5 font-mono">{u.kod}</span>}{u.kategori} <OtoparcasanLink u={u} kisa />{kodlar.get(u.id)?.length ? <span className="ml-1.5 rozet bg-sky-50 text-sky-700" title={kodlar.get(u.id)!.map((k) => k.kod).join(', ')}>{kodlar.get(u.id)!.length} OEM/muadil</span> : null}</div></td>
+                      <td className="whitespace-nowrap">{u.marka}</td><td className="whitespace-nowrap">{u.raf}</td>
                       {maliyetGor && <td className="text-right">{u.alis_fiyati ? <>{para(u.alis_fiyati)}{u.kart_alis ? <div className="text-[10px] text-sky-700" title={`Kartta ${para(u.kart_alis)} yazıyor; ${u.alis_fatura?.tarih} tarihli faturanın net fiyatı kullanılıyor`}>fatura fiyatı</div> : null}</> : <span className="text-slate-300">—</span>}</td>}<td className="text-right font-medium">{para(u.satis_fiyati)}</td>
                       {maliyetGor && <td className={`text-right ${bk.maliyetYok ? 'text-slate-300' : bk.marj < 0 ? 'text-red-600' : bk.marj < 15 ? 'text-amber-600' : 'text-slate-500'}`}>{bk.maliyetYok ? '—' : `%${bk.marj.toFixed(0)}`}</td>}
                       {depolar.length > 1 && depolar.map((d) => { const m = harita.get(u.id)?.get(d.id) ?? 0; return <td key={d.id} className={`text-right ${m < 0 ? 'text-red-600' : m === 0 ? 'text-slate-300' : ''}`}>{sayi(m)}</td>; })}
-                      <td className="text-right"><span className={`rozet ${u.stok <= 0 ? 'bg-red-100 text-red-700' : kritikAltinda(u) ? 'bg-amber-100 text-amber-800' : 'bg-emerald-50 text-emerald-700'}`}>{sayi(u.stok)} {u.birim}</span></td>
+                      <td className="whitespace-nowrap text-right"><span className={`rozet whitespace-nowrap ${u.stok <= 0 ? 'bg-red-100 text-red-700' : kritikAltinda(u) ? 'bg-amber-100 text-amber-800' : 'bg-emerald-50 text-emerald-700'}`}>{sayi(u.stok)} {u.birim}</span></td>
+                      <td className="text-right">{x.s ? sayi(x.s) : <span className="text-slate-300">—</span>}</td>
+                      <td className="whitespace-nowrap text-right text-xs text-slate-500" title={x.son ? tarih(x.son) : '90 gündür satış yok'}>{sonGun === null ? <span className="text-slate-300">—</span> : sonGun === 0 ? 'bugün' : `${sonGun} gün önce`}</td>
+                      <td className={`text-right text-xs ${u.stok > 0 && Number.isFinite(x.yeter) && x.yeter < 7 ? 'text-red-600' : u.stok > 0 && !Number.isFinite(x.yeter) ? 'text-slate-300' : 'text-slate-500'}`}>{u.stok <= 0 ? '—' : Number.isFinite(x.yeter) ? (x.yeter > 365 ? '1 yıl+' : `${Math.round(x.yeter)} gün`) : 'satılmıyor'}</td>
                       <td>
                         <div className="flex justify-end gap-1 text-slate-400">
                           <button title="Etiket yazdır" className="rounded p-1 hover:bg-slate-100 hover:text-violet-600 dark:hover:bg-slate-800" onClick={() => setEtiket([{ urun: u, adet: 1 }])}><Tag size={16} /></button>
