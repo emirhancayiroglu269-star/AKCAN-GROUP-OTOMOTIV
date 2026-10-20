@@ -168,7 +168,7 @@ export default function Panel({ git }: { git: (s: Sayfa) => void }) {
       {/* ---------- STOK ---------- */}
       <h2 className="mb-2 text-sm font-semibold text-slate-500">Stok durumu (şu an)</h2>
       <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Kpi etiket={`Stok maliyeti (${a.alis_kdv_haric ? 'KDV hariç' : 'KDV dahil'})`} deger={para(stok.maliyet)} alt={`${sayi(stok.kalem)} çeşit ürün stokta${stok.maliyetsiz ? ` · ${stok.maliyetsiz} üründe alış fiyatı yok` : ''}`} ikon={<Boxes size={16} />} />
+        <button className="text-left" onClick={() => git('fiyat/eksik')}><Kpi etiket={`Stok maliyeti (${a.alis_kdv_haric ? 'KDV hariç' : 'KDV dahil'})`} deger={para(stok.maliyet)} alt={`${sayi(stok.kalem)} çeşit ürün stokta${stok.maliyetsiz ? ` · ${stok.maliyetsiz} üründe alış fiyatı yok (listele)` : ''}`} ikon={<Boxes size={16} />} /></button>
         <Kpi etiket="Stoğun satış değeri" deger={para(stok.satis)} alt="KDV dahil liste fiyatıyla" renk="blue" />
         <Kpi etiket="Stoktaki potansiyel kâr (KDV hariç)" deger={para(stok.kar)} alt={stok.maliyet > 0 ? `Stok hepsi satılırsa · maliyetin %${((stok.kar / stok.maliyet) * 100).toFixed(0)} üstü` : undefined} renk="green" ikon={<TrendingUp size={16} />} />
         <button className="text-left" onClick={() => git('alinacaklar')}><Kpi etiket="Biten / kritik stok" deger={`${sayi(stok.biten)} / ${sayi(stok.kritik)}`} alt={`${stok.eksi ? `${stok.eksi} üründe eksi stok · ` : ''}${zararli ? `${zararli} ürün maliyetinin altında fiyatlı` : 'Listelemek için tıklayın'}`} renk={stok.kritik || zararli ? 'amber' : 'slate'} ikon={<AlertTriangle size={16} />} /></button>

@@ -114,14 +114,26 @@ export function alinacakHesap(u: Urun, satilan: number, gunSayisi: number, hedef
 }
 
 // ======================= GELİR TABLOSU =======================
-const HIZMET_RE = /İŞÇİLİK|ISCILIK|IŞÇİLİK|HİZMET|HIZMET|TAMİR|TAMIR|REVİZYON|REVIZYON|DEĞİŞİM|DEGISIM|YAZILIM|MONTAJ|BAKIM|TESİSAT|TESISAT|ARIZA|KAPORTA|BOYA|SÖKÜM|SOKUM|ONARIM|KODLAMA|AYAR|TEST|PRİM|PRIM/i;
+const HIZMET_RE = /İŞÇİLİK|ISCILIK|IŞÇİLİK|HİZMET|HIZMET|TAMİR|TAMIR|REVİZYON|REVIZYON|DEĞİŞİM|DEGISIM|YAZILIM|MONTAJ|BAKIM|TESİSAT|TESISAT|ARIZA|KAPORTA|BOYA|SÖKÜM|SOKUM|SÖKME|SOKME|ONARIM|KODLAMA|AYAR|TEST|PRİM|PRIM|ÜCRET|UCRET|YIKAMA|TORNA|REKTEF|EKSPER|NAKLİYE|NAKLIYE|ÇEKİCİ|CEKICI|DOLUM|CAM FİLM|PARLATMA|KONTROL|LASTİK TAK|LASTIK TAK|KLİMA GAZ/;
 
 export const GECIS_RE = /ARAÇ ALIM|ARAC ALIM|ARAÇ SATI|ARAC SATI|ARAÇ BEDEL|ARAC BEDEL/i;
 
-/** Maliyeti olmayan satış satırı hizmet mi, yoksa BizimHesap'ta alış fiyatı girilmemiş ürün mü? */
+/** Adı hizmet/işçilik kalemi mi (BizimHesap'ta adlar büyük harf; yine de Türkçe büyük harfe çevrilip bakılır) */
+export const hizmetAdiMi = (ad: string) => HIZMET_RE.test(ad.toLocaleUpperCase('tr'));
+
+/** Maliyeti olmayan satış satırı hizmet mi, yoksa alış fiyatı/kategorisi girilmemiş parça mı?
+ *  Kullanıcı kararı: yalnız iki grup (parça / hizmet). Adı hizmet olanlar hizmet; kategorisiz ama adı parça olanlar
+ *  (kutup başı, kelepçe, braket…) parça sayılır ve "maliyeti/kategorisi eksik" listesine düşer. */
 export function hizmetMi(h: Hareket, u?: Urun) {
   const ad = u?.ad ?? h.urun_ad ?? '';
-  return HIZMET_RE.test(ad) || !u || !u.kategori;
+  return hizmetAdiMi(ad);
+}
+
+/** Kartında eksik bilgi var mı: kategorili üründe alış fiyatı yok veya adı parça olduğu hâlde kategorisi boş */
+export function kartEksigi(u: Urun): { maliyet: boolean; kategori: boolean } | null {
+  if (!u.aktif || GECIS_RE.test(u.ad) || hizmetAdiMi(u.ad)) return null;
+  const maliyet = !(u.alis_fiyati > 0), kategori = !u.kategori;
+  return maliyet || kategori ? { maliyet, kategori } : null;
 }
 
 export interface GelirTablosu {

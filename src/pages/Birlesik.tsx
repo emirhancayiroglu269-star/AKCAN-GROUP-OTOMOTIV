@@ -8,6 +8,7 @@ import StokEritme from './StokEritme';
 import StokSagligi from './StokSagligi';
 import FiyatMarj from './FiyatMarj';
 import KategoriFiyat from './KategoriFiyat';
+import EksikBilgi from './EksikBilgi';
 import KarZarar from './KarZarar';
 import AySonu from './AySonu';
 
@@ -49,6 +50,7 @@ export const EritmeSayfa = (p: P) => <Sekmeli {...p} sayfa="eritme" sekmeler={[
 export const FiyatSayfa = (p: P) => <Sekmeli {...p} sayfa="fiyat" sekmeler={[
   { id: 'urun', ad: 'Ürün bazında', bilesen: FiyatMarj },
   { id: 'kategori', ad: 'Kategori bazında', bilesen: KategoriFiyat },
+  { id: 'eksik', ad: 'Eksik kart bilgisi', bilesen: EksikBilgi },
 ]} />;
 export const KarZararSayfa = (p: P) => <Sekmeli {...p} sayfa="karzarar" sekmeler={[
   { id: 'ozet', ad: 'Özet', bilesen: KarZarar },

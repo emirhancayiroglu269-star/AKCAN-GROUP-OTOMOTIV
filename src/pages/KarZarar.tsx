@@ -186,7 +186,7 @@ export default function KarZarar() {
             {fiyat.slice(0, 8).map((f) => <div key={f.id} className="truncate text-xs text-slate-600 dark:text-slate-300">{urun.get(f.urun_id)?.ad}: alış {para(f.alis_eski)} → <b>{para(f.alis_yeni)}</b>, satış {para(f.satis_yeni)}</div>)}
           </div>}
           <div className="flex items-start gap-2 rounded-xl bg-slate-100 p-3 text-xs text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-            <Info size={15} className="mt-0.5 shrink-0" /><span>Hizmet ayrımı: alış maliyeti olmayan satırlardan adı işçilik/hizmet/tamir/revizyon vb. olanlar veya kategorisiz kalemler hizmet sayılır; kategorili ürünlerde maliyet eksik kabul edilir.</span>
+            <Info size={15} className="mt-0.5 shrink-0" /><span>Parça / hizmet ayrımı: alış maliyeti olmayan satırlardan adı işçilik, ücret, tamir, değişim, torna, yıkama, ayar vb. olanlar hizmet sayılır; geri kalanlar (kategorisi boş olsa bile) parçadır ve maliyeti eksik kabul edilir. Tam liste: Fiyat & Marj → Eksik kart bilgisi.</span>
           </div>
         </div>
       </div>
