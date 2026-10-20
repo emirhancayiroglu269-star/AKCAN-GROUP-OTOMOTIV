@@ -1,6 +1,7 @@
 import type { DB, ID, Urun } from './types';
 import { kodNorm } from './format';
 import { aracCikar } from './analiz3';
+import { omGuvenilir } from './muadil';
 
 /**
  * "Ürün Ara" sayfasının arama motoru.
@@ -50,9 +51,11 @@ export function dizin(db: DB): Dizin {
     kodlar.set(u.id, [kodNorm(u.kod), kodNorm(u.barkod)].filter(Boolean).join(' '));
     for (const e of (u.etiket ?? '').split(',')) { const n = kodNorm(e); if (n.length >= 4) { ekle(oem, n, { u, kod: e.trim() }); kodlar.set(u.id, kodlar.get(u.id) + ' ' + n); } }
   }
-  for (const k of db.urun_kodlari) { const u = id.get(String(k.urun_id)); if (!u) continue; const n = k.kod_norm ?? kodNorm(k.kod); if (n.length < 4) continue; if (!oem.get(n)?.some((x) => x.u === u)) ekle(oem, n, { u, kod: k.kod }); kodlar.set(u.id, kodlar.get(u.id) + ' ' + n); }
+  // Otomarmara'dan gelen OEM ve eşdeğerler yalnız eşleşmesi güvenilir ürünlerde kullanılır (bkz. muadil.ts)
+  const guven = omGuvenilir(db);
+  for (const k of db.urun_kodlari) { const u = id.get(String(k.urun_id)); if (!u || (k.tur === 'OTOMARMARA' && !guven.has(String(u.id)))) continue; const n = k.kod_norm ?? kodNorm(k.kod); if (n.length < 4) continue; if (!oem.get(n)?.some((x) => x.u === u)) ekle(oem, n, { u, kod: k.kod }); kodlar.set(u.id, kodlar.get(u.id) + ' ' + n); }
   for (const v of db.otomarmara_veri ?? []) {
-    const u = id.get(String(v.urun_id)); if (!u || v.durum !== 'tamam') continue;
+    const u = id.get(String(v.urun_id)); if (!u || !guven.has(String(u.id))) continue;
     for (const e of v.esdegerler ?? []) { const n = kodNorm(e.kod); if (n.length >= 4 && n !== kodNorm(u.kod)) ekle(esdeger, n, { u, kod: e.kod }); }
     if (v.om_kod) { const n = kodNorm(v.om_kod); if (n !== kodNorm(u.kod) && !oem.get(n)?.some((x) => x.u === u)) ekle(oem, n, { u, kod: v.om_kod }); }
   }

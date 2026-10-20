@@ -1,43 +1,78 @@
 import type { DB, Urun } from './types';
 
-/** Muadil kaynakları: (1) Otomarmara B4B eşdeğer listesi (ihtiyaç anında çekilir), (2) BizimHesap kartındaki "etiket" alanında OEM / muadil kodları virgülle yazılı.
- *  Aynı kategoride olup en az 2 ortak kodu bulunan ürünler birbirinin muadili sayılır
- *  (etiketlerde aynı aracın başka parçalarının kodları da bulunabildiği için tek kod yetmez). */
-const norm = (s: string) => s.toUpperCase().replace(/[^A-Z0-9]/g, '');
-const kodlar = (u: Urun) => new Set((u.etiket ?? '').split(',').map(norm).filter((k) => k.length >= 4));
+/**
+ * Muadil = aynı parçanın başka markası. Kural (kullanıcı kararı, 20.10.2026): iki ürün ancak
+ * EN AZ 2 ORTAK OEM KODU varsa ve aynı kategorideyse muadil sayılır — tek ortak kod ya da yalnız
+ * Otomarmara'nın "eşdeğer" demesi yetmez (ölçümde bunların çoğu başka araç/başka parça çıktı).
+ *
+ * OEM kodlarının kaynağı:
+ *  - Otomarmara'dan gelen OEM listesi — yalnız ürünümüzün Otomarmara'daki ürünle eşleşmesi GÜVENİLİRSE
+ *    (stok kodu birebir aynı, ya da kod farklı ama iki ürünün adında aynı parça adı geçiyor).
+ *    Örn. bizim GRT-10127 hava filtresi Otomarmara'da MHR-10127 supap takımıyla eşleşmişti: bu eşleşme reddedilir.
+ *  - BizimHesap kartındaki etiket alanı ve elle yüklenen OEM / muadil kodları.
+ */
+export const MUADIL_ESIK = 2;
 
-const onbellek = new WeakMap<Urun[], { om: unknown; bul: (u: Urun) => Urun[] }>();
-
-/** Otomarmara'dan gelen eşdeğer listesi: ürün id → bizdeki eşdeğer ürünler (iki yönlü; kategori şartı yok, Otomarmara eşleştirmesi esas) */
-function otomarmaraEsdeger(db: DB) {
-  const m = new Map<string, Set<string>>(); const veri = db.otomarmara_veri ?? []; if (!veri.length) return m;
-  const kodIdx = new Map<string, string>(); for (const u of db.urunler) if (u.aktif && u.kod) kodIdx.set(norm(u.kod), String(u.id));
-  const ekle = (a: string, b: string) => { if (a === b) return; (m.get(a) ?? m.set(a, new Set()).get(a)!).add(b); (m.get(b) ?? m.set(b, new Set()).get(b)!).add(a); };
-  for (const v of veri) for (const e of v.esdegerler ?? []) { const id = kodIdx.get(norm(e.kod)); if (id) ekle(String(v.urun_id), id); }
-  return m;
+const norm = (s?: string | null) => (s ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+/** Türkçe karaktersiz büyük harf, yalnız harfler ve boşluk */
+const harf = (s?: string | null) => (s ?? '').replace(/i/g, 'İ').toUpperCase().replace(/İ/g, 'I').replace(/Ş/g, 'S').replace(/Ğ/g, 'G').replace(/Ü/g, 'U').replace(/Ö/g, 'O').replace(/Ç/g, 'C').replace(/[^A-Z]+/g, ' ').trim();
+/** Parça adı sayılmayan kelimeler (ilk 4 harfi): araç marka/modelleri, üretici markaları, konum ve genel kelimeler */
+const DURAK = new Set(('ARKA TAKI SETI ADET KOMP ORJI ORIJ UNIV UYUM MODE BENZ DIZE MERC RENA FIAT OPEL FORD TOYO HYUN PEUG CITR DACI VOLK AUDI SEAT SKOD HOND NISS KANG CLIO MEGA ' +
+  'EGEA DOBL LINE FIOR PALI ALBE PUNT PAND CORS ASTR VECT INSI FOCU FIES TRAN CONN CORO YARI AURI ACCE TUCS ELAN GOLF POLO PASS JETT CADD TOUR SPRI VITO CRAF DUCA BOXE ' +
+  'JUMP PART BERL SAND LOGA DUST SYMB FLUE LAGU SCEN QASH MICR SUNN CIVI JAZZ ACCO CEED SPOR PICA MINI VOLV MAZD MITS SUZU ISUZ IVEC ESCO MOND KUGA TRAF MAST MOVA CLAS ' +
+  'KLAS VALE BOSC SACH LEMF FEBI SWAG MAHL MANN ICIN ESKI').split(' '));
+const parcaKelimeleri = (ad?: string | null) => harf(ad).split(' ').filter((k) => k.length >= 4 && !DURAK.has(k.slice(0, 4)));
+/** İki ürün adında aynı parça adı geçiyor mu ("ROT BAŞI" = "ROTBAŞI", "FİLTRESİ" = "FILTRE" sayılır) */
+export function ayniParcaAdi(a?: string | null, b?: string | null) {
+  const ab = harf(a).replace(/ /g, ''), bb = harf(b).replace(/ /g, '');
+  return parcaKelimeleri(a).some((k) => bb.includes(k.slice(0, 5))) || parcaKelimeleri(b).some((k) => ab.includes(k.slice(0, 5)));
 }
 
-export function muadilBulucu(db: DB): (u: Urun) => Urun[] {
-  const hazir = onbellek.get(db.urunler); if (hazir && hazir.om === db.otomarmara_veri) return hazir.bul;
-  const om = otomarmaraEsdeger(db); const idMap = new Map(db.urunler.map((u) => [String(u.id), u]));
-  const ks = new Map<string, Set<string>>(); const idx = new Map<string, Urun[]>();
-  for (const u of db.urunler) {
-    if (!u.aktif) continue; const k = kodlar(u); ks.set(String(u.id), k);
-    for (const c of k) { const l = idx.get(c); if (!l) idx.set(c, [u]); else if (!l.some((x) => String(x.id) === String(u.id))) l.push(u); }
+const guvenOnbellek = new WeakMap<object, { om: unknown; s: Set<string> }>();
+/** Otomarmara eşleşmesi güvenilir olan ürünler (OEM ve eşdeğer bilgisi yalnız bunlarda kullanılır) */
+export function omGuvenilir(db: DB): Set<string> {
+  const h = guvenOnbellek.get(db.urunler); if (h && h.om === db.otomarmara_veri) return h.s;
+  const id = new Map(db.urunler.map((u) => [String(u.id), u])); const s = new Set<string>();
+  for (const v of db.otomarmara_veri ?? []) {
+    const u = id.get(String(v.urun_id)); if (!u || !v.om_kod) continue;
+    if (norm(u.kod) === norm(v.om_kod) || ayniParcaAdi(u.ad, v.om_ad)) s.add(String(u.id));
   }
-  const sonuc = new Map<string, Urun[]>();
-  const bul = (u: Urun) => {
-    const id = String(u.id); const s = sonuc.get(id); if (s) return s;
-    const benim = ks.get(id) ?? kodlar(u); const say = new Map<Urun, number>();
-    const tekil = new Map<string, Urun>();
-    for (const c of benim) for (const v of idx.get(c) ?? []) if (String(v.id) !== id && v.kategori === u.kategori) { const vid = String(v.id); tekil.set(vid, v); say.set(tekil.get(vid)!, (say.get(tekil.get(vid)!) ?? 0) + 1); }
-    const l0 = [...say.entries()].filter(([, n]) => n >= 2).map(([v]) => v);
-    for (const vid of om.get(id) ?? []) { const v = idMap.get(vid); if (v?.aktif && !l0.some((x) => String(x.id) === vid)) l0.push(v); }
-    const l = l0.sort((a, b) => b.stok - a.stok);
-    sonuc.set(id, l); return l;
-  };
-  onbellek.set(db.urunler, { om: db.otomarmara_veri, bul }); return bul;
+  guvenOnbellek.set(db.urunler, { om: db.otomarmara_veri, s }); return s;
 }
+/** Ürünün Otomarmara eşleşmesi: yok / güvenilir / şüpheli (başka bir ürünle eşleşmiş olabilir) */
+export function omEslesme(db: DB, u: Urun): 'yok' | 'guvenilir' | 'supheli' {
+  const v = db.otomarmara_veri?.find((x) => String(x.urun_id) === String(u.id));
+  if (!v?.om_kod) return 'yok';
+  return omGuvenilir(db).has(String(u.id)) ? 'guvenilir' : 'supheli';
+}
+
+export interface MuadilSatir { v: Urun; ortak: number }
+const onbellek = new WeakMap<object, { om: unknown; kod: unknown; bul: (u: Urun) => MuadilSatir[] }>();
+
+/** Ürün → muadilleri (en az 2 ortak OEM kodu + aynı kategori), stoklu olanlar önde */
+export function muadilDetay(db: DB): (u: Urun) => MuadilSatir[] {
+  const hazir = onbellek.get(db.urunler); if (hazir && hazir.om === db.otomarmara_veri && hazir.kod === db.urun_kodlari) return hazir.bul;
+  const guven = omGuvenilir(db); const id = new Map(db.urunler.filter((u) => u.aktif).map((u) => [String(u.id), u]));
+  const kodlari = new Map<string, Set<string>>();
+  const ekle = (uid: string, k: string) => { const n = norm(k); if (n.length < 5) return; let s = kodlari.get(uid); if (!s) kodlari.set(uid, (s = new Set())); s.add(n); };
+  for (const u of id.values()) for (const e of (u.etiket ?? '').split(',')) ekle(String(u.id), e);
+  for (const k of db.urun_kodlari) { const uid = String(k.urun_id); if (!id.has(uid)) continue; if (k.tur === 'OTOMARMARA' && !guven.has(uid)) continue; ekle(uid, k.kod_norm ?? k.kod); }
+  const idx = new Map<string, string[]>();
+  for (const [uid, s] of kodlari) for (const n of s) { const l = idx.get(n); if (l) l.push(uid); else idx.set(n, [uid]); }
+  const sonuc = new Map<string, MuadilSatir[]>();
+  const bul = (u: Urun) => {
+    const uid = String(u.id); const h = sonuc.get(uid); if (h) return h;
+    const say = new Map<string, number>();
+    for (const n of kodlari.get(uid) ?? []) for (const o of idx.get(n) ?? []) if (o !== uid) say.set(o, (say.get(o) ?? 0) + 1);
+    const l: MuadilSatir[] = [];
+    for (const [o, n] of say) { if (n < MUADIL_ESIK) continue; const v = id.get(o); if (v && (v.kategori ?? '') === (u.kategori ?? '')) l.push({ v, ortak: n }); }
+    l.sort((a, b) => Number(b.v.stok > 0) - Number(a.v.stok > 0) || b.ortak - a.ortak || b.v.stok - a.v.stok);
+    sonuc.set(uid, l); return l;
+  };
+  onbellek.set(db.urunler, { om: db.otomarmara_veri, kod: db.urun_kodlari, bul }); return bul;
+}
+/** Muadil ürünler (eski kullanım için ürün listesi) */
+export function muadilBulucu(db: DB): (u: Urun) => Urun[] { const d = muadilDetay(db); return (u) => d(u).map((x) => x.v); }
 
 /** Stokta olan muadiller ("SRD-SA2481 (3)" biçiminde kısa metinle) */
 export function stoktakiMuadiller(db: DB, u: Urun) { return muadilBulucu(db)(u).filter((v) => v.stok > 0); }

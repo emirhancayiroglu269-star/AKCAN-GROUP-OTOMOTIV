@@ -4,6 +4,8 @@ import { supabase } from '../lib/backend';
 import { useStore, toast } from '../lib/store';
 import { tarihSaat, sayi } from '../lib/format';
 import { stokluMu } from '../lib/analiz';
+import { omGuvenilir, MUADIL_ESIK } from '../lib/muadil';
+import { UrunLink } from './DetayKart';
 
 type Durum = { son_calisma: string | null; son_hata: string | null; islenen: number | null };
 
@@ -24,6 +26,10 @@ export function OtomarmaraDurum() {
   const vMap = new Map(v.map((y) => [String(y.urun_id), y]));
   const stokHedef = hedef.filter((u) => u.stok > 0);
   const taze = stokHedef.filter((u) => { const y = vMap.get(String(u.id)); return y?.guncelleme && Date.now() - new Date(y.guncelleme).getTime() < 12 * 3600e3; }).length;
+  // şüpheli eşleşmeler: Otomarmara'da bulunan ürün bizdekiyle uyuşmuyor (kod farklı, ad tutmuyor) → OEM/eşdeğer kullanılmaz
+  const guven = omGuvenilir(db); const uMap = new Map(db.urunler.map((u) => [String(u.id), u]));
+  const supheli = v.filter((y) => y.om_kod && !guven.has(String(y.urun_id)) && uMap.get(String(y.urun_id))?.aktif);
+  const [supheliAc, setSupheliAc] = useState(false);
   const dene = async () => {
     if (!supabase) return; setBekle(true);
     const { data, error } = await supabase.functions.invoke('otomarmara-muadil', { body: { zorla: true } }); setBekle(false);
@@ -39,6 +45,12 @@ export function OtomarmaraDurum() {
         <div className="rounded-lg bg-slate-50 p-2 dark:bg-slate-800/60"><div className="text-xs text-slate-500">Sırada</div><b>{sayi(say('istendi'))}</b></div>
         <div className="rounded-lg bg-slate-50 p-2 dark:bg-slate-800/60"><div className="text-xs text-slate-500">Bulunamayan</div><b>{sayi(say('bulunamadi'))}</b></div>
         <div className="rounded-lg bg-slate-50 p-2 dark:bg-slate-800/60"><div className="text-xs text-slate-500">Son çalışma</div><b className="text-xs">{d?.son_calisma ? tarihSaat(d.son_calisma) : '—'}</b></div>
+      </div>
+      <div className="mb-3 rounded-lg bg-slate-50 p-2.5 text-xs text-slate-600 dark:bg-slate-800/60 dark:text-slate-300">
+        <b>Doğrulama:</b> İki ürün yalnız <b>en az {MUADIL_ESIK} ortak OEM kodu</b> varsa ve aynı kategorideyse muadil sayılır. Otomarmara eşleşmesi şüpheli olan ürünlerin (kod farklı ve ürün adları tutmuyor) OEM / eşdeğer bilgisi kullanılmaz:
+        <button className="ml-1 font-medium text-marka-700 hover:underline" onClick={() => setSupheliAc(!supheliAc)}>{sayi(supheli.length)} şüpheli eşleşme {supheliAc ? '▲' : '▼'}</button>
+        {supheliAc && <div className="mt-2 max-h-64 overflow-auto"><table className="tbl"><tbody>{supheli.slice(0, 300).map((y) => { const u = uMap.get(String(y.urun_id))!; return (
+          <tr key={y.urun_id}><td><UrunLink id={String(u.id)}>{u.kod}</UrunLink><div className="text-[11px] text-slate-500">{u.ad}</div></td><td className="text-slate-400">→</td><td>{y.om_kod}<div className="text-[11px] text-slate-500">{y.om_ad}</div></td></tr>); })}</tbody></table></div>}
       </div>
       <div className="mb-3 text-xs text-slate-600 dark:text-slate-300">
         <div className="mb-1 flex justify-between"><span>Stoktakiler: son 12 saatte güncellenen</span><b>{sayi(taze)} / {sayi(stokHedef.length)}</b></div>

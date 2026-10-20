@@ -5,7 +5,7 @@ import { backend, type OmAramaYanit, type OmDetayYanit } from '../lib/backend';
 import { para, sayi, tarihSaat } from '../lib/format';
 import { aktifDepolar, stokHaritasi } from '../lib/depo';
 import { birimKar } from '../lib/analiz';
-import { muadilBulucu, depoKisa } from '../lib/muadil';
+import { muadilDetay, depoKisa, MUADIL_ESIK } from '../lib/muadil';
 import { ESLESME_AD, dizin, genelArama, koddanBizdeki, type AramaSatiri } from '../lib/arama';
 import { detayAc } from '../components/DetayKart';
 import type { Urun } from '../lib/types';
@@ -74,7 +74,8 @@ export default function UrunAra() {
 
 function SonucKart({ x, maliyet, depolar, depoStok }: { x: AramaSatiri; maliyet: boolean; depolar: { id: string; ad: string }[]; depoStok: (u: Urun, d: string) => number }) {
   const { db } = useStore(); const u = x.u; const [ac, setAc] = useState(false);
-  const muadil = useMemo(() => muadilBulucu(db)(u), [db, u]);
+  const muadilD = useMemo(() => muadilDetay(db)(u), [db, u]);
+  const muadil = muadilD.map((x) => x.v); const ortak = new Map(muadilD.map((x) => [x.v.id, x.ortak]));
   const stoktaMuadil = muadil.filter((m) => m.stok > 0);
   const bk = maliyet ? birimKar(u, db.ayarlar) : null;
   return (
@@ -96,11 +97,11 @@ function SonucKart({ x, maliyet, depolar, depoStok }: { x: AramaSatiri; maliyet:
       </div>
       {muadil.length > 0 && <div className="mt-2 border-t border-slate-100 pt-2 dark:border-slate-800">
         <button className="inline-flex items-center gap-1 text-xs font-medium text-marka-700 dark:text-marka-500" onClick={() => setAc(!ac)}>
-          {ac ? <ChevronUp size={14} /> : <ChevronDown size={14} />} Muadiller: {muadil.length}{stoktaMuadil.length ? `, ${stoktaMuadil.length} tanesi stokta` : ', hiçbiri stokta değil'}
+          {ac ? <ChevronUp size={14} /> : <ChevronDown size={14} />} Muadiller ({MUADIL_ESIK}+ ortak OEM): {muadil.length}{stoktaMuadil.length ? `, ${stoktaMuadil.length} tanesi stokta` : ', hiçbiri stokta değil'}
         </button>
         {ac && <div className="mt-2 space-y-1">{muadil.slice(0, 20).map((m) => (
           <button key={m.id} className="flex w-full items-center justify-between gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-slate-50 dark:hover:bg-slate-800" onClick={() => detayAc({ tur: 'urun', id: m.id })}>
-            <span className="min-w-0"><span className="block truncate">{m.ad}</span><span className="block text-[11px] text-slate-500">{[m.kod, m.marka, m.raf && `Raf ${m.raf}`].filter(Boolean).join(' · ')}</span></span>
+            <span className="min-w-0"><span className="block truncate">{m.ad}</span><span className="block text-[11px] text-slate-500">{[m.kod, m.marka, m.raf && `Raf ${m.raf}`, `${ortak.get(m.id)} ortak OEM`].filter(Boolean).join(' · ')}</span></span>
             <span className="shrink-0 text-right"><span className="block font-medium">{para(m.satis_fiyati)}</span>
               <span className={`block text-[11px] ${m.stok > 0 ? 'text-emerald-700' : 'text-slate-400'}`}>stok {sayi(m.stok)}{depolar.length > 1 && m.stok > 0 ? ` (${depolar.map((d) => `${depoKisa(d.ad)} ${sayi(depoStok(m, d.id))}`).join(', ')})` : ''}</span></span>
           </button>))}</div>}
