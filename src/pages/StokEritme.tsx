@@ -13,6 +13,7 @@ const AKSIYON: Record<StokAksiyonTur, { ad: string; aciklama: string; cls: strin
   iade: { ad: 'Tedarikçiye iade', aciklama: '90–150 gün önce alınıp hiç satılmayanlar — iade/değişim isteyin', cls: 'bg-violet-50 text-violet-700 dark:bg-violet-500/15 dark:text-violet-300' },
   kampanya: { ad: 'Kampanya', aciklama: 'Daha önce satılmış ama durmuş — maliyetine yakın fiyatla kampanya (oranı sağdan seçin)', cls: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300' },
   toplu: { ad: 'Toplu satış', aciklama: 'Hiç satılmamış — diğer dükkânlara/ustalara maliyetine', cls: 'bg-sky-50 text-sky-700 dark:bg-sky-500/15 dark:text-sky-300' },
+  siparis: { ad: 'Sipariş', aciklama: 'Alınacaklar sayfasından verilen sipariş (burada listelenmez)', cls: 'bg-sky-50 text-sky-700' },
   beklet: { ad: 'Beklet', aciklama: 'Bağlı para küçük — uğraşmaya değmez', cls: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300' },
 };
 type Sekme = StokAksiyonTur | 'plan';
@@ -27,7 +28,7 @@ export default function StokEritme() {
   const oranKaydet = (v: number) => { setOran(v); if (v !== db.ayarlar.kampanya_oran) calistir(() => backend.ayarKaydet({ kampanya_oran: v })); };
   const liste = useMemo(() => eritmeListesi(db, esik, oran), [db, esik, oran]);
   const ilerleme = useMemo(() => eritmeIlerleme(db), [db]);
-  const planli = useMemo(() => new Map(db.stok_aksiyon.filter((a) => a.durum !== 'vazgecildi').map((a) => [a.urun_id, a])), [db.stok_aksiyon]);
+  const planli = useMemo(() => new Map(db.stok_aksiyon.filter((a) => a.durum !== 'vazgecildi' && a.aksiyon !== 'siparis').map((a) => [a.urun_id, a])), [db.stok_aksiyon]);
   const toplam = liste.reduce((t, x) => t + x.deger, 0);
   const tumStok = db.urunler.filter((u) => u.aktif && u.stok > 0 && u.alis_fiyati > 0).reduce((t, u) => t + u.stok * (db.ayarlar.alis_kdv_haric ? u.alis_fiyati : u.alis_fiyati / (1 + u.kdv / 100)), 0);
   const grup = (t: StokAksiyonTur) => liste.filter((x) => x.oneri === t);

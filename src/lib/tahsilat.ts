@@ -105,7 +105,7 @@ export function eritmeListesi(db: DB, esik = 90, kampanyaOran = 10): EritmeSatir
 /** Planlanan aksiyonların ilerlemesi: başlangıç stoğundan bu yana azalan adet × maliyet */
 export function eritmeIlerleme(db: DB) {
   const urun = new Map(db.urunler.map((u) => [u.id, u]));
-  const aktif = db.stok_aksiyon.filter((a) => a.durum !== 'vazgecildi');
+  const aktif = db.stok_aksiyon.filter((a) => a.durum !== 'vazgecildi' && a.aksiyon !== 'siparis');
   let plan = 0, eriyen = 0;
   const satirlar = aktif.map((a) => {
     const u = urun.get(a.urun_id); const m = u && u.alis_fiyati > 0 ? netAlis(u.alis_fiyati, u.kdv, db.ayarlar) : 0;
