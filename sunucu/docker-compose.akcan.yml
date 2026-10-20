@@ -1,0 +1,11 @@
+# Akcan analiz için ek ayarlar (kur.sh ekler): sunucu fonksiyonlarının gizli değerleri ve dışarıya kapalı veritabanı portları
+services:
+  functions:
+    environment:
+      BH_TOKEN: ${AKCAN_BH_TOKEN:-}
+      OM_MUSTERI_KODU: ${AKCAN_OM_MUSTERI_KODU:-}
+      OM_KULLANICI: ${AKCAN_OM_KULLANICI:-}
+      OM_SIFRE: ${AKCAN_OM_SIFRE:-}
+  # veritabanı havuzu (5432 / 6543) internete açılmasın; yalnız sunucunun içinden erişilir
+  supavisor:
+    ports: !reset []
