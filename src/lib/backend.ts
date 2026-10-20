@@ -81,8 +81,8 @@ function supabaseBackend(sb: SupabaseClient): Backend {
       // sayfalama kararlı olsun: sıralama sütunu tekrarlı olabildiğinden (ör. aynı anda eklenen ürünler) benzersiz ikinci sıralama eklenir; yoksa sayfalar arasında kayıt tekrarlanır ya da atlanır
       const ikinci = t === 'urun_depo_stok' ? 'depo_id' : t === 'hesap_bakiyeleri' || t === 'otomarmara_veri' ? null : 'id';
       const sor = (kolon: string) => { let q = sb.from(t).select(kolon); if (filtre) q = q.eq(filtre[0], filtre[1]); q = q.order(order, { ascending: asc }); if (ikinci && ikinci !== order) q = q.order(ikinci, { ascending: true }); return q.range(i, i + sayfa - 1); };
-      // etiket (OEM/muadil kodları) yalnız bh_ham içindeki tag alanından okunur; okunamazsa onsuz devam edilir
-      let r = await sor(t === 'urunler' ? URUN + ',etiket:bh_ham->>tag' : '*');
+      // etiket (OEM/muadil kodları): bh_ham içindeki tag alanının veritabanında hazır tutulan kopyası (ham JSON her seferinde açılmaz); okunamazsa onsuz devam edilir
+      let r = await sor(t === 'urunler' ? URUN + ',etiket' : '*');
       if (r.error && t === 'urunler') r = await sor(URUN);
       const d = ok(r) as unknown[];
       sonuc.push(...d);
