@@ -157,7 +157,8 @@ export default function Alinacaklar() {
 
   // ---------- kritik seviye önerisi: 90 günlük satış hızı × kritik gün (mevsim katsayısıyla) ----------
   const kritikOneri = (u: Urun, satilan90: number) => {
-    if (satilan90 < 2) return 0;
+    // 90 günde hiç satılmadıysa kritik gereksiz; bir kez bile satıldıysa en az 1 (rafta bir tane dursun)
+    if (satilan90 <= 0) return 0;
     const k = mevsimAcik ? mevsim(u)?.katsayi ?? 1 : 1;
     return Math.max(1, Math.ceil((satilan90 / Math.max(1, gun90)) * kritikGun * k));
   };
@@ -167,6 +168,7 @@ export default function Alinacaklar() {
     return db.urunler.filter((u) => u.aktif && stokluMu(u)).flatMap((u) => {
       const s = oz90.get(u.id)?.satilan ?? 0; const o = kritikOneri(u, s); const m = u.kritik_stok || 0;
       if (o === m) return [];
+      if (m === 0 && s < 2) return []; // bir kerelik satış için yeni kritik seviye önerilmez
       const fark = Math.abs(o - m);
       if (m > 0 && o > 0 && fark < Math.max(1, m * 0.3)) return []; // küçük farklar gürültü
       const tip = m === 0 ? 'tanimsiz' as const : o === 0 ? 'gereksiz' as const : o > m ? 'dusuk' as const : 'yuksek' as const;
