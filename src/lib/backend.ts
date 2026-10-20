@@ -9,6 +9,9 @@ const KEY = (import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined) || SU
 export const supabase: SupabaseClient | null = URL && KEY ? createClient(URL, KEY) : null;
 export const MODE: 'bulut' | 'demo' = supabase ? 'bulut' : 'demo';
 
+export interface OmAramaSonuc { id: string; kod: string; marka: string; ad: string; ek: string[] }
+export interface OmAramaYanit { sonuclar: OmAramaSonuc[]; zaman: string; onbellek: boolean }
+export interface OmDetayYanit { oemler: string[]; esdegerler: { kod: string; ad?: string | null }[]; zaman: string; onbellek: boolean }
 export interface EsitlemeSonucu { ok: boolean; hata?: string; urun?: number; depo?: number; degisen?: number; stokSatiri?: number; cari?: number }
 
 export interface Backend {
@@ -24,6 +27,10 @@ export interface Backend {
   subscribe(onChange: () => void, onOm?: () => void): () => void;
   /** yalnız Otomarmara verisini oku (arka plan servisi sık yazdığı için tüm veri yeniden yüklenmez) */
   omVeri(): Promise<OtomarmaraVeri[]>;
+  /** Otomarmara'da canlı arama (yalnız okuma; sunucu fonksiyonu üzerinden, önbellekli) */
+  omAra(q: string): Promise<OmAramaYanit>;
+  /** Otomarmara'daki bir ürünün OEM ve eşdeğer listesi */
+  omDetay(id: string): Promise<OmDetayYanit>;
   /** Hafif kontrol: verinin değişip değişmediğini anlamak için tek satır okur */
   durum(): Promise<{ son_esitleme?: string | null; imza: string } | null>;
 }
@@ -66,6 +73,16 @@ function hareketleriBirlestir(stok: Hareket[], rapor: RaporSatiri[], d: BhDurum 
   });
   const s = stok.filter((h) => !son || yerelGun(h.tarih) > son).map((h) => ({ ...h, kaynak: 'stok' as const }));
   return [...s, ...r].sort((a, b) => b.tarih.localeCompare(a.tarih));
+}
+
+async function omCagir(sb: SupabaseClient, body: object) {
+  const { data, error } = await sb.functions.invoke('otomarmara-ara', { body });
+  if (error) {
+    let mesaj = error.message;
+    try { const j = await (error as { context?: Response }).context?.json(); if (j?.hata) mesaj = j.hata; } catch { /* yok */ }
+    throw new Error(mesaj);
+  }
+  return data;
 }
 
 // ======================= SUPABASE =======================
@@ -118,6 +135,8 @@ function supabaseBackend(sb: SupabaseClient): Backend {
     async ayarKaydet(a) { ok(await sb.from('ayarlar').upsert({ ...a, id: 1 })); },
     async urunKodlariYukle(satirlar) { return ok(await sb.rpc('urun_kodlari_yukle', { p: satirlar })) as { eklenen: number; bulunamayan: number }; },
     async omVeri() { return (await hepsi('otomarmara_veri', 'urun_id', true, 100000)) as OtomarmaraVeri[]; },
+    async omAra(q) { return omCagir(sb, { q }) as Promise<OmAramaYanit>; },
+    async omDetay(id) { return omCagir(sb, { id }) as Promise<OmDetayYanit>; },
     async omIste(ids) {
       if (!ids.length) return; const t = new Date().toISOString();
       ok(await sb.from('otomarmara_veri').upsert(ids.map((id) => ({ urun_id: id, durum: 'istendi', istendi: t, oncelik: 1 })), { onConflict: 'urun_id' }));
@@ -287,6 +306,8 @@ function demoBackend(): Backend {
     },
     subscribe(onChange) { listeners.add(onChange); return () => { listeners.delete(onChange); }; },
     async omIste() { /* demo: yok */ },
+    async omAra() { throw new Error('Demo modunda Otomarmara araması yok'); },
+    async omDetay() { throw new Error('Demo modunda Otomarmara araması yok'); },
     async omVeri() { return []; },
     async durum() { return null; },
   };

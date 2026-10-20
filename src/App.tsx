@@ -2,7 +2,7 @@ import { asama } from './lib/hataKayit';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import {
-  Activity, ArrowLeftRight, ShieldAlert, ShoppingBasket, RefreshCw, Wrench, HandCoins, PackageMinus, Warehouse, Lightbulb, BarChart3, Boxes, LayoutDashboard, LogOut, Menu, Moon, PieChart, Settings, Sun, Tag, Truck, UserCheck, Users, Wallet, X,
+  Activity, ArrowLeftRight, Search, ShieldAlert, ShoppingBasket, RefreshCw, Wrench, HandCoins, PackageMinus, Warehouse, Lightbulb, BarChart3, Boxes, LayoutDashboard, LogOut, Menu, Moon, PieChart, Settings, Sun, Tag, Truck, UserCheck, Users, Wallet, X,
 } from 'lucide-react';
 import { supabase, MODE } from './lib/backend';
 import { StoreProvider, Toasts, useStore } from './lib/store';
@@ -13,6 +13,7 @@ import Hareketler from './pages/Hareketler';
 import UrunAnalizi from './pages/UrunAnalizi';
 import Cariler from './pages/Cariler';
 import Urunler from './pages/Urunler';
+import UrunAra from './pages/UrunAra';
 import AyarlarSayfa from './pages/Ayarlar';
 import SatisAnalizi from './pages/SatisAnalizi';
 import MusteriAnalizi from './pages/MusteriAnalizi';
@@ -31,7 +32,7 @@ import { tahsilatListesi } from './lib/tahsilat';
 import { ROL_AD } from './lib/types';
 import { tarihSaat } from './lib/format';
 
-export type AnaSayfa = 'panel' | 'oneriler' | 'hareketler' | 'satisanaliz' | 'musteri' | 'sepet' | 'kayip' | 'karzarar' | 'tahsilat' | 'nakit' | 'cariler' | 'analiz' | 'fiyat' | 'usta' | 'eritme' | 'depolar' | 'tedarikci' | 'urunler' | 'ayarlar';
+export type AnaSayfa = 'panel' | 'arama' | 'oneriler' | 'hareketler' | 'satisanaliz' | 'musteri' | 'sepet' | 'kayip' | 'karzarar' | 'tahsilat' | 'nakit' | 'cariler' | 'analiz' | 'fiyat' | 'usta' | 'eritme' | 'depolar' | 'tedarikci' | 'urunler' | 'ayarlar';
 /** Eski sayfa adları (birleştirilen/kaldırılan) — eski bağlantılar ve öneriler çalışmaya devam etsin diye */
 type EskiSayfa = 'aysonu' | 'arac' | 'indirim' | 'deposiparis' | 'katfiyat' | 'stoksagligi' | 'alinacaklar';
 export type Sayfa = AnaSayfa | EskiSayfa | `${AnaSayfa}/${string}`;
@@ -48,6 +49,7 @@ export function cozumle(h: string): { ana: AnaSayfa; alt?: string } {
 
 const MENU: { id: AnaSayfa; ad: string; ikon: typeof LayoutDashboard; grup?: string }[] = [
   { id: 'panel', ad: 'Genel Bakış', ikon: LayoutDashboard },
+  { id: 'arama', ad: 'Ürün Ara', ikon: Search },
   { id: 'oneriler', ad: 'Öneriler', ikon: Lightbulb },
   { id: 'hareketler', ad: 'Satışlar & Alışlar', ikon: ArrowLeftRight, grup: 'Satış' },
   { id: 'satisanaliz', ad: 'Satış Analizi', ikon: Activity },
@@ -69,7 +71,7 @@ const MENU: { id: AnaSayfa; ad: string; ikon: typeof LayoutDashboard; grup?: str
 ];
 type Props = { git: (s: Sayfa) => void; alt?: string };
 const SAYFALAR: Record<AnaSayfa, (p: Props) => React.ReactNode> = {
-  panel: Panel, oneriler: Oneriler, hareketler: Hareketler, satisanaliz: SatisAnalizi, musteri: MusteriAnalizi, sepet: BirlikteSatilan, kayip: KayipKacak, karzarar: KarZararSayfa, tahsilat: Tahsilat, nakit: NakitAkisi, cariler: Cariler,
+  panel: Panel, arama: UrunAra, oneriler: Oneriler, hareketler: Hareketler, satisanaliz: SatisAnalizi, musteri: MusteriAnalizi, sepet: BirlikteSatilan, kayip: KayipKacak, karzarar: KarZararSayfa, tahsilat: Tahsilat, nakit: NakitAkisi, cariler: Cariler,
   analiz: UrunAnalizi, fiyat: FiyatSayfa, usta: UstaFiyat, eritme: EritmeSayfa, depolar: DepolarSayfa, tedarikci: Tedarikciler, urunler: Urunler, ayarlar: AyarlarSayfa,
 };
 
