@@ -11,6 +11,9 @@ const KULLANICI = Deno.env.get('OM_KULLANICI') ?? '';
 const SIFRE = Deno.env.get('OM_SIFRE') ?? '';
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0 Safari/537.36';
 const TUR_LIMIT = 8;
+const SAYFA_SINIR = 300_000;
+/** bir ürün bu kadar denemede bitirilemezse (servis o üründe kapanıyorsa) atlanır */
+const DENEME_SINIR = 2;
 
 const db = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!, { auth: { persistSession: false } });
 const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type' };
@@ -30,7 +33,9 @@ async function istek(yol: string, init: RequestInit = {}, yonlendir = 5): Promis
     await r.body?.cancel();
     const loc = new URL(r.headers.get('location')!, BASE); return istek(loc.pathname + loc.search, {}, yonlendir - 1);
   }
-  return { r, t: await r.text(), url: yol };
+  // aşırı büyük sayfa (binlerce satır) ayrıştırılırken sunucunun işlem gücü sınırı aşılmasın
+  const t = await r.text();
+  return { r, t: t.length > SAYFA_SINIR ? t.slice(0, SAYFA_SINIR) : t, url: yol };
 }
 
 async function girisYap() {
@@ -104,12 +109,15 @@ Deno.serve(async (req) => {
   if (!kilit?.length) return yanit({ ok: true, atlandi: 'önceki tur sürüyor' });
   let islenen = 0;
   try {
-    const { data: l, error } = await db.from('otomarmara_veri').select('urun_id, urunler!inner(kod)').eq('durum', 'istendi').order('oncelik', { ascending: false }).order('istendi').limit(TUR_LIMIT);
+    // önceki turlarda işlenirken servisin kapandığı ürünler kuyruğu tıkamasın
+    await db.from('otomarmara_veri').update({ durum: 'hata', guncelleme: new Date().toISOString(), hata: `Otomarmara sayfası işlenemedi (${DENEME_SINIR} deneme; sayfa çok büyük olabilir)` }).eq('durum', 'istendi').gte('deneme', DENEME_SINIR);
+    const { data: l, error } = await db.from('otomarmara_veri').select('urun_id, deneme, urunler!inner(kod)').eq('durum', 'istendi').order('oncelik', { ascending: false }).order('istendi').limit(TUR_LIMIT);
     if (error) throw new Error(error.message);
     await girisYap();
     for (const x of l ?? []) {
       const u = { urun_id: x.urun_id as string, kod: String((x as unknown as { urunler: { kod: string } }).urunler?.kod ?? '') };
       let s: Record<string, unknown>;
+      await db.from('otomarmara_veri').update({ deneme: (Number((x as { deneme?: number }).deneme) || 0) + 1 }).eq('urun_id', u.urun_id);
       try { s = await isle(u); } catch (e) { if (e instanceof OturumYok) throw e; s = { urun_id: u.urun_id, durum: 'hata', hata: String((e as Error).message).slice(0, 200) }; }
       let { error: e2 } = await db.rpc('om_sonuc_yaz', { p: s });
       // tek ürünün sonucu yazılamazsa kuyruk tıkanmasın: o ürün "hata" olarak işaretlenir, sıradakine geçilir
