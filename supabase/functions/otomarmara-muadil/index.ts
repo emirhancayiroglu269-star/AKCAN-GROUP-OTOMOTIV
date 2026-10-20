@@ -81,12 +81,30 @@ async function esdegerler(id: string) {
   const d = ayristir(t);
   return [...d.querySelectorAll('tbody tr')].map((r) => { const td = (r as Element).querySelectorAll('td'); return { kod: kodBul(td[0] ? metin(td[0]) : ''), ad: td[1] ? metin(td[1]).slice(0, 160) : null }; }).filter((x) => x.kod);
 }
-async function isle(u: { urun_id: string; kod: string }) {
+// ---------- Doğru ürünü seçme ----------
+// Kod birebir aynıysa kabul. Kod yalnız benziyorsa (marka ön eki farklı, ya da kısa sayı tutuyor) iki ürünün adında aynı parça adı
+// geçmeli: "10127" araması hem hava filtresi hem supap takımı getirebilir; adı tutmayan sonuç alınmaz ("bulunamadı" daha iyi).
+// (Sitedeki muadil doğrulamasıyla aynı kural: src/lib/muadil.ts ayniParcaAdi)
+const harf = (s?: string | null) => (s ?? '').replace(/i/g, 'İ').toUpperCase().replace(/İ/g, 'I').replace(/Ş/g, 'S').replace(/Ğ/g, 'G').replace(/Ü/g, 'U').replace(/Ö/g, 'O').replace(/Ç/g, 'C').replace(/[^A-Z]+/g, ' ').trim();
+const DURAK = new Set(('ARKA TAKI SETI ADET KOMP ORJI ORIJ UNIV UYUM MODE BENZ DIZE MERC RENA FIAT OPEL FORD TOYO HYUN PEUG CITR DACI VOLK AUDI SEAT SKOD HOND NISS KANG CLIO MEGA ' +
+  'EGEA DOBL LINE FIOR PALI ALBE PUNT PAND CORS ASTR VECT INSI FOCU FIES TRAN CONN CORO YARI AURI ACCE TUCS ELAN GOLF POLO PASS JETT CADD TOUR SPRI VITO CRAF DUCA BOXE ' +
+  'JUMP PART BERL SAND LOGA DUST SYMB FLUE LAGU SCEN QASH MICR SUNN CIVI JAZZ ACCO CEED SPOR PICA MINI VOLV MAZD MITS SUZU ISUZ IVEC ESCO MOND KUGA TRAF MAST MOVA CLAS ' +
+  'KLAS VALE BOSC SACH LEMF FEBI SWAG MAHL MANN ICIN ESKI').split(' '));
+const parcaKelimeleri = (ad?: string | null) => harf(ad).split(' ').filter((k) => k.length >= 4 && !DURAK.has(k.slice(0, 4)));
+const ayniParcaAdi = (a?: string | null, b?: string | null) => {
+  const ab = harf(a).replace(/ /g, ''), bb = harf(b).replace(/ /g, '');
+  return parcaKelimeleri(a).some((k) => bb.includes(k.slice(0, 5))) || parcaKelimeleri(b).some((k) => ab.includes(k.slice(0, 5)));
+};
+
+async function isle(u: { urun_id: string; kod: string; ad: string }) {
   const t = terim(u.kod); const n = norm(u.kod), nt = norm(t);
   if (nt.length < 3) return { urun_id: u.urun_id, durum: 'bulunamadi', hata: 'Stok kodu aramaya uygun değil' };
   const l = await ara(t);
-  const sec = l.find((x) => norm(x.kod) === n) || l.find((x) => norm(x.kod).endsWith(nt)) || l.find((x) => norm(x.kod).includes(nt));
-  if (!sec) return { urun_id: u.urun_id, durum: 'bulunamadi', hata: `Otomarmara'da "${t}" araması bu ürünü bulamadı` };
+  const benzer = [...l.filter((x) => norm(x.kod).endsWith(nt)), ...l.filter((x) => !norm(x.kod).endsWith(nt) && norm(x.kod).includes(nt))];
+  const sec = l.find((x) => norm(x.kod) === n) || benzer.find((x) => ayniParcaAdi(u.ad, x.ad));
+  if (!sec) return { urun_id: u.urun_id, durum: 'bulunamadi', hata: benzer.length
+    ? `Otomarmara'da "${t}" kodlu ${benzer.length} ürün var ama hiçbiri bu parça değil (ör. ${benzer[0].kod} ${benzer[0].ad.slice(0, 60)})`
+    : `Otomarmara'da "${t}" araması bu ürünü bulamadı` };
   await bekle(1200); const o = await oemler(sec.id!);
   await bekle(1200); const e = (await esdegerler(sec.id!)).filter((x) => norm(x.kod) !== norm(sec.kod));
   return { urun_id: u.urun_id, durum: 'tamam', om_kod: sec.kod, om_ad: sec.ad.slice(0, 200), oemler: o.filter((x) => norm(x) !== norm(sec.kod)), esdegerler: e };
@@ -114,13 +132,14 @@ Deno.serve(async (req) => {
   try {
     // önceki turlarda işlenirken servisin kapandığı ürünler kuyruğu tıkamasın
     await db.from('otomarmara_veri').update({ durum: 'hata', guncelleme: new Date().toISOString(), hata: `Otomarmara sayfası işlenemedi (${DENEME_SINIR} deneme; sayfa çok büyük olabilir)` }).eq('durum', 'istendi').gte('deneme', DENEME_SINIR);
-    const { data: l, error } = await db.from('otomarmara_veri').select('urun_id, deneme, urunler!inner(kod)').eq('durum', 'istendi').order('oncelik', { ascending: false }).order('istendi').limit(TUR_LIMIT);
+    const { data: l, error } = await db.from('otomarmara_veri').select('urun_id, deneme, urunler!inner(kod, ad)').eq('durum', 'istendi').order('oncelik', { ascending: false }).order('istendi').limit(TUR_LIMIT);
     if (error) throw new Error(error.message);
     await girisYap();
     const basla = Date.now();
     for (const x of l ?? []) {
       if (Date.now() - basla > TUR_SURE_MS) break;
-      const u = { urun_id: x.urun_id as string, kod: String((x as unknown as { urunler: { kod: string } }).urunler?.kod ?? '') };
+      const uu = (x as unknown as { urunler: { kod: string; ad: string } }).urunler;
+      const u = { urun_id: x.urun_id as string, kod: String(uu?.kod ?? ''), ad: String(uu?.ad ?? '') };
       let s: Record<string, unknown>;
       await db.from('otomarmara_veri').update({ deneme: (Number((x as { deneme?: number }).deneme) || 0) + 1 }).eq('urun_id', u.urun_id);
       try { s = await isle(u); } catch (e) { if (e instanceof OturumYok) throw e; s = { urun_id: u.urun_id, durum: 'hata', hata: String((e as Error).message).slice(0, 200) }; }
