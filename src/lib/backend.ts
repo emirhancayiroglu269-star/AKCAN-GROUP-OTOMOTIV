@@ -119,9 +119,9 @@ function supabaseBackend(sb: SupabaseClient): Backend {
     { t: 'otomarmara_veri', k: ['urun_id'], order: 'urun_id', asc: true, sinir: 100000 },
   ];
   const anahtar = (z: Izlenen, r: unknown) => z.k.map((k) => String((r as Record<string, unknown>)[k])).join('|');
-  /** 10 dk geri (uzun süren yazma işlemleri ve saat farkı için örtüşme; aynı satırın tekrar gelmesi zararsız) */
+  /** 2 dk geri (o anda süren yazma işlemleri için örtüşme; aynı satırın tekrar gelmesi zararsız, kaçan olursa 24 saatlik tam yükleme düzeltir) */
   // (veritabanı zamanı mikrosaniyeli gelir: iPhone tarayıcısı için milisaniyeye kısaltılır)
-  const geri = (iso: string) => { const t = new Date(iso.replace(/(\.\d{3})\d+/, '$1')).getTime(); return new Date((Number.isFinite(t) ? t : 0) - 10 * 60000).toISOString(); };
+  const geri = (iso: string) => { const t = new Date(iso.replace(/(\.\d{3})\d+/, '$1')).getTime(); return new Date((Number.isFinite(t) ? t : 0) - 2 * 60000).toISOString(); };
   async function degisenler(z: Izlenen, son: string | undefined) {
     if (!son) return hepsi(z.t, z.order, z.asc, z.sinir, z.gecersiz ? ['gecersiz', false] : undefined);
     const kolon = z.t === 'urunler' ? URUN_KOLON + ',etiket' : '*'; const l: unknown[] = [];
@@ -170,7 +170,7 @@ function supabaseBackend(sb: SupabaseClient): Backend {
         sb.from('ayarlar').select('*').eq('id', 1).maybeSingle(),
       ]);
       if (gecerli) {
-        // silinenler (10 dk örtüşmeyle; uygulamak tekrar zararsız)
+        // silinenler (2 dk örtüşmeyle; uygulamak tekrar zararsız)
         const sil: { tablo: string; kayit: string; zaman: string }[] = [];
         for (let i = 0; i < 200000; i += 1000) { const d = ok(await sb.from('silinen').select('tablo,kayit,zaman').gt('zaman', geri(sonSil!)).order('id').range(i, i + 999)) as typeof sil; sil.push(...d); if (d.length < 1000) break; }
         const silinecek = new Map<string, Set<string>>(); for (const x of sil) { (silinecek.get(x.tablo) ?? silinecek.set(x.tablo, new Set()).get(x.tablo)!).add(x.kayit); if (x.zaman > sonSil!) sonSil = x.zaman; }
