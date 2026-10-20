@@ -2,9 +2,16 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import type { Ayarlar, BhDurum, Cari, CrudTable, DB, Hareket, HesapBakiye, ID, KasaAkisi, Masraf, OtomarmaraVeri, Urun, UrunKodu, VadesiGecen } from './types';
 
 import { SUPABASE_ANON_KEY, SUPABASE_URL } from './baglanti';
+import { onbellekOku, onbellekYaz, onbellekSil } from './onbellek';
 
-const URL = (import.meta.env.VITE_SUPABASE_URL as string | undefined) || SUPABASE_URL;
-const KEY = (import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined) || SUPABASE_ANON_KEY;
+/** ürünlerde BizimHesap'ın ham JSON'u (bh_ham) çok büyük ve sitede kullanılmıyor: çekilmez */
+const URUN_KOLON = 'id,kod,barkod,ad,marka,kategori,birim,alis_fiyati,satis_fiyati,kdv,stok,kritik_stok,raf,aktif,olusturma,bh_id,bh_guncelleme,bh_stok,degisim';
+const ONBELLEK_ANAHTAR = 'ham'; const ONBELLEK_SURUM = 1;
+/** çıkışta önbellek silinir (ortak bilgisayarda veri kalmasın) */
+export const onbellekTemizle = () => onbellekSil(ONBELLEK_ANAHTAR);
+
+const URL = (import.meta.env?.VITE_SUPABASE_URL as string | undefined) || SUPABASE_URL;
+const KEY = (import.meta.env?.VITE_SUPABASE_ANON_KEY as string | undefined) || SUPABASE_ANON_KEY;
 
 export const supabase: SupabaseClient | null = URL && KEY ? createClient(URL, KEY) : null;
 export const MODE: 'bulut' | 'demo' = supabase ? 'bulut' : 'demo';
@@ -15,8 +22,10 @@ export interface OmDetayYanit { oemler: string[]; esdegerler: { kod: string; ad?
 export interface EsitlemeSonucu { ok: boolean; hata?: string; urun?: number; depo?: number; degisen?: number; stokSatiri?: number; cari?: number }
 
 export interface Backend {
-  /** omHaric: Otomarmara verisi (otomarmara_veri ve OTOMARMARA kodları) çekilmez — rutin yenilemede önceki kopya kullanılır, değişenler omDegisen ile gelir */
-  load(omHaric?: boolean): Promise<DB>;
+  /** Tarayıcı önbelleği varsa yalnız değişen satırları çeker (24 saatte bir tam yükleme) */
+  load(): Promise<DB>;
+  /** önbellekteki son veri (açılışta beklemeden göstermek için); yoksa null */
+  onbellektenDB(): Promise<DB | null>;
   /** Otomarmara verisinde verilen zamandan sonra değişen satırlar ve o ürünlerin OTOMARMARA kodları */
   omDegisen(son: string): Promise<{ veri: OtomarmaraVeri[]; kodlar: UrunKodu[] }>;
   insert<T extends object>(t: CrudTable, row: T): Promise<void>;
@@ -92,12 +101,44 @@ async function omCagir(sb: SupabaseClient, body: object) {
 function supabaseBackend(sb: SupabaseClient): Backend {
   const ok = <T,>(r: { data: T; error: { message: string } | null }) => { if (r.error) throw new Error(r.error.message); return r.data; };
 
+  // ---------- artımlı yükleme ----------
+  type Ham = Record<string, unknown[]>;
+  interface HamOnbellek { surum: number; zaman: number; tablolar: Ham; son: Record<string, string>; sonSil: string | null }
+  interface Izlenen { t: string; k: string[]; order: string; asc: boolean; sinir: number; gecersiz?: boolean }
+  /** her yüklemede tamamen çekilen küçük tablolar */
+  const KUCUK: [string, string, boolean, number, [string, boolean]?][] = [
+    ['depolar', 'olusturma', true, 50000], ['cariler', 'ad', true, 50000], ['cari_hareketler', 'tarih', false, 50000], ['kullanicilar', 'olusturma', true, 50000],
+    ['hesap_bakiyeleri', 'ad', true, 50000], ['vadesi_gecen', 'tutar', false, 10000, ['gecersiz', false]], ['tahsilat_notlari', 'olusturma', false, 50000], ['stok_aksiyon', 'olusturma', false, 50000],
+  ];
+  /** büyük tablolar: yalnız "degisim" zamanı son yüklemeden sonra olanlar çekilir, silinenler "silinen" günlüğünden düşülür */
+  const IZLENEN: Izlenen[] = [
+    { t: 'urunler', k: ['id'], order: 'olusturma', asc: false, sinir: 50000 }, { t: 'urun_depo_stok', k: ['urun_id', 'depo_id'], order: 'urun_id', asc: true, sinir: 200000 },
+    { t: 'hareketler', k: ['id'], order: 'tarih', asc: false, sinir: 200000 }, { t: 'fiyat_gecmisi', k: ['id'], order: 'tarih', asc: false, sinir: 50000 },
+    { t: 'urun_kodlari', k: ['id'], order: 'olusturma', asc: true, sinir: 200000 }, { t: 'rapor_satirlari', k: ['id'], order: 'tarih', asc: false, sinir: 300000, gecersiz: true },
+    { t: 'masraflar', k: ['id'], order: 'tarih', asc: false, sinir: 100000, gecersiz: true }, { t: 'kasa_akisi', k: ['id'], order: 'tarih', asc: false, sinir: 200000, gecersiz: true },
+    { t: 'otomarmara_veri', k: ['urun_id'], order: 'urun_id', asc: true, sinir: 100000 },
+  ];
+  const anahtar = (z: Izlenen, r: unknown) => z.k.map((k) => String((r as Record<string, unknown>)[k])).join('|');
+  /** 10 dk geri (uzun süren yazma işlemleri ve saat farkı için örtüşme; aynı satırın tekrar gelmesi zararsız) */
+  // (veritabanı zamanı mikrosaniyeli gelir: iPhone tarayıcısı için milisaniyeye kısaltılır)
+  const geri = (iso: string) => { const t = new Date(iso.replace(/(\.\d{3})\d+/, '$1')).getTime(); return new Date((Number.isFinite(t) ? t : 0) - 10 * 60000).toISOString(); };
+  async function degisenler(z: Izlenen, son: string | undefined) {
+    if (!son) return hepsi(z.t, z.order, z.asc, z.sinir, z.gecersiz ? ['gecersiz', false] : undefined);
+    const kolon = z.t === 'urunler' ? URUN_KOLON + ',etiket' : '*'; const l: unknown[] = [];
+    for (let i = 0; i < z.sinir; i += 1000) {
+      let q = sb.from(z.t).select(kolon).gt('degisim', geri(son)).order('degisim', { ascending: true });
+      for (const k of z.k) q = q.order(k, { ascending: true });
+      const d = ok(await q.range(i, i + 999)) as unknown[]; l.push(...d); if (d.length < 1000) break;
+    }
+    return norm(z.t, l);
+  }
+
   /** Supabase sorgu başına en fazla 1000 satır döndürür; tamamını sayfa sayfa çeker. */
   async function hepsi(t: string, order: string, asc = false, sinir = 50000, filtre?: [string, boolean], degil?: [string, string]) {
     const sayfa = 1000; const sonuc: unknown[] = [];
     for (let i = 0; i < sinir; i += sayfa) {
       // ürünlerde BizimHesap'ın ham JSON'u (bh_ham) çok büyük ve sitede kullanılmıyor: çekilmez
-      const URUN = 'id,kod,barkod,ad,marka,kategori,birim,alis_fiyati,satis_fiyati,kdv,stok,kritik_stok,raf,aktif,olusturma,bh_id,bh_guncelleme,bh_stok';
+      const URUN = URUN_KOLON;
       // sayfalama kararlı olsun: sıralama sütunu tekrarlı olabildiğinden (ör. aynı anda eklenen ürünler) benzersiz ikinci sıralama eklenir; yoksa sayfalar arasında kayıt tekrarlanır ya da atlanır
       const ikinci = t === 'urun_depo_stok' ? 'depo_id' : t === 'hesap_bakiyeleri' || t === 'otomarmara_veri' ? null : 'id';
       const sor = (kolon: string) => { let q = sb.from(t).select(kolon); if (filtre) q = q.eq(filtre[0], filtre[1]); if (degil) q = q.neq(degil[0], degil[1]); q = q.order(order, { ascending: asc }); if (ikinci && ikinci !== order) q = q.order(ikinci, { ascending: true }); return q.range(i, i + sayfa - 1); };
@@ -112,25 +153,52 @@ function supabaseBackend(sb: SupabaseClient): Backend {
   }
 
   return {
-    async load(omHaric = false) {
-      const [u, dp, uds, bd, h, fg, c, ch, a, ku, uk, rs, ms, ka, hb, vg, tn, sa, om] = await Promise.all([
-        hepsi('urunler', 'olusturma'), hepsi('depolar', 'olusturma', true), hepsi('urun_depo_stok', 'urun_id', true, 200000),
+    async load() {
+      // Önbellek varsa yalnız değişen satırlar çekilir; 24 saatte bir (ya da önbellek yoksa) her şey baştan
+      const once = await onbellekOku<HamOnbellek>(ONBELLEK_ANAHTAR);
+      const gecerli = !!once && once.surum === ONBELLEK_SURUM && Date.now() - once.zaman < 24 * 3600e3 && !!once.son;
+      const ham: Ham = {}; const sonlar: Record<string, string> = {}; let sonSil = gecerli ? once!.sonSil : null; let degisti = !gecerli;
+      if (!gecerli) {
+        // silinen günlüğünün şu anki ucu: bundan sonraki silmeler sonraki yüklemelerde uygulanır
+        const sl = await sb.from('silinen').select('zaman').order('zaman', { ascending: false }).limit(1);
+        sonSil = (sl.data?.[0] as { zaman?: string } | undefined)?.zaman ?? '1970-01-01T00:00:00Z';
+      }
+      const kucuk = await Promise.all(KUCUK.map(([t, o, a, sn, f]) => hepsi(t, o, a, sn, f)));
+      KUCUK.forEach(([t], i) => { ham[t] = kucuk[i]; });
+      const [bd, a] = await Promise.all([
         sb.from('bh_durum').select('id,son_esitleme,son_hata,urun_sayisi,depo_sayisi,cari_sayisi,takip_baslangic,rapor_ilk,rapor_son,rapor_yukleme,masraf_son').eq('id', 1).maybeSingle(),
-        hepsi('hareketler', 'tarih', false, 200000), hepsi('fiyat_gecmisi', 'tarih', false, 50000),
-        hepsi('cariler', 'ad', true), hepsi('cari_hareketler', 'tarih', false, 50000),
-        sb.from('ayarlar').select('*').eq('id', 1).maybeSingle(), hepsi('kullanicilar', 'olusturma', true), (omHaric ? hepsi('urun_kodlari', 'olusturma', true, 200000, undefined, ['tur', 'OTOMARMARA']) : hepsi('urun_kodlari', 'olusturma', true, 200000)),
-        hepsi('rapor_satirlari', 'tarih', false, 300000, ['gecersiz', false]), hepsi('masraflar', 'tarih', false, 100000, ['gecersiz', false]),
-        hepsi('kasa_akisi', 'tarih', false, 200000, ['gecersiz', false]), hepsi('hesap_bakiyeleri', 'ad', true), hepsi('vadesi_gecen', 'tutar', false, 10000, ['gecersiz', false]),
-        hepsi('tahsilat_notlari', 'olusturma', false, 50000), hepsi('stok_aksiyon', 'olusturma', false, 50000),
-        omHaric ? Promise.resolve(undefined) : hepsi('otomarmara_veri', 'urun_id', true, 100000).catch(() => []),
+        sb.from('ayarlar').select('*').eq('id', 1).maybeSingle(),
       ]);
-      const durum = (ok(bd) as BhDurum | null) ?? null;
-      return {
-        urunler: u, depolar: dp, urun_depo_stok: uds, bh_durum: durum, hareketler: hareketleriBirlestir(h as Hareket[], rs as RaporSatiri[], durum, u as Urun[], ms as Masraf[]), stok_degisim: (h as Hareket[]).map((x) => ({ ...x, kaynak: 'stok' as const })),
-        iadeler: (rs as RaporSatiri[]).filter((x) => x.iade && x.urun_id && x.miktar > 0).map((x) => ({ id: -x.id, tarih: `${x.tarih}T12:00:00`, urun_id: x.urun_id!, tur: x.tur, miktar: x.miktar, urun_ad: x.urun_ad, satis_fiyati: x.tur === 'satis' ? (x.toplam || 0) / x.miktar : 0, alis_fiyati: x.tur === 'alis' ? (x.net || 0) / x.miktar : x.alis_fiyati || 0, kdv: 20, yok_say: false, kaynak: 'fatura' as const, cari_ad: (x as unknown as { cari_ad?: string }).cari_ad ?? null })), masraflar: ms,
-        kasa_akisi: ka as KasaAkisi[], hesap_bakiyeleri: hb as HesapBakiye[], vadesi_gecen: vg as VadesiGecen[], fiyat_gecmisi: fg, cariler: c, cari_hareketler: ch,
-        ayarlar: (ok(a) as Ayarlar) ?? { id: 1, firma_adi: 'İşletmem' }, kullanicilar: ku, urun_kodlari: uk, tahsilat_notlari: tn, stok_aksiyon: sa, otomarmara_veri: om as OtomarmaraVeri[] | undefined,
-      } as DB;
+      if (gecerli) {
+        // silinenler (10 dk örtüşmeyle; uygulamak tekrar zararsız)
+        const sil: { tablo: string; kayit: string; zaman: string }[] = [];
+        for (let i = 0; i < 200000; i += 1000) { const d = ok(await sb.from('silinen').select('tablo,kayit,zaman').gt('zaman', geri(sonSil!)).order('id').range(i, i + 999)) as typeof sil; sil.push(...d); if (d.length < 1000) break; }
+        const silinecek = new Map<string, Set<string>>(); for (const x of sil) { (silinecek.get(x.tablo) ?? silinecek.set(x.tablo, new Set()).get(x.tablo)!).add(x.kayit); if (x.zaman > sonSil!) sonSil = x.zaman; }
+        const degisen = await Promise.all(IZLENEN.map((z) => degisenler(z, once!.son[z.t])));
+        if (sil.length || degisen.some((d) => d.length)) degisti = true;
+        IZLENEN.forEach((z, i) => {
+          const m = new Map((once!.tablolar[z.t] ?? []).map((r) => [anahtar(z, r), r]));
+          for (const k of silinecek.get(z.t) ?? []) m.delete(k);
+          let enSon = once!.son[z.t];
+          for (const r of degisen[i]) { m.set(anahtar(z, r), r); const d = (r as { degisim?: string }).degisim; if (d && d > enSon) enSon = d; }
+          const l = z.gecersiz ? [...m.values()].filter((r) => !(r as { gecersiz?: boolean }).gecersiz) : [...m.values()];
+          // tam yüklemedeki sıra korunsun (sıralama sütunu, eşitlikte anahtar)
+          const ss = (r: unknown) => String((r as Record<string, unknown>)[z.order] ?? ''); const yon = z.asc ? 1 : -1;
+          ham[z.t] = l.sort((x, y) => { const a = ss(x), b = ss(y); return a < b ? -yon : a > b ? yon : anahtar(z, x) < anahtar(z, y) ? -1 : 1; });
+          sonlar[z.t] = enSon;
+        });
+      } else {
+        const tam = await Promise.all(IZLENEN.map((z) => hepsi(z.t, z.order, z.asc, z.sinir, z.gecersiz ? ['gecersiz', false] : undefined).catch((e) => { if (z.t === 'otomarmara_veri') return []; throw e; })));
+        IZLENEN.forEach((z, i) => { ham[z.t] = tam[i]; sonlar[z.t] = tam[i].reduce<string>((m, r) => { const d = (r as { degisim?: string }).degisim ?? ''; return d > m ? d : m; }, '1970-01-01T00:00:00Z'); });
+      }
+      ham.bh_durum = [ok(bd)]; ham.ayarlar = [ok(a)];
+      // önbelleğe yaz (beklemeden; yalnız bir şey değiştiyse — her seferinde ≈20 MB yazmak telefonu yorar)
+      if (degisti) onbellekYaz(ONBELLEK_ANAHTAR, { surum: ONBELLEK_SURUM, zaman: gecerli ? once!.zaman : Date.now(), tablolar: ham, son: sonlar, sonSil } satisfies HamOnbellek).catch(() => undefined);
+      return hamdanDB(ham);
+    },
+    async onbellektenDB() {
+      const o = await onbellekOku<HamOnbellek>(ONBELLEK_ANAHTAR);
+      try { return o && o.surum === ONBELLEK_SURUM && o.tablolar?.urunler ? hamdanDB(o.tablolar) : null; } catch { return null; }
     },
     async insert(t, row) { ok(await sb.from(t).insert(row)); },
     async update(t, id, patch) { ok(await sb.from(t).update(patch as never).eq('id', id)); },
@@ -193,6 +261,18 @@ function supabaseBackend(sb: SupabaseClient): Backend {
 const LS = 'perakende-analiz-demo-v5';
 const DEMO_CARI = ['PERAKENDE CARİ', 'PERAKENDE CARİ', 'PERAKENDE CARİ', 'Demir Lojistik', 'Ahmet Usta Oto', 'ALİ YILMAZ / 34 ABC 123 / FIAT EGEA', 'Çakıroğlu Otomotiv', 'KEMAL BEY / 34 KL 55 / RENAULT MEGANE', 'SELİN KAYA / 34 SK 812 / TOYOTA COROLLA', 'MURAT ÖZ / 41 MO 77 / VOLKSWAGEN CADDY', 'HASAN EKER / 34 HE 309 / HYUNDAI I20'];
 const uid = () => crypto.randomUUID();
+
+/** ham tablolardan uygulamanın veri yapısı */
+function hamdanDB(h: Record<string, unknown[]>): DB {
+  const u = h.urunler as Urun[], rs = h.rapor_satirlari as RaporSatiri[], ms = h.masraflar as Masraf[], hr = h.hareketler as Hareket[];
+  const durum = ((h.bh_durum ?? [])[0] as BhDurum | null) ?? null;
+  return {
+    urunler: u, depolar: h.depolar, urun_depo_stok: h.urun_depo_stok, bh_durum: durum, hareketler: hareketleriBirlestir(hr, rs, durum, u, ms), stok_degisim: hr.map((x) => ({ ...x, kaynak: 'stok' as const })),
+    iadeler: rs.filter((x) => x.iade && x.urun_id && x.miktar > 0).map((x) => ({ id: -x.id, tarih: `${x.tarih}T12:00:00`, urun_id: x.urun_id!, tur: x.tur, miktar: x.miktar, urun_ad: x.urun_ad, satis_fiyati: x.tur === 'satis' ? (x.toplam || 0) / x.miktar : 0, alis_fiyati: x.tur === 'alis' ? (x.net || 0) / x.miktar : x.alis_fiyati || 0, kdv: 20, yok_say: false, kaynak: 'fatura' as const, cari_ad: (x as unknown as { cari_ad?: string }).cari_ad ?? null })), masraflar: ms,
+    kasa_akisi: h.kasa_akisi as KasaAkisi[], hesap_bakiyeleri: h.hesap_bakiyeleri as HesapBakiye[], vadesi_gecen: h.vadesi_gecen as VadesiGecen[], fiyat_gecmisi: h.fiyat_gecmisi, cariler: h.cariler, cari_hareketler: h.cari_hareketler,
+    ayarlar: ((h.ayarlar ?? [])[0] as Ayarlar) ?? { id: 1, firma_adi: 'İşletmem' }, kullanicilar: h.kullanicilar, urun_kodlari: h.urun_kodlari, tahsilat_notlari: h.tahsilat_notlari, stok_aksiyon: h.stok_aksiyon, otomarmara_veri: h.otomarmara_veri as OtomarmaraVeri[],
+  } as DB;
+}
 
 /** Rastgele ama tekrarlanabilir örnek veri: 40 ürün, son 45 günün satış/alış hareketleri, cariler */
 function demoSeed(): DB {
@@ -299,6 +379,7 @@ function demoBackend(): Backend {
   const tbl = (t: CrudTable) => db[t] as unknown as { id: ID | number }[];
   return {
     async load() { return structuredClone(db); },
+    async onbellektenDB() { return null; },
     async insert(t, row) {
       const r = { id: uid(), olusturma: new Date().toISOString(), ...row } as Record<string, unknown>;
       if (t === 'urun_kodlari') r.kod_norm = String(r.kod ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '');
@@ -332,4 +413,6 @@ function demoBackend(): Backend {
 }
 
 export const backend: Backend = supabase ? supabaseBackend(supabase) : demoBackend();
+/** yalnız testler için */
+export const __testBackend = supabaseBackend;
 export const demoSifirla = () => { localStorage.removeItem(LS); location.reload(); };

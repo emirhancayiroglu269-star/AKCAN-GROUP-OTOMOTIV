@@ -4,7 +4,7 @@ import type { Session } from '@supabase/supabase-js';
 import {
   Activity, ArrowLeftRight, Search, ShieldAlert, ShoppingBasket, RefreshCw, Wrench, HandCoins, PackageMinus, Warehouse, Lightbulb, BarChart3, Boxes, LayoutDashboard, LogOut, Menu, Moon, PieChart, Settings, Sun, Tag, Truck, UserCheck, Users, Wallet, X,
 } from 'lucide-react';
-import { supabase, MODE } from './lib/backend';
+import { supabase, MODE, onbellekTemizle } from './lib/backend';
 import { StoreProvider, Toasts, useStore } from './lib/store';
 import { YazdirmaAlani } from './components/Yazdir';
 import Giris from './pages/Giris';
@@ -123,7 +123,7 @@ function Kabuk() {
       <div className="card max-w-md p-6">
         <p className="mb-2 text-lg font-semibold">Bu programı kullanma yetkiniz yok</p>
         <p className="mb-4 text-sm text-slate-500">Hesabınız kullanıcı listesinde yok ya da pasif. Yöneticinizden Ayarlar → Kullanıcılar bölümünden sizi eklemesini isteyin.</p>
-        <button className="btn-ghost" onClick={() => supabase?.auth.signOut()}><LogOut size={16} /> Çıkış yap</button>
+        <button className="btn-ghost" onClick={() => { onbellekTemizle().finally(() => supabase?.auth.signOut()); }}><LogOut size={16} /> Çıkış yap</button>
       </div>
     </div>
   );
@@ -163,7 +163,7 @@ function Kabuk() {
             <span className="min-w-0 truncate">{personel}{mode === 'bulut' && rol !== 'yonetici' && <span className="ml-1 text-slate-500">· {ROL_AD[rol]}</span>}</span>
             <div className="flex gap-1">
               <button onClick={temaDegis} className="rounded p-1.5 hover:bg-slate-800" title="Tema">{koyu ? <Sun size={16} /> : <Moon size={16} />}</button>
-              {mode === 'bulut' && <button onClick={() => supabase?.auth.signOut()} className="rounded p-1.5 hover:bg-slate-800" title="Çıkış"><LogOut size={16} /></button>}
+              {mode === 'bulut' && <button onClick={() => { onbellekTemizle().finally(() => supabase?.auth.signOut()); }} className="rounded p-1.5 hover:bg-slate-800" title="Çıkış"><LogOut size={16} /></button>}
             </div>
           </div>
         </div>

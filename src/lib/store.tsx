@@ -44,20 +44,21 @@ export function StoreProvider({ personel: varsayilanAd, eposta = null, children 
   const [hata, setHata] = useState<string | null>(null);
   // Aynı anda tek yükleme: veritabanı yavaşsa yüklemeler üst üste binip onu daha da yormasın
   const yukleniyor = useRef(false);
-  // Otomarmara verisi (≈12 MB) yalnız ilk açılışta tamamen çekilir; sonra yalnız değişen satırlar gelir (omTazele).
-  // Rutin yenilemelerde önceki kopya korunur: aylık 5 GB veri çıkış sınırını aşmamak için.
-  const dbRef = useRef<DB | null>(null); dbRef.current = db;
+  // Veri tarayıcıda saklanır (IndexedDB): açılışta önce önbellekten gösterilir, sunucudan yalnız değişen satırlar alınır
+  // (Supabase ücretsiz planın aylık 5 GB veri çıkış sınırı için; ayrıntı backend.load).
   const omSon = useRef<string | null>(null);
   const yenile = useCallback(async () => {
     if (yukleniyor.current) return;
     yukleniyor.current = true;
     try {
-      asama('veri isteniyor'); const t0 = performance.now(); const once = dbRef.current; const hafif = !!once?.otomarmara_veri;
-      if (!hafif) omSon.current = new Date(Date.now() - 60000).toISOString();
-      const ham = await backend.load(hafif);
-      if (hafif && once) { ham.otomarmara_veri = once.otomarmara_veri; ham.urun_kodlari = [...ham.urun_kodlari, ...once.urun_kodlari.filter((k) => k.tur === 'OTOMARMARA')]; }
-      const t1 = performance.now(); asama(`veri geldi ${Math.round(t1 - t0)}ms`); const d = faturaAlisUygula(ham); const t2 = performance.now(); setDb(d); setHata(null); asama(`yuklendi ag=${Math.round(t1 - t0)}ms islem=${Math.round(t2 - t1)}ms`); } catch (e) { hataKaydet(e, 'yukleme'); setHata((e as Error).message); } finally { yukleniyor.current = false; }
+      asama('veri isteniyor'); const t0 = performance.now();
+      omSon.current = new Date(Date.now() - 60000).toISOString();
+      const ham = await backend.load();
+      const t1 = performance.now(); asama(`veri geldi ${Math.round(t1 - t0)}ms`); const d = faturaAlisUygula(ham); const t2 = performance.now(); setDb(d); setHata(null); asama(`yuklendi ag=${Math.round(t1 - t0)}ms islem=${Math.round(t2 - t1)}ms`);
+    } catch (e) { hataKaydet(e, 'yukleme'); setHata((e as Error).message); } finally { yukleniyor.current = false; }
   }, []);
+  // ilk açılış: önbellekte veri varsa sunucuyu beklemeden göster (sonra yenile() güncel hale getirir)
+  useEffect(() => { let iptal = false; backend.onbellektenDB().then((o) => { if (o && !iptal) setDb((x) => x ?? faturaAlisUygula(o)); }).catch(() => undefined); return () => { iptal = true; }; }, []);
   useEffect(() => {
     yenile();
     const omTazele = async () => {
@@ -78,8 +79,8 @@ export function StoreProvider({ personel: varsayilanAd, eposta = null, children 
     };
     const kapat = backend.subscribe(yenile, omTazele);
     // BizimHesap her dakika eşitlenir. 30 sn'de bir tek satırlık durum okunur; yalnız veri değiştiyse tamamı yeniden yüklenir.
-    // Veri değişince tamamı yeniden yüklenir, ama en sık 10 dakikada bir (her yenileme ≈10 MB; Supabase ücretsiz planın aylık 5 GB veri çıkış sınırı için)
-    const ENAZ = 10 * 60 * 1000;
+    // Veri değişince yenilenir, en sık 3 dakikada bir. Yenileme yalnız değişen satırları çeker (≈150 KB), tam yükleme 24 saatte bir.
+    const ENAZ = 3 * 60 * 1000;
     let imza: string | null = null; let tamYukleme = Date.now(); let bekleyen = false;
     const kontrol = async () => {
       if (document.visibilityState !== 'visible') return;
@@ -88,7 +89,7 @@ export function StoreProvider({ personel: varsayilanAd, eposta = null, children 
         if (imza !== null && d.imza !== imza) bekleyen = true;
         imza = d.imza;
         const gecen = Date.now() - tamYukleme;
-        if ((bekleyen && gecen > ENAZ) || gecen > 30 * 60 * 1000) { bekleyen = false; tamYukleme = Date.now(); yenile(); return; }
+        if ((bekleyen && gecen > ENAZ) || gecen > 15 * 60 * 1000) { bekleyen = false; tamYukleme = Date.now(); yenile(); return; }
         setDb((x) => (x && x.bh_durum && x.bh_durum.son_esitleme !== d.son_esitleme ? { ...x, bh_durum: { ...x.bh_durum, son_esitleme: d.son_esitleme } } : x));
       } catch { /* bağlantı yoksa sonraki turda */ }
     };
