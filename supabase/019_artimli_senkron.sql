@@ -22,3 +22,5 @@ end $$;
 -- her tablo için: degisim sütunu + dizin + degisim_tg (before insert/update) + silinen_tg (after delete)
 -- cron: silinen-temizlik '17 3 * * *'
 -- düzeltme (degisim_baslangic_duzelt): sütun eklenirken mevcut satırlar aynı zamanı almıştı → o satırlar degisim = 2026-01-01 yapıldı (tetikleyici geçici kapatılarak)
+-- otomarmara_cikis_azalt: otomarmara_veri için ayrı tetikleyici om_degisim_isaretle() — degisim yalnız içerik (om_kod, om_ad, oemler, esdegerler)
+--   ya da kullanıcının istediği üründe (oncelik 1) durum değişince güncellenir; otomarmara_veri ve urun_kodlari canlı yayından (supabase_realtime) çıkarıldı.

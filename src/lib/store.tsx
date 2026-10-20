@@ -47,6 +47,7 @@ export function StoreProvider({ personel: varsayilanAd, eposta = null, children 
   // Veri tarayıcıda saklanır (IndexedDB): açılışta önce önbellekten gösterilir, sunucudan yalnız değişen satırlar alınır
   // (Supabase ücretsiz planın aylık 5 GB veri çıkış sınırı için; ayrıntı backend.load).
   const omSon = useRef<string | null>(null);
+  const dbRef = useRef<DB | null>(null); dbRef.current = db;
   const yenile = useCallback(async () => {
     if (yukleniyor.current) return;
     yukleniyor.current = true;
@@ -94,10 +95,12 @@ export function StoreProvider({ personel: varsayilanAd, eposta = null, children 
       } catch { /* bağlantı yoksa sonraki turda */ }
     };
     const t = setInterval(kontrol, 30 * 1000);
+    // kullanıcının "Otomarmara'dan getir" dediği ürün bekleniyorsa sonucu 30 sn'de bir sor (yalnız o satırlar, birkaç KB)
+    const omT = setInterval(() => { if (document.visibilityState === 'visible' && dbRef.current?.otomarmara_veri?.some((v) => v.durum === 'istendi' && (v as { oncelik?: number }).oncelik === 1)) omTazele(); }, 30 * 1000);
     let son = Date.now();
     const gorunur = () => { if (document.visibilityState === 'visible' && Date.now() - son > ENAZ && Date.now() - tamYukleme > ENAZ) { son = Date.now(); tamYukleme = Date.now(); yenile(); } };
     document.addEventListener('visibilitychange', gorunur); window.addEventListener('focus', gorunur);
-    return () => { kapat(); clearInterval(t); document.removeEventListener('visibilitychange', gorunur); window.removeEventListener('focus', gorunur); };
+    return () => { kapat(); clearInterval(t); clearInterval(omT); document.removeEventListener('visibilitychange', gorunur); window.removeEventListener('focus', gorunur); };
   }, [yenile]);
 
   const calistir = useCallback(async <T,>(f: () => Promise<T>, basari?: string) => {

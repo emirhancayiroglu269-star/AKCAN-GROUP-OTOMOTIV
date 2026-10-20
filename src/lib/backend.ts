@@ -154,9 +154,10 @@ function supabaseBackend(sb: SupabaseClient): Backend {
 
   return {
     async load() {
-      // Önbellek varsa yalnız değişen satırlar çekilir; 24 saatte bir (ya da önbellek yoksa) her şey baştan
+      // Önbellek varsa yalnız değişen satırlar çekilir; 3 günde bir (ya da önbellek yoksa) her şey baştan
       const once = await onbellekOku<HamOnbellek>(ONBELLEK_ANAHTAR);
-      const gecerli = !!once && once.surum === ONBELLEK_SURUM && Date.now() - once.zaman < 24 * 3600e3 && !!once.son;
+      // tam yükleme 3 günde bir (silinen günlüğü 7 gün tutulur)
+      const gecerli = !!once && once.surum === ONBELLEK_SURUM && Date.now() - once.zaman < 72 * 3600e3 && !!once.son;
       const ham: Ham = {}; const sonlar: Record<string, string> = {}; let sonSil = gecerli ? once!.sonSil : null; let degisti = !gecerli;
       if (!gecerli) {
         // silinen günlüğünün şu anki ucu: bundan sonraki silmeler sonraki yüklemelerde uygulanır
@@ -241,11 +242,9 @@ function supabaseBackend(sb: SupabaseClient): Backend {
       // BizimHesap eşitlemesinin yazdığı tablolar burada yok: onlar durum() ile 30 sn'de bir kontrol edilir
       ['ayarlar', 'kullanicilar', 'tahsilat_notlari', 'stok_aksiyon'].forEach((t) =>
         ch.on('postgres_changes', { event: '*', schema: 'public', table: t }, fire));
-      // Otomarmara servisi (12 saatlik yenileme) urun_kodlari'na sürekli yazar: onun kodları tüm veriyi baştan yükletmesin.
-      // Kullanıcının kendi eklediği kodlar (OEM / Muadil) başka cihazlarda yine anında görünür; silmeler sonraki yenilemede yansır.
-      ch.on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'urun_kodlari' }, (p) => { if ((p.new as { tur?: string })?.tur !== 'OTOMARMARA') fire(); });
-      // Otomarmara servisi arka planda sürekli yazar: tüm veriyi değil yalnız bu tabloyu, en sık 60 sn'de bir tazele
-      if (onOm) ch.on('postgres_changes', { event: '*', schema: 'public', table: 'otomarmara_veri' }, () => { if (!omTimer) omTimer = setTimeout(() => { omTimer = undefined; if (document.visibilityState === 'visible') onOm(); }, 60000); });
+      // urun_kodlari ve otomarmara_veri canlı yayında değil (Otomarmara servisi dakikada onlarca satır yazıyor; her biri açık her sekmeye
+      // gidince aylık veri kotası zorlanıyordu). Bu tablolar 3 dakikalık artımlı yenilemede gelir; kullanıcının istediği ürün store'da ayrıca sorulur.
+      void onOm; void omTimer;
       ch.subscribe();
       return () => { clearTimeout(timer); clearTimeout(omTimer); sb.removeChannel(ch); };
     },
