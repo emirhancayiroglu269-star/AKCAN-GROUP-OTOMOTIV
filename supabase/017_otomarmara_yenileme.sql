@@ -54,3 +54,10 @@ end $$;
 
 select cron.alter_job(job_id := (select jobid from cron.job where jobname = 'otomarmara-muadil'), schedule := '* * * * *');
 select cron.alter_job(job_id := (select jobid from cron.job where jobname = 'otomarmara-toplu-kuyruk'), schedule := '*/5 * * * *', command := 'select public.om_kuyruk_besle();');
+
+-- 2026-10-20 akşam: site açılışı yavaşladı (urun_kodlari sayfası 600 ms) → sıralama indeksleri
+create index if not exists urun_kodlari_olusturma_idx on public.urun_kodlari (olusturma, id);
+create index if not exists rapor_satirlari_liste_idx on public.rapor_satirlari (tarih desc, id) where gecersiz = false;
+create index if not exists kasa_akisi_liste_idx on public.kasa_akisi (tarih desc, id) where gecersiz = false;
+create index if not exists fiyat_gecmisi_liste_idx on public.fiyat_gecmisi (tarih desc, id);
+-- om_sonuc_yaz ayrıca: OTOMARMARA kodları değişmediyse urun_kodlari silinip yeniden yazılmaz (canlı veritabanındaki sürüm)

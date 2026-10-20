@@ -157,10 +157,13 @@ function supabaseBackend(sb: SupabaseClient): Backend {
       const fire = () => { clearTimeout(timer); timer = setTimeout(onChange, 1500); };
       const ch = sb.channel('degisiklikler');
       // BizimHesap eşitlemesinin yazdığı tablolar burada yok: onlar durum() ile 30 sn'de bir kontrol edilir
-      ['ayarlar', 'kullanicilar', 'urun_kodlari', 'tahsilat_notlari', 'stok_aksiyon'].forEach((t) =>
+      ['ayarlar', 'kullanicilar', 'tahsilat_notlari', 'stok_aksiyon'].forEach((t) =>
         ch.on('postgres_changes', { event: '*', schema: 'public', table: t }, fire));
-      // Otomarmara servisi arka planda sürekli yazar: tüm veriyi değil yalnız bu tabloyu, en sık 20 sn'de bir tazele
-      if (onOm) ch.on('postgres_changes', { event: '*', schema: 'public', table: 'otomarmara_veri' }, () => { if (!omTimer) omTimer = setTimeout(() => { omTimer = undefined; if (document.visibilityState === 'visible') onOm(); }, 20000); });
+      // Otomarmara servisi (12 saatlik yenileme) urun_kodlari'na sürekli yazar: onun kodları tüm veriyi baştan yükletmesin.
+      // Kullanıcının kendi eklediği kodlar (OEM / Muadil) başka cihazlarda yine anında görünür; silmeler sonraki yenilemede yansır.
+      ch.on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'urun_kodlari' }, (p) => { if ((p.new as { tur?: string })?.tur !== 'OTOMARMARA') fire(); });
+      // Otomarmara servisi arka planda sürekli yazar: tüm veriyi değil yalnız bu tabloyu, en sık 60 sn'de bir tazele
+      if (onOm) ch.on('postgres_changes', { event: '*', schema: 'public', table: 'otomarmara_veri' }, () => { if (!omTimer) omTimer = setTimeout(() => { omTimer = undefined; if (document.visibilityState === 'visible') onOm(); }, 60000); });
       ch.subscribe();
       return () => { clearTimeout(timer); clearTimeout(omTimer); sb.removeChannel(ch); };
     },
