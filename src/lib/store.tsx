@@ -44,14 +44,38 @@ export function StoreProvider({ personel: varsayilanAd, eposta = null, children 
   const [hata, setHata] = useState<string | null>(null);
   // Aynı anda tek yükleme: veritabanı yavaşsa yüklemeler üst üste binip onu daha da yormasın
   const yukleniyor = useRef(false);
+  // Otomarmara verisi (≈12 MB) yalnız ilk açılışta tamamen çekilir; sonra yalnız değişen satırlar gelir (omTazele).
+  // Rutin yenilemelerde önceki kopya korunur: aylık 5 GB veri çıkış sınırını aşmamak için.
+  const dbRef = useRef<DB | null>(null); dbRef.current = db;
+  const omSon = useRef<string | null>(null);
   const yenile = useCallback(async () => {
     if (yukleniyor.current) return;
     yukleniyor.current = true;
-    try { asama('veri isteniyor'); const t0 = performance.now(); const ham = await backend.load(); const t1 = performance.now(); asama(`veri geldi ${Math.round(t1 - t0)}ms`); const d = faturaAlisUygula(ham); const t2 = performance.now(); setDb(d); setHata(null); asama(`yuklendi ag=${Math.round(t1 - t0)}ms islem=${Math.round(t2 - t1)}ms`); } catch (e) { hataKaydet(e, 'yukleme'); setHata((e as Error).message); } finally { yukleniyor.current = false; }
+    try {
+      asama('veri isteniyor'); const t0 = performance.now(); const once = dbRef.current; const hafif = !!once?.otomarmara_veri;
+      if (!hafif) omSon.current = new Date(Date.now() - 60000).toISOString();
+      const ham = await backend.load(hafif);
+      if (hafif && once) { ham.otomarmara_veri = once.otomarmara_veri; ham.urun_kodlari = [...ham.urun_kodlari, ...once.urun_kodlari.filter((k) => k.tur === 'OTOMARMARA')]; }
+      const t1 = performance.now(); asama(`veri geldi ${Math.round(t1 - t0)}ms`); const d = faturaAlisUygula(ham); const t2 = performance.now(); setDb(d); setHata(null); asama(`yuklendi ag=${Math.round(t1 - t0)}ms islem=${Math.round(t2 - t1)}ms`); } catch (e) { hataKaydet(e, 'yukleme'); setHata((e as Error).message); } finally { yukleniyor.current = false; }
   }, []);
   useEffect(() => {
     yenile();
-    const omTazele = async () => { try { const om = await backend.omVeri(); setDb((x) => (x ? { ...x, otomarmara_veri: om } : x)); } catch { /* sonraki olayda */ } };
+    const omTazele = async () => {
+      const son = omSon.current; if (!son) return;
+      try {
+        const simdi = new Date(Date.now() - 30000).toISOString(); // saat farkına karşı 30 sn örtüşme
+        const { veri, kodlar } = await backend.omDegisen(son); omSon.current = simdi;
+        if (!veri.length) return;
+        const degisen = new Set(veri.filter((v) => v.durum !== 'istendi').map((v) => String(v.urun_id)));
+        setDb((x) => {
+          if (!x) return x;
+          const m = new Map((x.otomarmara_veri ?? []).map((v) => [String(v.urun_id), v]));
+          // yenileme sırasında (istendi) önceki OEM / eşdeğer bilgisi korunur, yalnız durum güncellenir
+          for (const v of veri) { const o = m.get(String(v.urun_id)); m.set(String(v.urun_id), v.durum === 'istendi' && o ? { ...o, durum: v.durum, istendi: v.istendi } : v); }
+          return { ...x, otomarmara_veri: [...m.values()], urun_kodlari: degisen.size ? [...x.urun_kodlari.filter((k) => !(k.tur === 'OTOMARMARA' && degisen.has(String(k.urun_id)))), ...kodlar] : x.urun_kodlari };
+        });
+      } catch { /* sonraki olayda */ }
+    };
     const kapat = backend.subscribe(yenile, omTazele);
     // BizimHesap her dakika eşitlenir. 30 sn'de bir tek satırlık durum okunur; yalnız veri değiştiyse tamamı yeniden yüklenir.
     // Veri değişince tamamı yeniden yüklenir, ama en sık 3 dakikada bir (gün içinde stok her dakika değişebiliyor)

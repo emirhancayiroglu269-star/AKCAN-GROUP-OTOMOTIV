@@ -1,5 +1,5 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
-import type { Ayarlar, BhDurum, Cari, CrudTable, DB, Hareket, HesapBakiye, ID, KasaAkisi, Masraf, OtomarmaraVeri, Urun, VadesiGecen } from './types';
+import type { Ayarlar, BhDurum, Cari, CrudTable, DB, Hareket, HesapBakiye, ID, KasaAkisi, Masraf, OtomarmaraVeri, Urun, UrunKodu, VadesiGecen } from './types';
 
 import { SUPABASE_ANON_KEY, SUPABASE_URL } from './baglanti';
 
@@ -15,7 +15,10 @@ export interface OmDetayYanit { oemler: string[]; esdegerler: { kod: string; ad?
 export interface EsitlemeSonucu { ok: boolean; hata?: string; urun?: number; depo?: number; degisen?: number; stokSatiri?: number; cari?: number }
 
 export interface Backend {
-  load(): Promise<DB>;
+  /** omHaric: Otomarmara verisi (otomarmara_veri ve OTOMARMARA kodları) çekilmez — rutin yenilemede önceki kopya kullanılır, değişenler omDegisen ile gelir */
+  load(omHaric?: boolean): Promise<DB>;
+  /** Otomarmara verisinde verilen zamandan sonra değişen satırlar ve o ürünlerin OTOMARMARA kodları */
+  omDegisen(son: string): Promise<{ veri: OtomarmaraVeri[]; kodlar: UrunKodu[] }>;
   insert<T extends object>(t: CrudTable, row: T): Promise<void>;
   update<T extends object>(t: CrudTable, id: ID | number, patch: Partial<T>): Promise<void>;
   remove(t: CrudTable, id: ID): Promise<void>;
@@ -90,14 +93,14 @@ function supabaseBackend(sb: SupabaseClient): Backend {
   const ok = <T,>(r: { data: T; error: { message: string } | null }) => { if (r.error) throw new Error(r.error.message); return r.data; };
 
   /** Supabase sorgu başına en fazla 1000 satır döndürür; tamamını sayfa sayfa çeker. */
-  async function hepsi(t: string, order: string, asc = false, sinir = 50000, filtre?: [string, boolean]) {
+  async function hepsi(t: string, order: string, asc = false, sinir = 50000, filtre?: [string, boolean], degil?: [string, string]) {
     const sayfa = 1000; const sonuc: unknown[] = [];
     for (let i = 0; i < sinir; i += sayfa) {
       // ürünlerde BizimHesap'ın ham JSON'u (bh_ham) çok büyük ve sitede kullanılmıyor: çekilmez
       const URUN = 'id,kod,barkod,ad,marka,kategori,birim,alis_fiyati,satis_fiyati,kdv,stok,kritik_stok,raf,aktif,olusturma,bh_id,bh_guncelleme,bh_stok';
       // sayfalama kararlı olsun: sıralama sütunu tekrarlı olabildiğinden (ör. aynı anda eklenen ürünler) benzersiz ikinci sıralama eklenir; yoksa sayfalar arasında kayıt tekrarlanır ya da atlanır
       const ikinci = t === 'urun_depo_stok' ? 'depo_id' : t === 'hesap_bakiyeleri' || t === 'otomarmara_veri' ? null : 'id';
-      const sor = (kolon: string) => { let q = sb.from(t).select(kolon); if (filtre) q = q.eq(filtre[0], filtre[1]); q = q.order(order, { ascending: asc }); if (ikinci && ikinci !== order) q = q.order(ikinci, { ascending: true }); return q.range(i, i + sayfa - 1); };
+      const sor = (kolon: string) => { let q = sb.from(t).select(kolon); if (filtre) q = q.eq(filtre[0], filtre[1]); if (degil) q = q.neq(degil[0], degil[1]); q = q.order(order, { ascending: asc }); if (ikinci && ikinci !== order) q = q.order(ikinci, { ascending: true }); return q.range(i, i + sayfa - 1); };
       // etiket (OEM/muadil kodları): bh_ham içindeki tag alanının veritabanında hazır tutulan kopyası (ham JSON her seferinde açılmaz); okunamazsa onsuz devam edilir
       let r = await sor(t === 'urunler' ? URUN + ',etiket' : '*');
       if (r.error && t === 'urunler') r = await sor(URUN);
@@ -109,24 +112,24 @@ function supabaseBackend(sb: SupabaseClient): Backend {
   }
 
   return {
-    async load() {
+    async load(omHaric = false) {
       const [u, dp, uds, bd, h, fg, c, ch, a, ku, uk, rs, ms, ka, hb, vg, tn, sa, om] = await Promise.all([
         hepsi('urunler', 'olusturma'), hepsi('depolar', 'olusturma', true), hepsi('urun_depo_stok', 'urun_id', true, 200000),
         sb.from('bh_durum').select('id,son_esitleme,son_hata,urun_sayisi,depo_sayisi,cari_sayisi,takip_baslangic,rapor_ilk,rapor_son,rapor_yukleme,masraf_son').eq('id', 1).maybeSingle(),
         hepsi('hareketler', 'tarih', false, 200000), hepsi('fiyat_gecmisi', 'tarih', false, 50000),
         hepsi('cariler', 'ad', true), hepsi('cari_hareketler', 'tarih', false, 50000),
-        sb.from('ayarlar').select('*').eq('id', 1).maybeSingle(), hepsi('kullanicilar', 'olusturma', true), hepsi('urun_kodlari', 'olusturma', true, 200000),
+        sb.from('ayarlar').select('*').eq('id', 1).maybeSingle(), hepsi('kullanicilar', 'olusturma', true), (omHaric ? hepsi('urun_kodlari', 'olusturma', true, 200000, undefined, ['tur', 'OTOMARMARA']) : hepsi('urun_kodlari', 'olusturma', true, 200000)),
         hepsi('rapor_satirlari', 'tarih', false, 300000, ['gecersiz', false]), hepsi('masraflar', 'tarih', false, 100000, ['gecersiz', false]),
         hepsi('kasa_akisi', 'tarih', false, 200000, ['gecersiz', false]), hepsi('hesap_bakiyeleri', 'ad', true), hepsi('vadesi_gecen', 'tutar', false, 10000, ['gecersiz', false]),
         hepsi('tahsilat_notlari', 'olusturma', false, 50000), hepsi('stok_aksiyon', 'olusturma', false, 50000),
-        hepsi('otomarmara_veri', 'urun_id', true, 100000).catch(() => []),
+        omHaric ? Promise.resolve(undefined) : hepsi('otomarmara_veri', 'urun_id', true, 100000).catch(() => []),
       ]);
       const durum = (ok(bd) as BhDurum | null) ?? null;
       return {
         urunler: u, depolar: dp, urun_depo_stok: uds, bh_durum: durum, hareketler: hareketleriBirlestir(h as Hareket[], rs as RaporSatiri[], durum, u as Urun[], ms as Masraf[]), stok_degisim: (h as Hareket[]).map((x) => ({ ...x, kaynak: 'stok' as const })),
         iadeler: (rs as RaporSatiri[]).filter((x) => x.iade && x.urun_id && x.miktar > 0).map((x) => ({ id: -x.id, tarih: `${x.tarih}T12:00:00`, urun_id: x.urun_id!, tur: x.tur, miktar: x.miktar, urun_ad: x.urun_ad, satis_fiyati: x.tur === 'satis' ? (x.toplam || 0) / x.miktar : 0, alis_fiyati: x.tur === 'alis' ? (x.net || 0) / x.miktar : x.alis_fiyati || 0, kdv: 20, yok_say: false, kaynak: 'fatura' as const, cari_ad: (x as unknown as { cari_ad?: string }).cari_ad ?? null })), masraflar: ms,
         kasa_akisi: ka as KasaAkisi[], hesap_bakiyeleri: hb as HesapBakiye[], vadesi_gecen: vg as VadesiGecen[], fiyat_gecmisi: fg, cariler: c, cari_hareketler: ch,
-        ayarlar: (ok(a) as Ayarlar) ?? { id: 1, firma_adi: 'İşletmem' }, kullanicilar: ku, urun_kodlari: uk, tahsilat_notlari: tn, stok_aksiyon: sa, otomarmara_veri: om as OtomarmaraVeri[],
+        ayarlar: (ok(a) as Ayarlar) ?? { id: 1, firma_adi: 'İşletmem' }, kullanicilar: ku, urun_kodlari: uk, tahsilat_notlari: tn, stok_aksiyon: sa, otomarmara_veri: om as OtomarmaraVeri[] | undefined,
       } as DB;
     },
     async insert(t, row) { ok(await sb.from(t).insert(row)); },
@@ -135,6 +138,17 @@ function supabaseBackend(sb: SupabaseClient): Backend {
     async ayarKaydet(a) { ok(await sb.from('ayarlar').upsert({ ...a, id: 1 })); },
     async urunKodlariYukle(satirlar) { return ok(await sb.rpc('urun_kodlari_yukle', { p: satirlar })) as { eklenen: number; bulunamayan: number }; },
     async omVeri() { return (await hepsi('otomarmara_veri', 'urun_id', true, 100000)) as OtomarmaraVeri[]; },
+    async omDegisen(son) {
+      // yalnız değişen satırlar (servis her dakika yazar; tamamını her seferinde çekmek aylık veri sınırını zorluyordu)
+      const veri: OtomarmaraVeri[] = [];
+      for (let i = 0; i < 20000; i += 1000) {
+        const d = ok(await sb.from('otomarmara_veri').select('*').or(`guncelleme.gt.${son},istendi.gt.${son}`).order('urun_id').range(i, i + 999)) as OtomarmaraVeri[];
+        veri.push(...d); if (d.length < 1000) break;
+      }
+      const ids = veri.filter((v) => v.durum !== 'istendi').map((v) => v.urun_id); const kodlar: UrunKodu[] = [];
+      for (let i = 0; i < ids.length; i += 100) kodlar.push(...(ok(await sb.from('urun_kodlari').select('*').eq('tur', 'OTOMARMARA').in('urun_id', ids.slice(i, i + 100)).limit(10000)) as UrunKodu[]));
+      return { veri, kodlar };
+    },
     async omAra(q) { return omCagir(sb, { q }) as Promise<OmAramaYanit>; },
     async omDetay(id) { return omCagir(sb, { id }) as Promise<OmDetayYanit>; },
     async omIste(ids) {
@@ -312,6 +326,7 @@ function demoBackend(): Backend {
     async omAra() { throw new Error('Demo modunda Otomarmara araması yok'); },
     async omDetay() { throw new Error('Demo modunda Otomarmara araması yok'); },
     async omVeri() { return []; },
+    async omDegisen() { return { veri: [], kodlar: [] }; },
     async durum() { return null; },
   };
 }
