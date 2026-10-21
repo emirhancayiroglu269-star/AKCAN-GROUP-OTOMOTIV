@@ -12,6 +12,9 @@ import { EtiketModal, type EtiketKalem } from '../components/StokAraclari';
 import { Plus, X } from 'lucide-react';
 import { UrunLink } from '../components/DetayKart';
 import { OtoparcasanLink } from '../components/DisLink';
+import { genelArama } from '../lib/arama';
+import { omGuvenilir } from '../lib/muadil';
+import { sonAlislar } from '../lib/analiz2';
 
 type Filtre = 'hepsi' | 'stoklu' | 'kritik' | 'biten' | 'hareketsiz' | 'eksi' | 'oemsiz' | 'markasiz' | 'barkodsuz' | 'pasif';
 type SiraAlan = 'ad' | 'stok' | 'satis90' | 'son' | 'yeter' | 'fiyat' | 'marj';
@@ -39,8 +42,15 @@ export default function Urunler() {
   const kategoriler = useMemo(() => Array.from(new Set(db.urunler.map((u) => u.kategori).filter(Boolean))).sort() as string[], [db.urunler]);
   const markalar = useMemo(() => Array.from(new Set(db.urunler.filter((u) => u.aktif).map((u) => u.marka).filter(Boolean))).sort((a, b) => a!.localeCompare(b!, 'tr')) as string[], [db.urunler]);
   const kodlar = useMemo(() => kodHaritasi(db), [db]);
-  const omVar = useMemo(() => new Set((db.otomarmara_veri ?? []).filter((x) => x.oemler?.length || x.esdegerler?.length).map((x) => String(x.urun_id))), [db.otomarmara_veri]);
-  const oemYok = (u: Urun) => !(u.etiket ?? '').trim() && !kodlar.get(u.id)?.length && !omVar.has(String(u.id));
+  // Otomarmara'dan gelen kodlar yalnız eşleşmesi güvenilir üründe sayılır (şüpheli eşleşmede başka ürünün kodları olabilir)
+  const guven = useMemo(() => omGuvenilir(db), [db]);
+  const gecerliKodlar = (u: Urun) => (kodlar.get(u.id) ?? []).filter((k) => k.tur !== 'OTOMARMARA' || guven.has(String(u.id)));
+  const omVar = useMemo(() => new Set((db.otomarmara_veri ?? []).filter((x) => (x.oemler?.length || x.esdegerler?.length) && guven.has(String(x.urun_id))).map((x) => String(x.urun_id))), [db.otomarmara_veri, guven]);
+  const oemYok = (u: Urun) => !(u.etiket ?? '').trim() && !gecerliKodlar(u).length && !omVar.has(String(u.id));
+  // "90 gündür satılmayan": son 90 günde satışı yok VE son 90 günde alınmamış (yeni gelen mal henüz satılmamış sayılmaz)
+  const sonAlis = useMemo(() => sonAlislar(db), [db]);
+  const sinir90 = gunu(new Date(Date.now() - 89 * 864e5));
+  const hareketsizMi = (u: Urun) => u.stok > 0 && stokluMu(u) && !(oz.get(u.id)?.satilan) && !((sonAlis.get(u.id)?.tarih ?? '') >= sinir90);
   // son 90 günün satışı: adet, son satış, stok kaç gün yeter
   const d90 = useMemo(() => ({ bas: gunu(new Date(Date.now() - 89 * 864e5)), bit: gunu() }), []);
   const oz = useMemo(() => urunOzetleri(db, d90), [db, d90]);
@@ -48,7 +58,9 @@ export default function Urunler() {
   const sb = (u: Urun) => { const o = oz.get(u.id); const s = o?.satilan ?? 0; const hiz = s / Math.max(1, gun90); return { s, son: o?.sonSatis, yeter: hiz > 0 ? Math.max(0, u.stok) / hiz : Infinity }; };
 
   const liste = useMemo(() => {
-    const aday = q.trim() ? urunAra(db, q, kodlar, { sadeceAktif: false }).map((x) => x.urun) : [...db.urunler].sort((a, b) => a.ad.localeCompare(b.ad, 'tr'));
+    // arama "Ürün Ara" sayfasıyla aynı motor: kod, barkod, OEM (doğrulanmış), Otomarmara eşdeğeri, ad ve araç-model; pasiflerde eski arama
+    const aday = !q.trim() ? [...db.urunler].sort((a, b) => a.ad.localeCompare(b.ad, 'tr'))
+      : filtre === 'pasif' ? urunAra(db, q, kodlar, { sadeceAktif: false }).map((x) => x.urun) : genelArama(db, q, 5000).map((x) => x.u);
     const [dId, dTur] = depoF.split(':');
     const l = aday.filter((u) => {
       if (filtre === 'pasif' ? u.aktif : !u.aktif) return false;
@@ -59,7 +71,7 @@ export default function Urunler() {
         case 'stoklu': return u.stok > 0;
         case 'biten': return u.stok <= 0 && stokluMu(u);
         case 'kritik': return kritikAltinda(u);
-        case 'hareketsiz': return u.stok > 0 && stokluMu(u) && !(oz.get(u.id)?.satilan);
+        case 'hareketsiz': return hareketsizMi(u);
         case 'eksi': return u.stok < 0;
         case 'oemsiz': return stokluMu(u) && oemYok(u);
         case 'markasiz': return stokluMu(u) && !(u.marka ?? '').trim();
@@ -74,14 +86,15 @@ export default function Urunler() {
     const k = sira.artan ? 1 : -1;
     return [...l].sort((a, b) => { const x = deger(a), y = deger(b); return (typeof x === 'string' ? x.localeCompare(y as string, 'tr') : x - (y as number)) * k; });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [db, q, kodlar, filtre, kat, marka, depoF, harita, oz, sira, omVar]);
+  }, [db, q, kodlar, filtre, kat, marka, depoF, harita, oz, sira, omVar, sonAlis]);
 
   const aktifler = db.urunler.filter((u) => u.aktif);
   const stoklu = aktifler.filter((u) => u.stok > 0);
-  const hareketsiz = useMemo(() => aktifler.filter((u) => u.stok > 0 && stokluMu(u) && !(oz.get(u.id)?.satilan)), [aktifler, oz]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const hareketsiz = useMemo(() => aktifler.filter(hareketsizMi), [aktifler, oz, sonAlis]);
   const seciliUrunler = liste.filter((u) => secim.has(u.id));
   const say = (f: Filtre) => f === 'oemsiz' ? aktifler.filter((u) => stokluMu(u) && oemYok(u)).length : f === 'markasiz' ? aktifler.filter((u) => stokluMu(u) && !(u.marka ?? '').trim()).length : f === 'barkodsuz' ? aktifler.filter((u) => stokluMu(u) && !(u.barkod ?? '').trim()).length : f === 'eksi' ? aktifler.filter((u) => u.stok < 0).length : f === 'hareketsiz' ? hareketsiz.length : null;
-  const filtreAd: [Filtre, string][] = [['hepsi', 'Aktif ürünler'], ['stoklu', 'Stoktakiler'], ['biten', 'Stoğu bitenler'], ['kritik', 'Kritik stok'], ['hareketsiz', '90 gündür satılmayan (stokta)'], ['eksi', 'Eksi stok'], ['oemsiz', 'OEM/muadil kodu yok'], ['markasiz', 'Markası yok'], ['barkodsuz', 'Barkodu yok'], ['pasif', 'Pasif ürünler']];
+  const filtreAd: [Filtre, string][] = [['hepsi', 'Aktif ürünler'], ['stoklu', 'Stoktakiler'], ['biten', 'Stoğu bitenler'], ['kritik', 'Kritik stok'], ['hareketsiz', '90 gündür satılmayan (stokta, yeni alınmamış)'], ['eksi', 'Eksi stok'], ['oemsiz', 'OEM/muadil kodu yok'], ['markasiz', 'Markası yok'], ['barkodsuz', 'Barkodu yok'], ['pasif', 'Pasif ürünler']];
 
   const csvIndir = () => {
     const satir = (a: (string | number | null | undefined)[]) => a.map((x) => `"${String(x ?? '').replace(/"/g, '""')}"`).join(';');
@@ -90,7 +103,7 @@ export default function Urunler() {
     const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv' })); a.download = 'urunler.csv'; a.click();
   };
   const topluGuncelle = (patch: Partial<Urun>, mesaj: string) => calistir(async () => { for (const u of seciliUrunler) await backend.update<Urun>('urunler', u.id, patch); }, `${seciliUrunler.length} üründe ${mesaj}`);
-  const omIste = () => calistir(() => backend.omIste(seciliUrunler.slice(0, 100).map((u) => u.id)), `${Math.min(100, seciliUrunler.length)} ürün Otomarmara'ya soruldu (2 dakikada 8 ürün işlenir)`);
+  const omIste = () => calistir(() => backend.omIste(seciliUrunler.slice(0, 100).map((u) => u.id)), `${Math.min(100, seciliUrunler.length)} ürün Otomarmara'ya soruldu (öncelikli işlenir, dakikada 12 ürüne kadar)`);
   const secDegis = (id: string) => { const s = new Set(secim); if (s.has(id)) s.delete(id); else s.add(id); setSecim(s); };
   const gorunen = liste.slice(0, gosterilen);
   const hepsiSecili = gorunen.length > 0 && gorunen.every((u) => secim.has(u.id));
@@ -109,11 +122,11 @@ export default function Urunler() {
 
       <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-5">
         <button className="text-left" onClick={() => setFiltre('stoklu')}><Kpi etiket="Stoktaki ürün çeşidi" deger={sayi(stoklu.length)} alt={`${sayi(stoklu.reduce((t, u) => t + u.stok, 0))} adet`} /></button>
-        <Kpi etiket="Stoğun satış değeri" deger={para(stoklu.reduce((t, u) => t + u.stok * u.satis_fiyati, 0))} renk="blue" />
+        <Kpi etiket="Stoğun satış değeri (KDV dahil)" deger={para(stoklu.reduce((t, u) => t + u.stok * u.satis_fiyati, 0))} renk="blue" />
         {maliyetGor ? <Kpi etiket={`Stok maliyeti (${db.ayarlar.alis_kdv_haric ? 'KDV hariç' : 'KDV dahil'})`} deger={para(stoklu.reduce((t, u) => t + u.stok * u.alis_fiyati, 0))} renk="green" /> : <Kpi etiket="Kategori" deger={sayi(kategoriler.length)} />}
         <button className="text-left" onClick={() => setFiltre('biten')}><Kpi etiket="Stoğu biten" deger={sayi(aktifler.filter((u) => u.stok <= 0 && stokluMu(u)).length)} renk="amber" alt="İşçilik/hizmet hariç · listelemek için tıklayın" /></button>
         <button className="text-left" onClick={() => { setFiltre('hareketsiz'); setSira({ alan: 'stok', artan: false }); }}><Kpi etiket="90 gündür satılmayan" deger={sayi(hareketsiz.length)} renk="red"
-          alt={maliyetGor ? `Bağlı para ${para(hareketsiz.reduce((t, u) => t + u.stok * u.alis_fiyati, 0))}` : 'Stokta duran · tıklayın'} /></button>
+          alt={maliyetGor ? `Bağlı para ${para(hareketsiz.reduce((t, u) => t + u.stok * u.alis_fiyati, 0))} · son 90 günde alınanlar hariç` : 'Stokta duran · tıklayın'} /></button>
       </div>
 
       <div className="card">
@@ -134,7 +147,7 @@ export default function Urunler() {
                 <button className="btn-ghost px-2 py-1 text-xs" disabled={topluKritik === ''} onClick={() => topluGuncelle({ kritik_stok: parse(topluKritik) }, 'kritik seviye güncellendi')}>Uygula</button></span>
               <span className="flex items-center gap-1">Raf <input className="inp w-24 py-1" value={topluRaf} onChange={(e) => setTopluRaf(e.target.value)} placeholder="ör. A-3" />
                 <button className="btn-ghost px-2 py-1 text-xs" onClick={() => topluGuncelle({ raf: topluRaf.trim() || null }, topluRaf.trim() ? 'raf yazıldı' : 'raf silindi')}>Uygula</button></span>
-              {mode === 'bulut' && <button className="btn-ghost px-2 py-1 text-xs" onClick={omIste} title="En fazla 100 ürün; sunucu 2 dakikada 8 ürün işler"><RefreshCw size={14} /> OEM/muadil Otomarmara'dan iste</button>}
+              {mode === 'bulut' && <button className="btn-ghost px-2 py-1 text-xs" onClick={omIste} title="En fazla 100 ürün; sunucu öncelikli olarak dakikada 12 ürüne kadar işler"><RefreshCw size={14} /> OEM/muadil Otomarmara'dan iste</button>}
             </>}
             <button className="ml-auto text-xs text-slate-500 hover:underline" onClick={() => setSecim(new Set())}>Seçimi temizle</button>
           </div>
@@ -152,7 +165,7 @@ export default function Urunler() {
                   return (
                     <tr key={u.id} className={secim.has(u.id) ? 'bg-sky-50/60 dark:bg-sky-500/5' : ''}>
                       <td><input type="checkbox" checked={secim.has(u.id)} onChange={() => secDegis(u.id)} /></td>
-                      <td className="min-w-[17rem]"><div className="flex items-center gap-1 font-medium"><UrunLink id={u.id}>{u.ad}</UrunLink>{u.bh_id && <span title="BizimHesap'tan eşitleniyor"><Link2 size={13} className="text-sky-500" /></span>}</div><div className="text-xs text-slate-500" title={u.barkod ? `Barkod: ${u.barkod}` : undefined}>{u.kod && <span className="mr-1.5 font-mono">{u.kod}</span>}{u.kategori} <OtoparcasanLink u={u} kisa />{kodlar.get(u.id)?.length ? <span className="ml-1.5 rozet bg-sky-50 text-sky-700" title={kodlar.get(u.id)!.map((k) => k.kod).join(', ')}>{kodlar.get(u.id)!.length} OEM/muadil</span> : null}</div></td>
+                      <td className="min-w-[17rem]"><div className="flex items-center gap-1 font-medium"><UrunLink id={u.id}>{u.ad}</UrunLink>{u.bh_id && <span title="BizimHesap'tan eşitleniyor"><Link2 size={13} className="text-sky-500" /></span>}</div><div className="text-xs text-slate-500" title={u.barkod ? `Barkod: ${u.barkod}` : undefined}>{u.kod && <span className="mr-1.5 font-mono">{u.kod}</span>}{u.kategori} <OtoparcasanLink u={u} kisa />{(() => { const kk = gecerliKodlar(u); return kk.length ? <span className="ml-1.5 rozet bg-sky-50 text-sky-700" title={kk.map((k) => k.kod).join(', ')}>{kk.length} OEM/muadil</span> : null; })()}</div></td>
                       <td className="whitespace-nowrap">{u.marka}</td><td className="whitespace-nowrap">{u.raf}</td>
                       {maliyetGor && <td className="text-right">{u.alis_fiyati ? <>{para(u.alis_fiyati)}{u.kart_alis ? <div className="text-[10px] text-sky-700" title={`Kartta ${para(u.kart_alis)} yazıyor; ${u.alis_fatura?.tarih} tarihli faturanın net fiyatı kullanılıyor`}>fatura fiyatı</div> : null}</> : <span className="text-slate-300">—</span>}</td>}<td className="text-right font-medium">{para(u.satis_fiyati)}</td>
                       {maliyetGor && <td className={`text-right ${bk.maliyetYok ? 'text-slate-300' : bk.marj < 0 ? 'text-red-600' : bk.marj < 15 ? 'text-amber-600' : 'text-slate-500'}`}>{bk.maliyetYok ? '—' : `%${bk.marj.toFixed(0)}`}</td>}
@@ -238,12 +251,14 @@ function KodYonetimi({ urunId }: { urunId: string }) {
   const { db, calistir } = useStore();
   const [kod, setKod] = useState('');
   const [tur, setTur] = useState<'OEM' | 'Muadil'>('OEM');
-  const liste = db.urun_kodlari.filter((k) => k.urun_id === urunId);
+  // Otomarmara'dan gelen kodlar servis tarafından yönetilir (silinse de yeniden yazılır): burada yalnız sayısı gösterilir
+  const tum = db.urun_kodlari.filter((k) => k.urun_id === urunId);
+  const liste = tum.filter((k) => k.tur !== 'OTOMARMARA'); const omSay = tum.length - liste.length;
   const ekle = async () => {
     const parcalar = kod.split(/[,;\n]/).map((x) => x.trim()).filter(Boolean);
     if (!parcalar.length) return;
     for (const p of parcalar) {
-      if (liste.some((k) => kodNorm(k.kod) === kodNorm(p))) continue;
+      if (tum.some((k) => kodNorm(k.kod) === kodNorm(p))) continue;
       await backend.insert('urun_kodlari', { urun_id: urunId, kod: p, tur });
     }
     await calistir(async () => true, parcalar.length > 1 ? `${parcalar.length} kod eklendi` : 'Kod eklendi');
@@ -253,7 +268,8 @@ function KodYonetimi({ urunId }: { urunId: string }) {
     <div className="mt-5 border-t border-slate-200 pt-4 dark:border-slate-800">
       <div className="mb-2 flex items-center gap-1.5 text-sm font-semibold"><KeyRound size={15} /> OEM / muadil kodlar</div>
       <div className="mb-3 flex flex-wrap gap-1.5">
-        {liste.length === 0 && <span className="text-xs text-slate-400">Henüz kod yok. Satış ekranında bu kodlarla da arama yapılabilir.</span>}
+        {liste.length === 0 && <span className="text-xs text-slate-400">Elle eklenmiş kod yok. Ürün Ara sayfasında bu kodlarla da arama yapılabilir.</span>}
+        {omSay > 0 && <span className="text-xs text-slate-500">+ Otomarmara'dan gelen {omSay} OEM kodu (ürün kartındaki Otomarmara bölümünde)</span>}
         {liste.map((k) => (
           <span key={k.id} className={`rozet gap-1 py-1 ${k.tur === 'Muadil' ? 'bg-violet-100 text-violet-700' : 'bg-sky-100 text-sky-700'}`}>
             <span className="opacity-60">{k.tur}</span> {k.kod}
