@@ -45,7 +45,12 @@ export interface Backend {
   omDetay(id: string): Promise<OmDetayYanit>;
   /** Hafif kontrol: verinin değişip değişmediğini anlamak için tek satır okur */
   durum(): Promise<{ son_esitleme?: string | null; imza: string } | null>;
+  /** Stok sayımı (yalnız bu sitede tutulur; BizimHesap'a yazılmaz) */
+  sayimOku(depoId: ID): Promise<SayimSatir[]>;
+  sayimKaydet(r: SayimSatir): Promise<void>;
+  sayimSil(depoId: ID, urunId?: ID): Promise<void>;
 }
+export interface SayimSatir { depo_id: ID; urun_id: ID; sayilan: number; sistem: number | null; kullanici: string | null; zaman?: string }
 
 const num = (v: unknown) => (v === null || v === undefined ? 0 : Number(v));
 const NUMS: Record<string, string[]> = {
@@ -219,6 +224,13 @@ function supabaseBackend(sb: SupabaseClient): Backend {
       return { veri, kodlar };
     },
     async omAra(q) { return omCagir(sb, { q }) as Promise<OmAramaYanit>; },
+    async sayimOku(depoId) {
+      const r: SayimSatir[] = [];
+      for (let i = 0; i < 100000; i += 1000) { const d = ok(await sb.from('sayim').select('depo_id,urun_id,sayilan,sistem,kullanici,zaman').eq('depo_id', depoId).order('urun_id').range(i, i + 999)) as SayimSatir[]; r.push(...d.map((x) => ({ ...x, sayilan: Number(x.sayilan), sistem: x.sistem === null ? null : Number(x.sistem) }))); if (d.length < 1000) break; }
+      return r;
+    },
+    async sayimKaydet(r) { ok(await sb.from('sayim').upsert({ ...r, zaman: new Date().toISOString() }, { onConflict: 'depo_id,urun_id' })); },
+    async sayimSil(depoId, urunId) { let q = sb.from('sayim').delete().eq('depo_id', depoId); if (urunId) q = q.eq('urun_id', urunId); ok(await q); },
     async omDetay(id) { return omCagir(sb, { id }) as Promise<OmDetayYanit>; },
     async omIste(ids) {
       if (!ids.length) return; const t = new Date().toISOString();
@@ -369,6 +381,7 @@ function demoSeed(): DB {
   };
 }
 
+let demoSayim: SayimSatir[] = [];
 function demoBackend(): Backend {
   let db: DB;
   try { db = JSON.parse(localStorage.getItem(LS) || 'null') || demoSeed(); } catch { db = demoSeed(); }
@@ -403,6 +416,9 @@ function demoBackend(): Backend {
     },
     subscribe(onChange) { listeners.add(onChange); return () => { listeners.delete(onChange); }; },
     async omIste() { /* demo: yok */ },
+    async sayimOku(depoId) { return demoSayim.filter((x) => x.depo_id === depoId); },
+    async sayimKaydet(r) { demoSayim = [...demoSayim.filter((x) => !(x.depo_id === r.depo_id && x.urun_id === r.urun_id)), { ...r, zaman: new Date().toISOString() }]; },
+    async sayimSil(depoId, urunId) { demoSayim = demoSayim.filter((x) => !(x.depo_id === depoId && (!urunId || x.urun_id === urunId))); },
     async omAra() { throw new Error('Demo modunda Otomarmara araması yok'); },
     async omDetay() { throw new Error('Demo modunda Otomarmara araması yok'); },
     async omVeri() { return []; },

@@ -11,6 +11,8 @@ import KategoriFiyat from './KategoriFiyat';
 import EksikBilgi from './EksikBilgi';
 import KarZarar from './KarZarar';
 import AySonu from './AySonu';
+import Urunler from './Urunler';
+import { FiyatUyarilari, StokSayimi, TransferOnerisi } from './UrunlerEk';
 
 type Sekme = { id: string; ad: string; bilesen: () => ReactNode; izin?: boolean };
 type P = { git: (s: Sayfa) => void; alt?: string };
@@ -56,3 +58,12 @@ export const KarZararSayfa = (p: P) => <Sekmeli {...p} sayfa="karzarar" sekmeler
   { id: 'ozet', ad: 'Özet', bilesen: KarZarar },
   { id: 'aysonu', ad: 'Ay sonu tahmini', bilesen: AySonu },
 ]} />;
+export function UrunlerSayfa(p: P) {
+  const { izin, db } = useStore();
+  return <Sekmeli {...p} sayfa="urunler" sekmeler={[
+    { id: 'liste', ad: 'Ürün listesi', bilesen: Urunler },
+    { id: 'sayim', ad: 'Stok sayımı', bilesen: StokSayimi },
+    { id: 'transfer', ad: 'Depolar arası transfer', bilesen: TransferOnerisi, izin: db.depolar.filter((d) => d.aktif).length > 1 },
+    { id: 'fiyat', ad: 'Fiyat uyarıları', bilesen: FiyatUyarilari, izin: izin('maliyet') },
+  ]} />;
+}

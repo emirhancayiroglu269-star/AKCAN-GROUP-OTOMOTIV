@@ -153,8 +153,34 @@ export default function Urunler() {
           </div>
         )}
         <div className="max-h-[65vh] overflow-auto">
-          {liste.length === 0 ? <Bos metin="Ürün bulunamadı." /> : (
-            <table className="tbl">
+          {liste.length === 0 ? <Bos metin="Ürün bulunamadı." /> : <>
+            {/* telefon görünümü: kart listesi */}
+            <div className="divide-y divide-slate-100 md:hidden dark:divide-slate-800">
+              {gorunen.map((u) => {
+                const x = sb(u); const bk = birimKar(u, db.ayarlar);
+                return (
+                  <div key={u.id} className={`flex gap-3 p-3 ${secim.has(u.id) ? 'bg-sky-50/60 dark:bg-sky-500/5' : ''}`}>
+                    <input type="checkbox" className="mt-1" checked={secim.has(u.id)} onChange={() => secDegis(u.id)} />
+                    <div className="min-w-0 flex-1">
+                      <div className="font-medium leading-snug"><UrunLink id={u.id}>{u.ad}</UrunLink></div>
+                      <div className="text-xs text-slate-500">{[u.kod, u.marka, u.raf && `raf ${u.raf}`].filter(Boolean).join(' · ')}</div>
+                      {depolar.length > 1 && <div className="mt-1 flex flex-wrap gap-1 text-[11px]">{depolar.map((d) => { const m = harita.get(u.id)?.get(d.id) ?? 0; return <span key={d.id} className={`rounded bg-slate-100 px-1.5 py-0.5 dark:bg-slate-800 ${m <= 0 ? 'text-slate-400' : ''}`}>{d.ad.replace(/ DEPO(SU)?$/i, '')}: <b>{sayi(m)}</b></span>; })}</div>}
+                      <div className="mt-1 text-[11px] text-slate-500">90 gün: {x.s ? <b>{sayi(x.s)}</b> : '—'}{u.stok > 0 && Number.isFinite(x.yeter) ? ` · ${x.yeter > 365 ? '1 yıl+' : `${Math.round(x.yeter)} gün`} yeter` : ''}{maliyetGor && !bk.maliyetYok ? <span className={bk.marj < 0 ? ' text-red-600' : bk.marj < 15 ? ' text-amber-600' : ''}> · marj %{bk.marj.toFixed(0)}</span> : ''}</div>
+                    </div>
+                    <div className="flex shrink-0 flex-col items-end gap-1">
+                      <div className="font-semibold">{para(u.satis_fiyati)}</div>
+                      <span className={`rozet whitespace-nowrap ${u.stok <= 0 ? 'bg-red-100 text-red-700' : kritikAltinda(u) ? 'bg-amber-100 text-amber-800' : 'bg-emerald-50 text-emerald-700'}`}>{sayi(u.stok)} {u.birim}</span>
+                      <div className="flex gap-0.5 text-slate-400">
+                        <button title="Etiket" className="rounded p-1.5" onClick={() => setEtiket([{ urun: u, adet: 1 }])}><Tag size={16} /></button>
+                        <button title="Geçmiş" className="rounded p-1.5" onClick={() => setGecmis(u)}><History size={16} /></button>
+                        {yonet && <button title="Düzenle" className="rounded p-1.5" onClick={() => setDuzen(u)}><Pencil size={16} /></button>}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <table className="tbl hidden md:table">
               <thead><tr><th className="w-8"><input type="checkbox" checked={hepsiSecili} title="Görünenlerin hepsini seç" onChange={() => { const s = new Set(secim); gorunen.forEach((u) => (hepsiSecili ? s.delete(u.id) : s.add(u.id))); setSecim(s); }} /></th>
                 <Baslik alan="ad">Ürün</Baslik><th>Marka</th><th>Raf</th>{maliyetGor && <th className="text-right">Alış</th>}<Baslik alan="fiyat" sag>Satış</Baslik>{maliyetGor && <Baslik alan="marj" sag>Marj</Baslik>}
                 {depolar.length > 1 && depolar.map((d) => <th key={d.id} className="text-right">{d.ad}</th>)}<Baslik alan="stok" sag>{depolar.length > 1 ? 'Toplam' : 'Stok'}</Baslik>
@@ -186,7 +212,7 @@ export default function Urunler() {
                 })}
               </tbody>
             </table>
-          )}
+          </>}
           {liste.length > gosterilen && <div className="p-3 text-center"><button className="btn-ghost text-xs" onClick={() => setGosterilen((g) => g + 300)}>Daha fazla göster ({liste.length - gosterilen} ürün daha)</button></div>}
         </div>
       </div>

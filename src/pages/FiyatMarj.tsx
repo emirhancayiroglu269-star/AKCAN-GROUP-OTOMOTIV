@@ -4,8 +4,7 @@ import { UrunLink } from '../components/DetayKart';
 import { OtoparcasanLink } from '../components/DisLink';
 import { useStore } from '../lib/store';
 import { backend } from '../lib/backend';
-import { birimKar, netAlis, stokluMu } from '../lib/analiz';
-import { onerilenFiyat, sonAlislar } from '../lib/analiz2';
+import { fiyatSatirlari } from '../lib/fiyatUyari';
 import { ara, para, parse, sayi, tarih } from '../lib/format';
 import { Bos, Kpi, SayfaBaslik } from '../components/ui';
 
@@ -19,17 +18,8 @@ export default function FiyatMarj() {
   const [q, setQ] = useState('');
   const [sadeceStok, setSadeceStok] = useState(true);
   const h = parse(hedef) || 35;
-  const sonAl = useMemo(() => sonAlislar(db), [db]);
-  const satirlar = useMemo(() => db.urunler.filter((u) => u.aktif && u.satis_fiyati > 0 && stokluMu(u)).map((u) => {
-    const bk = birimKar(u, a);
-    const s = sonAl.get(u.id);
-    // kullanıcı kararı: ürün sekmesinde genel hedef geçerli; kategori marjları yalnız "Kategori bazında" sekmesinde öneri
-    const hedefU = h;
-    const guncelMaliyet = Math.max(u.alis_fiyati > 0 ? netAlis(u.alis_fiyati, u.kdv, a) : 0, s?.fiyat ?? 0);
-    const oneri = onerilenFiyat(u, guncelMaliyet, hedefU);
-    const marjGuncel = guncelMaliyet > 0 ? ((bk.satisNet - guncelMaliyet) / bk.satisNet) * 100 : null;
-    return { u, bk, son: s, maliyetArtti: !!s && u.alis_fiyati > 0 && s.fiyat > netAlis(u.alis_fiyati, u.kdv, a) * 1.02, guncelMaliyet, oneri, marjGuncel, hedefU };
-  }), [db, a, sonAl, h]);
+  // kullanıcı kararı: ürün sekmesinde genel hedef geçerli; kategori marjları yalnız "Kategori bazında" sekmesinde öneri
+  const satirlar = useMemo(() => fiyatSatirlari(db, h), [db, h]);
   const liste = satirlar.filter((r) => (!sadeceStok || r.u.stok > 0) && ara(q, r.u.ad, r.u.kod, r.u.marka, r.u.kategori) && (
     filtre === 'hepsi' ? true : filtre === 'maliyetsiz' ? r.guncelMaliyet <= 0 : filtre === 'zarar' ? r.marjGuncel !== null && r.marjGuncel < 0
       : filtre === 'maliyetArtti' ? r.maliyetArtti : r.marjGuncel !== null && r.marjGuncel < r.hedefU - 0.5))
