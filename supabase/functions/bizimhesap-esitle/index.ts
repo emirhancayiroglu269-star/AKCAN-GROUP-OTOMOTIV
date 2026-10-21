@@ -99,6 +99,9 @@ async function cek(onceki: Izler, yeni: Izler) {
     degisen += Number(await rpc('bh_urunleri_yaz', { p })) || 0; yazilanParca++;
     yeni.u![i] = h;
   }
+  // /products yalnız aktif ürünleri döndürür: listede olmayanlar BizimHesap'ta pasife alınmıştır (yeniden aktif olunca yukarıda geri açılır)
+  const pasif = Number(await rpc('bh_eksikleri_pasifle', { p: urunler.map((u) => u.bh_id) })) || 0;
+  if (pasif > 0) degisen += pasif;
 
   // Depo stokları (her depo tek seferde: listede olmayanlar 0 yapılır)
   let stokSatiri = 0;
