@@ -15,6 +15,9 @@ import { Bos, Modal, onayla } from '../components/ui';
 type Ozellik = { id: number; ad: string; zorunlu: boolean; serbest: boolean; coklu: boolean; degerler: { id: number; ad: string }[] };
 type KatBilgi = { kategori: string; ozellikler: Ozellik[] };
 const ARAC_ID = 370;
+/** Araca/motora göre değişen özellikler her üründe ayrı seçilir (kategori varsayılanına konmaz) */
+const urunOzel = (o: Pick<Ozellik, 'id' | 'ad'>) => o.id === ARAC_ID || /motor|araç|arac/i.test(o.ad);
+type Secim = { id: number; ad: string } | null;
 const katla = (s: string) => s.toLocaleLowerCase('tr').replace(/ı/g, 'i').normalize('NFD').replace(/[̀-ͯ]/g, '');
 const SAKLA = 'ty_yukle_secili';
 const yerelAl = (): string[] => { try { return JSON.parse(localStorage.getItem(SAKLA) ?? '[]') as string[]; } catch { return []; } };
@@ -27,7 +30,7 @@ export function TrendyolYukle({ veri, v }: { veri: TyVeri; v: TyVarsayim }) {
   const [esleme, setEsleme] = useState<{ kategori: TyKategoriEsleme[]; marka: TyMarkaEsleme[]; yukleme: TyYukleme[] } | null>(null);
   const [gorsel, setGorsel] = useState<Map<string, string[]>>(new Map());
   const [katBilgi, setKatBilgi] = useState<Map<number, KatBilgi | 'yukleniyor' | 'hata'>>(new Map());
-  const [duzen, setDuzen] = useState<Record<string, { baslik?: string; fiyat?: string; arac?: { id: number; ad: string } | null }>>({});
+  const [duzen, setDuzen] = useState<Record<string, { baslik?: string; fiyat?: string; oz?: Record<number, Secim> }>>({});
   const [q, setQ] = useState('');
   const [katModal, setKatModal] = useState<string | null>(null);
   const [markaModal, setMarkaModal] = useState<string | null>(null);
@@ -64,6 +67,13 @@ export function TrendyolYukle({ veri, v }: { veri: TyVeri; v: TyVarsayim }) {
 
   const aracOner = (u: Urun, ozs: Ozellik[] | undefined) => {
     const o = ozs?.find((x) => x.id === ARAC_ID); if (!o || !o.degerler.length) return null;
+    // ürün adında ilk geçen araç modeli (ör. "POLO V ... FABIA" → Volkswagen Polo)
+    const ad = ` ${katla(u.ad).replace(/[^a-z0-9]+/g, ' ')} `; let enIyi: { d: { id: number; ad: string }; i: number } | null = null;
+    for (const d of o.degerler) {
+      const parca = katla(d.ad).split(/\s+/); const model = parca.slice(1).join(' '); if (model.length < 3 || model === 'universal') continue;
+      const i = ad.indexOf(` ${model.replace(/[^a-z0-9]+/g, ' ').trim()} `); if (i >= 0 && (!enIyi || i < enIyi.i || (i === enIyi.i && d.ad.length > enIyi.d.ad.length))) enIyi = { d, i };
+    }
+    if (enIyi) return enIyi.d;
     const a = aracCikar(u.ad);
     if (a) {
       const mk = katla(a.marka); const md = a.model ? katla(a.model) : null;
@@ -73,24 +83,34 @@ export function TrendyolYukle({ veri, v }: { veri: TyVeri; v: TyVarsayim }) {
     return o.degerler.find((d) => katla(d.ad) === 'universal') ?? null;
   };
 
+  const ozOner = (u: Urun, o: Ozellik): Secim => {
+    if (o.id === ARAC_ID) return aracOner(u, [o]);
+    const ad = katla(u.ad);
+    if (/hacim/i.test(o.ad)) { const m = u.ad.match(/(^|[^0-9])([0-6])[.,]([0-9])(?![0-9])/); if (m) { const d = o.degerler.find((x) => x.ad.startsWith(`${m[2]}.${m[3]}L`)); if (d) return d; } return null; }
+    if (/teknoloji/i.test(o.ad)) { const l = [...o.degerler].sort((a, b) => b.ad.length - a.ad.length); return l.find((d) => { const k = katla(d.ad); return k.length >= 3 && new RegExp(`(^|[^a-z0-9])${k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}([^a-z0-9]|$)`).test(ad); }) ?? null; }
+    return null;
+  };
+
   const satirlar = secili.map((id) => urun.get(id)).filter(Boolean).map((u) => {
     u = u!; const d = duzen[u.id] ?? {};
     const km = u.kategori ? katMap.get(u.kategori) : undefined; const mm = u.marka ? markaMap.get(u.marka) : undefined;
     const kb = km ? katBilgi.get(km.ty_kategori_id) : undefined; const ozs = kb && typeof kb === 'object' ? kb.ozellikler : undefined;
-    const aracGerek = !!ozs?.find((x) => x.id === ARAC_ID && x.zorunlu);
-    const arac = d.arac !== undefined ? d.arac : aracOner(u, ozs);
+    const ozelOz = (ozs ?? []).filter((o) => urunOzel(o) && !o.serbest && o.degerler.length && (o.zorunlu || o.id === ARAC_ID));
+    const ozSecim = new Map<number, Secim>(ozelOz.map((o) => [o.id, d.oz && o.id in d.oz ? d.oz[o.id] : ozOner(u, o)]));
+    const arac = ozSecim.get(ARAC_ID) ?? null;
     const a = maliyet(db, u, son); const kom = km ? komisyonKat.get(km.ty_kategori_id) ?? v.komisyon : v.komisyon;
     const hedef = a > 0 ? tyHedefFiyat(a, u.kdv, v, kom) : null;
     const fiyat = d.fiyat !== undefined ? parse(d.fiyat) : hedef ?? 0;
     const g = gorsel.get(u.id); const stok = Math.max(0, Math.floor(u.stok) - (db.ayarlar.trendyol?.guvenlik ?? 0));
     const baslik = (d.baslik ?? `${u.marka ? u.marka + ' ' : ''}${u.ad}`).slice(0, 100);
-    const ozellikler: TyOzellikDeger[] = [...(km?.ozellikler ?? []).filter((x) => x.attributeId !== ARAC_ID), ...(arac ? [{ attributeId: ARAC_ID, attributeValueId: arac.id }] : [])];
+    const ozelIds = new Set(ozelOz.map((o) => o.id));
+    const ozellikler: TyOzellikDeger[] = [...(km?.ozellikler ?? []).filter((x) => x.attributeId !== ARAC_ID && !ozelIds.has(x.attributeId)), ...[...ozSecim.entries()].filter(([, v]) => v).map(([id, v]) => ({ attributeId: id, attributeValueId: v!.id }))];
     const verilen = new Set(ozellikler.map((x) => x.attributeId));
     const eksikOz = (ozs ?? []).filter((x) => x.zorunlu && !verilen.has(x.id)).map((x) => x.ad);
-    const eksik = [!u.barkod && 'barkod', g && !g.length && 'görsel', !km && 'Trendyol kategorisi', !mm && 'Trendyol markası', !(fiyat > 0) && 'fiyat', aracGerek && !arac && 'araç modeli', ...eksikOz.filter((x) => x !== 'Araç Marka ve Model')].filter(Boolean) as string[];
+    const eksik = [!u.barkod && 'barkod', g && !g.length && 'görsel', !km && 'Trendyol kategorisi', !mm && 'Trendyol markası', !(fiyat > 0) && 'fiyat', ...eksikOz].filter(Boolean) as string[];
     const kodlarU = (kodlar.get(u.id) ?? []).filter((k) => k.tur !== 'OTOMARMARA').map((k) => k.kod);
     const aciklama = [u.ad, u.marka && `Marka: ${u.marka}`, u.kod && `Stok kodu: ${u.kod}`, (u.etiket || kodlarU.length) && `OEM / muadil kodları: ${[u.etiket, ...kodlarU].filter(Boolean).join(', ')}`, arac && `Uyumlu araç: ${arac.ad}`].filter(Boolean).join('\n');
-    return { u, km, mm, ozs, kb, arac, aracGerek, a, kom, hedef, fiyat, g, stok, baslik, ozellikler, eksik, aciklama, kayipVar: hedef !== null && fiyat > 0 && fiyat < hedef * 0.9 };
+    return { u, km, mm, ozs, kb, arac, ozelOz, ozSecim, a, kom, hedef, fiyat, g, stok, baslik, ozellikler, eksik, aciklama, kayipVar: hedef !== null && fiyat > 0 && fiyat < hedef * 0.9 };
   });
   const hazir = satirlar.filter((x) => !x.eksik.length && x.g !== undefined);
 
@@ -150,7 +170,8 @@ export function TrendyolYukle({ veri, v }: { veri: TyVeri; v: TyVarsayim }) {
                       <Pencil size={11} /> {x.km ? x.km.ty_kategori_ad : x.u.kategori ? `"${x.u.kategori}" için Trendyol kategorisi seçin` : 'BizimHesap kategorisi yok'}</button>
                     <button className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 ${x.mm ? 'bg-sky-50 text-sky-800 dark:bg-sky-500/10 dark:text-sky-200' : 'bg-red-50 text-red-700'}`} onClick={() => setMarkaModal(x.u.marka ?? '')} disabled={!x.u.marka}>
                       <Pencil size={11} /> {x.mm ? x.mm.ty_marka_ad : x.u.marka ? `"${x.u.marka}" için Trendyol markası seçin` : 'BizimHesap markası yok'}</button>
-                    {x.ozs?.some((o) => o.id === ARAC_ID) && <AracSec ozellik={x.ozs.find((o) => o.id === ARAC_ID)!} secili={x.arac} sec={(a) => setDuzen({ ...duzen, [x.u.id]: { ...duzen[x.u.id], arac: a } })} gerekli={x.aracGerek} />}
+                    {x.ozelOz.map((o) => <OzSec key={o.id} ozellik={o} secili={x.ozSecim.get(o.id) ?? null} gerekli={o.zorunlu}
+                      sec={(a) => setDuzen({ ...duzen, [x.u.id]: { ...duzen[x.u.id], oz: { ...(duzen[x.u.id]?.oz ?? {}), [o.id]: a } } })} />)}
                     {x.kb === 'yukleniyor' && <span className="text-slate-400">özellikler okunuyor…</span>}
                     {x.kb === 'hata' && <span className="text-red-600">kategori özellikleri okunamadı</span>}
                   </div>
@@ -189,15 +210,17 @@ export function TrendyolYukle({ veri, v }: { veri: TyVeri; v: TyVarsayim }) {
   );
 }
 
-function AracSec({ ozellik, secili, sec, gerekli }: { ozellik: Ozellik; secili: { id: number; ad: string } | null; sec: (a: { id: number; ad: string } | null) => void; gerekli: boolean }) {
+function OzSec({ ozellik, secili, sec, gerekli }: { ozellik: Ozellik; secili: Secim; sec: (a: Secim) => void; gerekli: boolean }) {
   const [ac, setAc] = useState(false); const [q, setQ] = useState('');
-  const l = q.trim().length >= 2 ? ozellik.degerler.filter((d) => katla(d.ad).includes(katla(q))).slice(0, 40) : [];
+  const az = ozellik.degerler.length <= 80;
+  const l = az ? ozellik.degerler.filter((d) => !q.trim() || katla(d.ad).includes(katla(q))) : q.trim().length >= 2 ? ozellik.degerler.filter((d) => katla(d.ad).includes(katla(q))).slice(0, 40) : [];
+  const kisaAd = ozellik.id === ARAC_ID ? 'Araç' : ozellik.ad.replace(/^Araç /, '');
   return (
     <span className="relative">
       <button className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 ${secili ? 'bg-violet-50 text-violet-800 dark:bg-violet-500/10 dark:text-violet-200' : gerekli ? 'bg-red-50 text-red-700' : 'bg-slate-100 text-slate-600'}`} onClick={() => setAc(!ac)}>
-        <Pencil size={11} /> Araç: {secili ? secili.ad : gerekli ? 'seçin' : 'yok'}</button>
+        <Pencil size={11} /> {kisaAd}: {secili ? secili.ad : gerekli ? 'seçin' : 'yok'}</button>
       {ac && <div className="absolute left-0 top-full z-20 mt-1 w-72 rounded-lg border border-slate-200 bg-white p-2 shadow-lg dark:border-slate-700 dark:bg-slate-900">
-        <input className="inp py-1 text-sm" autoFocus placeholder="ör. Megane, Doblo, Universal" value={q} onChange={(e) => setQ(e.target.value)} />
+        <input className="inp py-1 text-sm" autoFocus placeholder={ozellik.id === ARAC_ID ? 'ör. Megane, Doblo, Universal' : 'ara…'} value={q} onChange={(e) => setQ(e.target.value)} />
         <div className="mt-1 max-h-56 overflow-auto">{l.map((d) => <button key={d.id} className="block w-full rounded px-2 py-1 text-left text-sm hover:bg-slate-100 dark:hover:bg-slate-800" onClick={() => { sec(d); setAc(false); }}>{d.ad}</button>)}</div>
         {!gerekli && <button className="mt-1 text-xs text-slate-500 hover:underline" onClick={() => { sec(null); setAc(false); }}>Araç belirtme</button>}
       </div>}
@@ -216,7 +239,7 @@ function KategoriModal({ bh, mevcut, kapat, kaydedildi }: { bh: string; mevcut?:
   const [bekle, setBekle] = useState(false);
   useEffect(() => { if (q.trim().length < 2) return; const t = setTimeout(() => { setBekle(true); backend.tyIslem<{ sonuclar: { id: number; ad: string; yol: string }[] }>({ islem: 'kategori_ara', q }).then((r) => setSonuclar(r.sonuclar), (e) => toast((e as Error).message, 'hata')).finally(() => setBekle(false)); }, 400); return () => clearTimeout(t); }, [q]);
   useEffect(() => { if (!secim) return; setBilgi(null); backend.tyIslem<KatBilgi>({ islem: 'ozellikler', kategoriId: secim.id }).then(setBilgi, (e) => toast((e as Error).message, 'hata')); }, [secim?.id]); // eslint-disable-line react-hooks/exhaustive-deps
-  const zorunlu = (bilgi?.ozellikler ?? []).filter((o) => o.zorunlu && o.id !== ARAC_ID);
+  const zorunlu = (bilgi?.ozellikler ?? []).filter((o) => o.zorunlu && !(urunOzel(o) && !o.serbest && o.degerler.length));
   const tamam = !!secim && !!bilgi && zorunlu.every((o) => degerler[o.id]?.attributeValueId || degerler[o.id]?.customAttributeValue);
   const kaydet = () => calistir(async () => {
     await backend.tyIslem({ islem: 'esleme_kaydet', tur: 'kategori', bh, id: secim!.id, ad: secim!.ad, desi: parse(desi) || 1, ozellikler: zorunlu.map((o) => degerler[o.id]).filter(Boolean) });
@@ -241,7 +264,7 @@ function KategoriModal({ bh, mevcut, kapat, kaydedildi }: { bh: string; mevcut?:
                     : <select className="inp mt-1 py-1" value={degerler[o.id]?.attributeValueId ?? ''} onChange={(e) => { const d = o.degerler.find((x) => x.id === Number(e.target.value)); setDegerler({ ...degerler, [o.id]: { attributeId: o.id, attributeValueId: d?.id, ad: o.ad, deger: d?.ad } }); }}>
                       <option value="">Seçin…</option>{o.degerler.map((d) => <option key={d.id} value={d.id}>{d.ad}</option>)}</select>}
                 </label>))}
-              {(bilgi.ozellikler ?? []).some((o) => o.id === ARAC_ID) && <div className="text-xs text-slate-500">"Araç Marka ve Model" her üründe ayrı seçilir (ürün adından önerilir).</div>}
+              {(bilgi.ozellikler ?? []).some((o) => o.zorunlu && urunOzel(o)) && <div className="text-xs text-slate-500">{(bilgi.ozellikler ?? []).filter((o) => o.zorunlu && urunOzel(o)).map((o) => `"${o.ad}"`).join(', ')} her üründe ayrı seçilir (ürün adından önerilir).</div>}
               <label className="flex items-center gap-2 text-sm">Desi <input className="inp w-20 py-1 text-right" inputMode="decimal" value={desi} onChange={(e) => setDesi(e.target.value)} /> <span className="text-xs text-slate-500">kargo hacmi</span></label>
             </div>)}
         </div>}
