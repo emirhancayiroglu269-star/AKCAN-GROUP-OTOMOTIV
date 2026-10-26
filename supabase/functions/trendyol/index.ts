@@ -1,6 +1,7 @@
 // Trendyol entegrasyonu (Supabase Edge Function): onaylı ilanları ve sipariş paketlerini OKUR.
-// YAZDIĞI TEK ŞEY: ayarlarda "stok gönderimi" açıksa eşleşen ilanların STOK adedi (iki deponun toplamı − güvenlik stoğu).
-// Fiyat ve ürün içeriği yazmaz. Her gönderim ty_gonderim tablosuna kaydedilir.
+// YAZDIKLARI: (1) ayarlarda "stok gönderimi" açıksa eşleşen ilanların STOK adedi (iki deponun toplamı − güvenlik stoğu),
+// (2) kullanıcı sitede onaylayınca seçtiği ürünler için YENİ İLAN (ürün oluşturma). Mevcut ilanın fiyat/içeriğini değiştirmez.
+// Her gönderim ty_gonderim / ty_yukleme tablolarına kaydedilir.
 // Çağıran: siteye giriş yapmış kullanıcı (test/eşitle düğmesi) veya zamanlayıcı (service role).
 // Gizli değerler (kullanıcı girer): TRENDYOL_SATICI_ID, TRENDYOL_API_KEY, TRENDYOL_API_SECRET
 import { createClient } from 'npm:@supabase/supabase-js@2';
@@ -59,6 +60,9 @@ function urunSatirlari(icerik: Obj): Obj[] {
       kdv: sayi(v.vatRate ?? icerik.vatRate),
       satista: (v.onSale ?? icerik.onSale) === undefined ? null : Boolean(v.onSale ?? icerik.onSale) && !(v.archived ?? icerik.archived),
       icerik_id: metin(icerik.contentId ?? icerik.productMainId ?? icerik.id),
+      kategori_id: sayi(((icerik.category ?? {}) as Obj).id ?? icerik.categoryId), marka_id: sayi(((icerik.brand ?? {}) as Obj).id ?? icerik.brandId),
+      komisyon: sayi(v.commission ?? icerik.commission), desi: sayi(v.dimensionalWeight ?? icerik.dimensionalWeight),
+      ozellikler: Array.isArray(icerik.attributes) ? icerik.attributes : null,
       onayli: true, guncelleme: new Date().toISOString(),
     };
   }).filter((x) => x.barkod);
@@ -77,6 +81,7 @@ async function ilanlariCek() {
   // artık Trendyol'da olmayan ilanları kaldır (yarım yanıtta silmemek için en az 1 ilan geldiyse)
   if (tekil.length) { const { error } = await db.from('ty_urun').delete().lt('guncelleme', new Date(Date.now() - 6 * 3600000).toISOString()); if (error) throw new Error(error.message); }
   const { data: es } = await db.rpc('ty_eslestir_say');
+  await db.rpc('ty_esleme_ogren');
   return { ilan: tekil.length, eslesen: es, ornek };
 }
 
@@ -156,6 +161,80 @@ async function batchKontrol() {
   }
 }
 
+// ---------- yeni ilan (ürün oluşturma) ----------
+type Kat = { id: number; ad: string; yol: string };
+async function kategoriler(): Promise<Kat[]> {
+  const { data: o } = await db.from('ty_onbellek').select('veri,zaman').eq('anahtar', 'kategoriler').maybeSingle();
+  if (o && Date.now() - new Date(o.zaman as string).getTime() < 864e5) return o.veri as Kat[];
+  const d = await ty('/product/product-categories');
+  const l: Kat[] = [];
+  const gez = (x: Obj, yol: string[]) => { const ad = String(x.name ?? ''); const alt = (x.subCategories ?? []) as Obj[]; const y = [...yol, ad];
+    if (!alt.length) l.push({ id: Number(x.id), ad, yol: y.join(' > ') }); else for (const a of alt) gez(a, y); };
+  for (const x of ((d.categories ?? []) as Obj[])) gez(x, []);
+  await db.from('ty_onbellek').upsert({ anahtar: 'kategoriler', veri: l, zaman: new Date().toISOString() });
+  return l;
+}
+const katla = (s: string) => s.toLocaleLowerCase('tr').replace(/ı/g, 'i').normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+async function ozellikler(kategoriId: number) {
+  const d = await ty(`/product/categories/${kategoriId}/attributes`);
+  const l = ((d.categoryAttributes ?? []) as Obj[]);
+  const sonuc = [];
+  for (const a of l) {
+    const at = (a.attribute ?? {}) as Obj; let degerler = ((a.attributeValues ?? []) as Obj[]).map((v) => ({ id: Number(v.id), ad: String(v.name ?? '') }));
+    if (!degerler.length && a.required && !a.allowCustom) {
+      try { const v = await ty(`/product/categories/${kategoriId}/attributes/${at.id}/values?page=0&size=500`); degerler = (((v.content ?? v.attributeValues ?? v.values ?? []) as Obj[])).map((x) => ({ id: Number(x.id), ad: String(x.name ?? x.value ?? '') })); } catch { /* değer listesi alınamadı */ }
+    }
+    sonuc.push({ id: Number(at.id), ad: String(at.name ?? ''), zorunlu: !!a.required, serbest: !!a.allowCustom, coklu: !!a.allowMultipleAttributeValues, degerler: degerler.slice(0, 1000) });
+  }
+  return { kategori: String(d.name ?? ''), ozellikler: sonuc };
+}
+type YukKalem = { urun_id: string; baslik: string; aciklama: string; fiyat: number; liste_fiyat?: number; stok: number; desi?: number; kategori_id: number; marka_id: number; ozellikler: Obj[]; gorseller?: string[] };
+const temizKod = (s: string) => s.replace(/[^A-Za-z0-9._-]/g, '-').replace(/-+/g, '-').slice(0, 40);
+async function urunYukle(kalemler: YukKalem[], kullanici: string | null) {
+  if (!kalemler.length || kalemler.length > 200) throw new Error('1 ile 200 arası ürün gönderin');
+  const ids = kalemler.map((k) => k.urun_id);
+  const { data: urunler, error } = await db.from('urunler').select('id,kod,barkod,kdv,aktif,bh_ham').in('id', ids);
+  if (error) throw new Error(error.message);
+  const um = new Map((urunler ?? []).map((u) => [u.id as string, u]));
+  const items: Obj[] = []; const kayit: Obj[] = []; const hatalar: string[] = [];
+  for (const k of kalemler) {
+    const u = um.get(k.urun_id); if (!u || !u.aktif) { hatalar.push(`${k.baslik}: ürün bulunamadı/pasif`); continue; }
+    const barkod = String(u.barkod ?? '').trim(); if (!barkod || !/^[A-Za-z0-9._-]{1,40}$/.test(barkod)) { hatalar.push(`${k.baslik}: geçerli barkod yok`); continue; }
+    let gorsel = (k.gorseller ?? []).filter((x) => /^https:\/\//.test(x));
+    if (!gorsel.length) { try { const ph = JSON.parse(String(((u.bh_ham ?? {}) as Obj).photo ?? '[]')) as Obj[]; gorsel = ph.map((p) => String(p.PhotoUrlOriginal ?? p.PhotoUrl ?? '')).filter((x) => /^https:\/\//.test(x)); } catch { /* yok */ } }
+    if (!gorsel.length) { hatalar.push(`${k.baslik}: görsel yok`); continue; }
+    const fiyat = Math.round(Number(k.fiyat) * 100) / 100; if (!(fiyat > 0)) { hatalar.push(`${k.baslik}: fiyat yok`); continue; }
+    const item: Obj = {
+      barcode: barkod, title: String(k.baslik).slice(0, 100), productMainId: temizKod(String(u.kod ?? barkod)) || barkod,
+      brandId: Number(k.marka_id), categoryId: Number(k.kategori_id), quantity: Math.max(0, Math.min(20000, Math.floor(Number(k.stok) || 0))),
+      stockCode: String(u.kod ?? barkod).slice(0, 100), dimensionalWeight: Math.max(1, Number(k.desi) || 1), description: String(k.aciklama || k.baslik).slice(0, 30000),
+      currencyType: 'TRY', listPrice: Math.max(fiyat, Number(k.liste_fiyat) || 0), salePrice: fiyat, vatRate: Number(u.kdv) || 20,
+      images: gorsel.slice(0, 8).map((url) => ({ url })),
+      attributes: (k.ozellikler ?? []).map((a) => (a.customAttributeValue !== undefined && a.customAttributeValue !== null && a.customAttributeValue !== '' ? { attributeId: Number(a.attributeId), customAttributeValue: String(a.customAttributeValue) } : { attributeId: Number(a.attributeId), attributeValueId: Number(a.attributeValueId) })),
+    };
+    items.push(item); kayit.push({ urun_id: u.id, barkod, baslik: item.title, fiyat, stok: item.quantity, kullanici, istek: item });
+  }
+  if (!items.length) return { gonderilen: 0, hatalar };
+  const r = await tyPost(`/product/sellers/${SATICI}/v2/products`, { items });
+  const batch = metin(r.batchRequestId);
+  await db.from('ty_yukleme').insert(kayit.map((x) => ({ ...x, batch_id: batch })));
+  return { gonderilen: items.length, hatalar, batch };
+}
+async function yuklemeKontrol() {
+  const { data } = await db.from('ty_yukleme').select('batch_id').eq('durum', 'gonderildi').not('batch_id', 'is', null).gt('zaman', new Date(Date.now() - 7 * 864e5).toISOString()).limit(200);
+  for (const id of [...new Set((data ?? []).map((x) => x.batch_id as string))].slice(0, 10)) {
+    try {
+      const d = await ty(`/product/sellers/${SATICI}/products/batch-requests/${encodeURIComponent(id)}`);
+      const items = (d.items ?? []) as Obj[]; if (!/COMPLETED/i.test(String(d.status ?? '')) && !items.some((i) => /SUCCESS|FAILED/i.test(String(i.status ?? '')))) continue;
+      for (const it of items) {
+        const bk = metin(((it.requestItem ?? {}) as Obj).barcode ?? (((it.requestItem ?? {}) as Obj).product as Obj | undefined)?.barcode ?? it.barcode); if (!bk) continue;
+        const ok = /SUCCESS/i.test(String(it.status ?? ''));
+        await db.from('ty_yukleme').update({ durum: ok ? 'basarili' : 'hatali', hata: ok ? null : JSON.stringify(it.failureReasons ?? it.status).slice(0, 500) }).eq('batch_id', id).eq('barkod', bk);
+      }
+    } catch { /* sonra tekrar */ }
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
   const yanit = (b: Obj, status = 200) => new Response(JSON.stringify(b), { status, headers: { ...cors, 'Content-Type': 'application/json' } });
@@ -173,7 +252,31 @@ Deno.serve(async (req) => {
   const b = await req.json().catch(() => ({})) as Obj;
   const islem = String(b.islem ?? 'esitle');
 
-  if (islem === 'stok_gonder' && zamanlayici) return yanit({ ok: false, hata: 'Elle gönderim yalnız siteden yapılır' }, 403);
+  if (['stok_gonder', 'urun_yukle', 'esleme_kaydet'].includes(islem) && zamanlayici) return yanit({ ok: false, hata: 'Bu işlem yalnız siteden yapılır' }, 403);
+
+  try {
+    if (islem === 'kategori_ara') {
+      const q = katla(String(b.q ?? '').trim()); const l = await kategoriler(); if (q.length < 2) return yanit({ ok: true, sonuclar: [] });
+      const kel = q.split(/\s+/).filter(Boolean);
+      return yanit({ ok: true, sonuclar: l.filter((k) => { const y = katla(k.yol); return kel.every((w) => y.includes(w)); }).sort((a, x) => Number(katla(x.ad).includes(q)) - Number(katla(a.ad).includes(q)) || a.yol.length - x.yol.length).slice(0, 40) });
+    }
+    if (islem === 'ozellikler') return yanit({ ok: true, ...(await ozellikler(Number(b.kategoriId))) });
+    if (islem === 'marka_ara') {
+      const q = String(b.q ?? '').trim(); if (q.length < 2) return yanit({ ok: true, sonuclar: [] });
+      const d = await ty(`/product/brands/by-name?name=${encodeURIComponent(q)}`) as unknown;
+      const l = (Array.isArray(d) ? d : ((d as Obj).brands ?? (d as Obj).content ?? [])) as Obj[];
+      return yanit({ ok: true, sonuclar: l.slice(0, 30).map((x) => ({ id: Number(x.id), ad: String(x.name ?? '') })) });
+    }
+    if (islem === 'esleme_kaydet') {
+      if (b.tur === 'kategori') { const { error } = await db.from('ty_kategori_esleme').upsert({ bh_kategori: String(b.bh), ty_kategori_id: Number(b.id), ty_kategori_ad: metin(b.ad), ozellikler: b.ozellikler ?? [], desi: sayi(b.desi), guncelleme: new Date().toISOString() }); if (error) throw new Error(error.message); }
+      else { const { error } = await db.from('ty_marka_esleme').upsert({ bh_marka: String(b.bh), ty_marka_id: Number(b.id), ty_marka_ad: metin(b.ad), guncelleme: new Date().toISOString() }); if (error) throw new Error(error.message); }
+      return yanit({ ok: true });
+    }
+    if (islem === 'urun_yukle') {
+      const { data: k } = await db.auth.getUser(jwt);
+      return yanit({ ok: true, ...(await urunYukle((b.kalemler ?? []) as YukKalem[], k?.user?.email ?? null)) });
+    }
+  } catch (e) { return yanit({ ok: false, hata: (e as Error).message.slice(0, 500) }); }
 
   if (islem === 'test') {
     try { const d = await ty(`/product/sellers/${SATICI}/products/approved?page=0&size=1`); return yanit({ ok: true, ilanSayisi: sayi(d.totalElements), anahtarlar: Object.keys(d) }); }
@@ -194,6 +297,7 @@ Deno.serve(async (req) => {
     const s = islem === 'stok_gonder' ? { siparis: 0, ornek: null } : await siparisleriCek(Number(b.gun) > 0 ? Math.min(30, Number(b.gun)) : SIPARIS_GUN);
     const u = ilanZamani ? await ilanlariCek() : null;
     await batchKontrol();
+    await yuklemeKontrol();
     const gonderilen = gonder && u ? await stokGonder(islem === 'stok_gonder' ? 'elle' : 'otomatik', ayar) : 0;
     const { count: sipSay } = await db.from('ty_siparis').select('paket_id', { count: 'exact', head: true });
     await db.from('ty_durum').update({
