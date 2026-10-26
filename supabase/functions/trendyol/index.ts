@@ -121,12 +121,13 @@ type Ayar = { stok_gonder?: boolean; guvenlik?: number };
 async function ayarOku(): Promise<Ayar> { const { data } = await db.from('ayarlar').select('trendyol').eq('id', 1).maybeSingle(); return ((data?.trendyol ?? {}) as Ayar); }
 async function stokGonder(kaynak: 'otomatik' | 'elle', ayar: Ayar) {
   const guvenlik = Math.max(0, Number(ayar.guvenlik) || 0);
-  const { data: ilan, error } = await db.from('ty_urun').select('barkod,baslik,stok,urun_id').not('urun_id', 'is', null);
+  const { data: ilan, error } = await db.from('ty_urun').select('barkod,baslik,stok,urun_id,satista').not('urun_id', 'is', null);
   if (error) throw new Error(error.message);
   const ids = [...new Set((ilan ?? []).map((x) => x.urun_id as string))]; const stok = new Map<string, number>();
   for (let i = 0; i < ids.length; i += 200) { const { data: u } = await db.from('urunler').select('id,stok,aktif').in('id', ids.slice(i, i + 200)); for (const x of u ?? []) stok.set(x.id as string, x.aktif ? Number(x.stok) || 0 : 0); }
   const degisen = (ilan ?? []).flatMap((x) => {
-    if (!stok.has(x.urun_id as string)) return [];
+    // satışa kapatılmış ilanın stoğu Trendyol'da güncellenemez (hata verir); atlanır
+    if (!stok.has(x.urun_id as string) || x.satista === false) return [];
     const yeni = Math.min(20000, Math.max(0, Math.floor(stok.get(x.urun_id as string)!) - guvenlik)); const eski = Number(x.stok);
     return yeni === eski ? [] : [{ barkod: x.barkod as string, baslik: x.baslik as string | null, eski: Number.isFinite(eski) ? eski : null, yeni }];
   });

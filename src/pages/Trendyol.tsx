@@ -244,7 +244,7 @@ function StokGonderimi({ veri, yenile }: { veri: TyVeri; yenile: () => Promise<v
   useEffect(() => { gOku(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const g = Math.max(0, parse(guvenlik) || 0);
   const urun = useMemo(() => new Map(db.urunler.map((u) => [u.id, u])), [db.urunler]);
-  const degisecek = veri.urunler.flatMap((t) => { const u = t.urun_id ? urun.get(t.urun_id) : undefined; if (!u) return []; const yeni = Math.min(20000, Math.max(0, Math.floor(u.aktif ? u.stok : 0) - g)); return yeni === (t.stok ?? -1) ? [] : [{ t, u, yeni }]; });
+  const degisecek = veri.urunler.flatMap((t) => { const u = t.urun_id ? urun.get(t.urun_id) : undefined; if (!u || t.satista === false) return []; const yeni = Math.min(20000, Math.max(0, Math.floor(u.aktif ? u.stok : 0) - g)); return yeni === (t.stok ?? -1) ? [] : [{ t, u, yeni }]; });
   const ayarYaz = (p: { stok_gonder?: boolean; guvenlik?: number }, mesaj: string) => calistir(() => backend.ayarKaydet({ trendyol: { ...TY_VARSAYILAN, ...(ayar ?? {}), ...p } }), mesaj);
   const gonder = () => calistir(async () => { const r = await backend.tyCalistir('stok_gonder'); if (r.ok === false) throw new Error(String(r.hata)); toast(`${sayi(Number(r.stokGonderilen) || 0)} ilanın stoğu Trendyol'a gönderildi`); await yenile(); await gOku(); });
   return (
