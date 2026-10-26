@@ -105,7 +105,10 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
   const yanit = (b: Obj, status = 200) => new Response(JSON.stringify(b), { status, headers: { ...cors, 'Content-Type': 'application/json' } });
   const jwt = (req.headers.get('Authorization') ?? '').replace(/^Bearer\s+/i, '');
-  const zamanlayici = jwt === SERVIS;
+  // zamanlayıcı: veritabanındaki gizli anahtarı başlıkta gönderir (anon anahtar herkese açık olduğu için tek başına yetmez)
+  const zh = req.headers.get('x-zamanlayici');
+  let zamanlayici = jwt === SERVIS;
+  if (!zamanlayici && zh) { const { data: g } = await db.from('ty_gizli').select('anahtar').eq('id', 1).maybeSingle(); zamanlayici = !!g?.anahtar && g.anahtar === zh; }
   if (!zamanlayici) { const { data: k } = await db.auth.getUser(jwt); if (!k?.user) return yanit({ ok: false, hata: 'Giriş gerekli' }, 401); }
   if (!SATICI || !KEY || !SECRET) {
     const eksik = [!SATICI && 'TRENDYOL_SATICI_ID', !KEY && 'TRENDYOL_API_KEY', !SECRET && 'TRENDYOL_API_SECRET'].filter(Boolean).join(', ');
