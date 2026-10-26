@@ -1,0 +1,5 @@
+-- Trendyol entegrasyonu: ilanlar (ty_urun), sipariş paketleri (ty_siparis), durum (ty_durum). Şimdilik yalnız okuma.
+-- Uygulanan migrasyon: trendyol_tablolar (Supabase'de). Ayrıntı için Supabase migrasyon geçmişine bakın.
+-- Tablolar authenticated'a yalnız SELECT; yazma yalnız service_role (trendyol sunucu fonksiyonu).
+-- ty_eslestir_say(): ilanı bizdeki ürünle barkod / stok kodu ile eşleştirir.
+-- ayarlar.trendyol (jsonb): fiyat hesabı varsayımları.
