@@ -56,7 +56,7 @@ async function ilanlariCek() {
   const hepsi: Obj[] = []; let ornek: unknown = null;
   for (let sayfa = 0; sayfa < 200; sayfa++) {
     const d = await ty(`/product/sellers/${SATICI}/products/approved?page=${sayfa}&size=100`);
-    const l = (d.content ?? d.items ?? []) as Obj[]; if (sayfa === 0) ornek = { anahtarlar: Object.keys(d), ilk: l[0] ?? null };
+    const l = (d.content ?? d.items ?? []) as Obj[]; if (sayfa === 0 && (!ornek || l.length)) ornek = { anahtarlar: Object.keys(d), ilk: l[0] ?? null };
     for (const x of l) hepsi.push(...urunSatirlari(x));
     const toplamSayfa = sayi(d.totalPages); if (!l.length || (toplamSayfa !== null && sayfa + 1 >= toplamSayfa)) break;
     await bekle(250);
@@ -89,13 +89,17 @@ function paketSatiri(p: Obj) {
   };
 }
 async function siparisleriCek(gun = SIPARIS_GUN) {
-  const bit = Date.now(); const bas = bit - gun * 864e5; const hepsi: ReturnType<typeof paketSatiri>[] = []; let ornek: unknown = null;
+  // Trendyol tek istekte en fazla 2 haftalık aralık verir: daha uzun süre 14 günlük pencerelere bölünür
+  const hepsi: ReturnType<typeof paketSatiri>[] = []; let ornek: unknown = null;
+  for (let p = 0; p * 14 < gun; p++) {
+  const bit = Date.now() - p * 14 * 864e5; const bas = bit - Math.min(14, gun - p * 14) * 864e5;
   for (let sayfa = 0; sayfa < 50; sayfa++) {
     const d = await ty(`/order/sellers/${SATICI}/v2/orders?startDate=${bas}&endDate=${bit}&page=${sayfa}&size=200&orderByField=PackageLastModifiedDate&orderByDirection=DESC`);
-    const l = (d.content ?? []) as Obj[]; if (sayfa === 0) ornek = { anahtarlar: Object.keys(d), ilk: l[0] ? { ...l[0], shipmentAddress: undefined, invoiceAddress: undefined, customerFirstName: undefined, customerLastName: undefined, customerEmail: undefined } : null };
+    const l = (d.content ?? []) as Obj[]; if (sayfa === 0 && (!ornek || l.length)) ornek = { anahtarlar: Object.keys(d), ilk: l[0] ? { ...l[0], shipmentAddress: undefined, invoiceAddress: undefined, customerFirstName: undefined, customerLastName: undefined, customerEmail: undefined } : null };
     hepsi.push(...l.map(paketSatiri).filter((x) => x.paket_id && x.paket_id !== 'undefined'));
     const toplamSayfa = sayi(d.totalPages); if (!l.length || (toplamSayfa !== null && sayfa + 1 >= toplamSayfa)) break;
     await bekle(250);
+  }
   }
   for (let i = 0; i < hepsi.length; i += 500) { const { error } = await db.from('ty_siparis').upsert(hepsi.slice(i, i + 500)); if (error) throw new Error('ty_siparis: ' + error.message); }
   return { siparis: hepsi.length, ornek };
@@ -131,7 +135,7 @@ Deno.serve(async (req) => {
   try {
     const sonUrun = kilit[0].son_urun ? new Date(kilit[0].son_urun as string).getTime() : 0;
     const ilanZamani = b.ilan === true || Date.now() - sonUrun > URUN_ARALIK_DK * 60000;
-    const s = await siparisleriCek(Number(b.gun) > 0 ? Math.min(14, Number(b.gun)) : SIPARIS_GUN);
+    const s = await siparisleriCek(Number(b.gun) > 0 ? Math.min(30, Number(b.gun)) : SIPARIS_GUN);
     const u = ilanZamani ? await ilanlariCek() : null;
     const { count: sipSay } = await db.from('ty_siparis').select('paket_id', { count: 'exact', head: true });
     await db.from('ty_durum').update({

@@ -272,7 +272,7 @@ function supabaseBackend(sb: SupabaseClient): Backend {
       return { urunler: urunler.map((x) => ({ ...x, satis_fiyati: n(x.satis_fiyati), liste_fiyati: n(x.liste_fiyati), stok: n(x.stok), kdv: n(x.kdv) })), siparisler: siparisler.map((x) => ({ ...x, toplam: n(x.toplam), indirim: n(x.indirim) })), durum };
     },
     async tyCalistir(islem) {
-      const { data, error } = await sb.functions.invoke('trendyol', { body: { islem, ilan: true } });
+      const { data, error } = await sb.functions.invoke('trendyol', { body: { islem, ilan: true, gun: 30 } });
       if (error) { let mesaj = error.message; try { const j = await (error as { context?: Response }).context?.json(); if (j?.hata) mesaj = j.hata; } catch { /* yok */ } throw new Error(mesaj); }
       return data as Record<string, unknown>;
     },
