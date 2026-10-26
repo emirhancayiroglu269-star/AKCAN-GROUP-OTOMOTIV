@@ -87,7 +87,7 @@ export function TrendyolYukle({ veri, v }: { veri: TyVeri; v: TyVarsayim }) {
     const ozellikler: TyOzellikDeger[] = [...(km?.ozellikler ?? []).filter((x) => x.attributeId !== ARAC_ID), ...(arac ? [{ attributeId: ARAC_ID, attributeValueId: arac.id }] : [])];
     const verilen = new Set(ozellikler.map((x) => x.attributeId));
     const eksikOz = (ozs ?? []).filter((x) => x.zorunlu && !verilen.has(x.id)).map((x) => x.ad);
-    const eksik = [!u.barkod && 'barkod', g && !g.length && 'görsel', !km && 'Trendyol kategorisi', !mm && 'Trendyol markası', !(fiyat > 0) && 'fiyat', aracGerek && !arac && 'araç modeli', ...eksikOz.filter((x) => !(x.includes('Araç') && arac))].filter(Boolean) as string[];
+    const eksik = [!u.barkod && 'barkod', g && !g.length && 'görsel', !km && 'Trendyol kategorisi', !mm && 'Trendyol markası', !(fiyat > 0) && 'fiyat', aracGerek && !arac && 'araç modeli', ...eksikOz.filter((x) => x !== 'Araç Marka ve Model')].filter(Boolean) as string[];
     const kodlarU = (kodlar.get(u.id) ?? []).filter((k) => k.tur !== 'OTOMARMARA').map((k) => k.kod);
     const aciklama = [u.ad, u.marka && `Marka: ${u.marka}`, u.kod && `Stok kodu: ${u.kod}`, (u.etiket || kodlarU.length) && `OEM / muadil kodları: ${[u.etiket, ...kodlarU].filter(Boolean).join(', ')}`, arac && `Uyumlu araç: ${arac.ad}`].filter(Boolean).join('\n');
     return { u, km, mm, ozs, kb, arac, aracGerek, a, kom, hedef, fiyat, g, stok, baslik, ozellikler, eksik, aciklama, kayipVar: hedef !== null && fiyat > 0 && fiyat < hedef * 0.9 };
