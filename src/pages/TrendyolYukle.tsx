@@ -86,7 +86,7 @@ export function TrendyolYukle({ veri, v }: { veri: TyVeri; v: TyVarsayim }) {
   const ozOner = (u: Urun, o: Ozellik): Secim => {
     if (o.id === ARAC_ID) return aracOner(u, [o]);
     const ad = katla(u.ad);
-    if (/hacim/i.test(o.ad)) { const m = u.ad.match(/(^|[^0-9])([0-6])[.,]([0-9])(?![0-9])/); if (m) { const d = o.degerler.find((x) => x.ad.startsWith(`${m[2]}.${m[3]}L`)); if (d) return d; } return null; }
+    if (/hac[iı]?m/i.test(o.ad)) { const m = u.ad.match(/(^|[^0-9])([0-6])[.,]([0-9])(?![0-9])/); if (m) { const d = o.degerler.find((x) => x.ad.startsWith(`${m[2]}.${m[3]}L`)); if (d) return d; } return null; }
     if (/teknoloji/i.test(o.ad)) { const l = [...o.degerler].sort((a, b) => b.ad.length - a.ad.length); return l.find((d) => { const k = katla(d.ad); return k.length >= 3 && new RegExp(`(^|[^a-z0-9])${k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}([^a-z0-9]|$)`).test(ad); }) ?? null; }
     return null;
   };
