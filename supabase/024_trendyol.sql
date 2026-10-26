@@ -3,3 +3,5 @@
 -- Tablolar authenticated'a yalnız SELECT; yazma yalnız service_role (trendyol sunucu fonksiyonu).
 -- ty_eslestir_say(): ilanı bizdeki ürünle barkod / stok kodu ile eşleştirir.
 -- ayarlar.trendyol (jsonb): fiyat hesabı varsayımları.
+-- ty_gizli: zamanlayıcının trendyol fonksiyonuna gösterdiği gizli anahtar (yalnız service_role okur)
+-- cron: trendyol-esitle her 15 dakikada (siparişler; ilanlar saatte bir)

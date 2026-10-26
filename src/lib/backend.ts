@@ -57,7 +57,16 @@ export interface Backend {
   teklifKaydet(r: Omit<FiyatTeklifi, 'id' | 'zaman' | 'durum' | 'durum_zaman'>): Promise<number | null>;
   teklifOku(sonGun: number): Promise<FiyatTeklifi[]>;
   teklifGuncelle(id: number, p: Partial<FiyatTeklifi>): Promise<void>;
+  /** Trendyol: ilanlar, son N günün sipariş paketleri ve durum (yalnız sayfa açılınca okunur) */
+  tyOku(sonGun: number): Promise<TyVeri>;
+  /** Trendyol sunucu fonksiyonu: 'test' bağlantıyı dener, 'esitle' siparişleri ve ilanları çeker */
+  tyCalistir(islem: 'test' | 'esitle'): Promise<Record<string, unknown>>;
 }
+export interface TyUrun { barkod: string; stok_kodu: string | null; baslik: string | null; marka: string | null; kategori: string | null; satis_fiyati: number | null; liste_fiyati: number | null; stok: number | null; kdv: number | null; satista: boolean | null; urun_id: ID | null; guncelleme: string }
+export interface TySatir { barkod: string | null; stok_kodu: string | null; ad: string | null; adet: number; birim_fiyat: number | null; brut: number | null; indirim: number; satici_indirim: number; komisyon: number | null; kdv: number | null; durum: string | null }
+export interface TySiparis { paket_id: string; siparis_no: string | null; tarih: string | null; son_degisim: string | null; durum: string | null; sehir: string | null; toplam: number | null; indirim: number | null; kargo_firma: string | null; kargo_takip: string | null; satirlar: TySatir[] }
+export interface TyDurum { son_urun: string | null; son_siparis: string | null; son_hata: string | null; urun_sayisi: number | null; siparis_sayisi: number | null }
+export interface TyVeri { urunler: TyUrun[]; siparisler: TySiparis[]; durum: TyDurum | null }
 export interface TeklifSatiri { urun_id: ID; ad: string; marka?: string | null; adet: number; fiyat: number; ekonomik?: boolean }
 export interface FiyatTeklifi { id: number; zaman: string; musteri: string | null; arac: string | null; kalemler: TeklifSatiri[]; toplam: number; kullanici: string | null; durum: 'acik' | 'satildi' | 'kaybedildi'; durum_zaman: string | null; notlar?: string | null }
 export interface Sorulan { id: number; zaman: string; metin: string; urun_id: ID | null; kullanici: string | null; adet: number }
@@ -254,6 +263,19 @@ function supabaseBackend(sb: SupabaseClient): Backend {
       return r;
     },
     async teklifGuncelle(id, p) { ok(await sb.from('fiyat_teklifleri').update(p).eq('id', id)); },
+    async tyOku(sonGun) {
+      const urunler: TyUrun[] = []; const siparisler: TySiparis[] = []; const bas = new Date(Date.now() - sonGun * 864e5).toISOString();
+      for (let i = 0; i < 100000; i += 1000) { const d = ok(await sb.from('ty_urun').select('barkod,stok_kodu,baslik,marka,kategori,satis_fiyati,liste_fiyati,stok,kdv,satista,urun_id,guncelleme').order('barkod').range(i, i + 999)) as TyUrun[]; urunler.push(...d); if (d.length < 1000) break; }
+      for (let i = 0; i < 100000; i += 1000) { const d = ok(await sb.from('ty_siparis').select('paket_id,siparis_no,tarih,son_degisim,durum,sehir,toplam,indirim,kargo_firma,kargo_takip,satirlar').gte('tarih', bas).order('tarih', { ascending: false }).range(i, i + 999)) as TySiparis[]; siparisler.push(...d); if (d.length < 1000) break; }
+      const n = (v: unknown) => (v === null || v === undefined ? null : Number(v));
+      const durum = ok(await sb.from('ty_durum').select('son_urun,son_siparis,son_hata,urun_sayisi,siparis_sayisi').eq('id', 1).maybeSingle()) as TyDurum | null;
+      return { urunler: urunler.map((x) => ({ ...x, satis_fiyati: n(x.satis_fiyati), liste_fiyati: n(x.liste_fiyati), stok: n(x.stok), kdv: n(x.kdv) })), siparisler: siparisler.map((x) => ({ ...x, toplam: n(x.toplam), indirim: n(x.indirim) })), durum };
+    },
+    async tyCalistir(islem) {
+      const { data, error } = await sb.functions.invoke('trendyol', { body: { islem, ilan: true } });
+      if (error) { let mesaj = error.message; try { const j = await (error as { context?: Response }).context?.json(); if (j?.hata) mesaj = j.hata; } catch { /* yok */ } throw new Error(mesaj); }
+      return data as Record<string, unknown>;
+    },
     async sayimKaydet(r) { ok(await sb.from('sayim').upsert({ ...r, zaman: new Date().toISOString() }, { onConflict: 'depo_id,urun_id' })); },
     async sayimSil(depoId, urunId) { let q = sb.from('sayim').delete().eq('depo_id', depoId); if (urunId) q = q.eq('urun_id', urunId); ok(await q); },
     async omDetay(id) { return omCagir(sb, { id }) as Promise<OmDetayYanit>; },
@@ -447,6 +469,8 @@ function demoBackend(): Backend {
     async sorulanOku() { return [...demoSorulan]; },
     async teklifKaydet(r) { const id = demoTeklif.length + 1; demoTeklif.unshift({ ...r, id, zaman: new Date().toISOString(), durum: 'acik', durum_zaman: null }); return id; },
     async teklifOku() { return [...demoTeklif]; },
+    async tyOku() { return { urunler: [], siparisler: [], durum: { son_urun: null, son_siparis: null, son_hata: 'Demo modunda Trendyol yok', urun_sayisi: 0, siparis_sayisi: 0 } }; },
+    async tyCalistir() { throw new Error('Demo modunda Trendyol yok'); },
     async teklifGuncelle(id, p) { demoTeklif = demoTeklif.map((x) => (x.id === id ? { ...x, ...p } : x)); },
     async sorulanSil(id) { demoSorulan = demoSorulan.filter((x) => x.id !== id); },
     async sayimOku(depoId) { return demoSayim.filter((x) => x.depo_id === depoId); },

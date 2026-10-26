@@ -1,8 +1,9 @@
 import { asama } from './lib/hataKayit';
+import TrendyolSayfa from './pages/Trendyol';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import {
-  Activity, ArrowLeftRight, Search, ShieldAlert, ShoppingBasket, RefreshCw, Wrench, HandCoins, PackageMinus, Warehouse, Lightbulb, Medal, BarChart3, Boxes, LayoutDashboard, LogOut, Menu, Moon, PieChart, Settings, Sun, Tag, Truck, UserCheck, Users, Wallet, X,
+  Activity, ArrowLeftRight, Search, ShieldAlert, ShoppingBasket, RefreshCw, Wrench, HandCoins, PackageMinus, Warehouse, Lightbulb, Medal, Store, BarChart3, Boxes, LayoutDashboard, LogOut, Menu, Moon, PieChart, Settings, Sun, Tag, Truck, UserCheck, Users, Wallet, X,
 } from 'lucide-react';
 import { supabase, MODE, onbellekTemizle } from './lib/backend';
 import { StoreProvider, Toasts, useStore } from './lib/store';
@@ -29,7 +30,7 @@ import { tahsilatListesi } from './lib/tahsilat';
 import { ROL_AD } from './lib/types';
 import { tarihSaat } from './lib/format';
 
-export type AnaSayfa = 'panel' | 'arama' | 'oneriler' | 'hareketler' | 'satisanaliz' | 'musteri' | 'sepet' | 'kayip' | 'karzarar' | 'tahsilat' | 'nakit' | 'cariler' | 'analiz' | 'fiyat' | 'usta' | 'eritme' | 'depolar' | 'tedarikci' | 'urunler' | 'performans' | 'ayarlar';
+export type AnaSayfa = 'panel' | 'arama' | 'oneriler' | 'hareketler' | 'satisanaliz' | 'musteri' | 'sepet' | 'kayip' | 'karzarar' | 'tahsilat' | 'nakit' | 'cariler' | 'analiz' | 'fiyat' | 'usta' | 'eritme' | 'depolar' | 'tedarikci' | 'urunler' | 'performans' | 'trendyol' | 'ayarlar';
 /** Eski sayfa adları (birleştirilen/kaldırılan) — eski bağlantılar ve öneriler çalışmaya devam etsin diye */
 type EskiSayfa = 'aysonu' | 'arac' | 'indirim' | 'deposiparis' | 'katfiyat' | 'stoksagligi' | 'alinacaklar';
 export type Sayfa = AnaSayfa | EskiSayfa | `${AnaSayfa}/${string}`;
@@ -65,12 +66,13 @@ const MENU: { id: AnaSayfa; ad: string; ikon: typeof LayoutDashboard; grup?: str
   { id: 'depolar', ad: 'Depolar & Sipariş', ikon: Warehouse },
   { id: 'tedarikci', ad: 'Tedarikçiler', ikon: Truck },
   { id: 'urunler', ad: 'Ürünler & Stok', ikon: Boxes },
+  { id: 'trendyol', ad: 'Trendyol', ikon: Store, grup: 'E-Ticaret' },
   { id: 'ayarlar', ad: 'Ayarlar', ikon: Settings, grup: ' ' },
 ];
 type Props = { git: (s: Sayfa) => void; alt?: string };
 const SAYFALAR: Record<AnaSayfa, (p: Props) => React.ReactNode> = {
   panel: Panel, arama: AramaSayfa, oneriler: Oneriler, hareketler: Hareketler, satisanaliz: SatisAnalizi, musteri: MusteriAnalizi, sepet: BirlikteSatilan, kayip: KayipKacak, karzarar: KarZararSayfa, tahsilat: Tahsilat, nakit: NakitAkisi, cariler: Cariler,
-  analiz: UrunAnalizi, fiyat: FiyatSayfa, usta: UstaFiyat, eritme: EritmeSayfa, depolar: DepolarSayfa, tedarikci: TedarikciSayfa, urunler: UrunlerSayfa, performans: PerformansSayfa, ayarlar: AyarlarSayfa,
+  analiz: UrunAnalizi, fiyat: FiyatSayfa, usta: UstaFiyat, eritme: EritmeSayfa, depolar: DepolarSayfa, tedarikci: TedarikciSayfa, urunler: UrunlerSayfa, performans: PerformansSayfa, trendyol: TrendyolSayfa, ayarlar: AyarlarSayfa,
 };
 
 export default function App() {
