@@ -67,7 +67,7 @@ export interface Backend {
   tyEslemeOku(): Promise<{ kategori: TyKategoriEsleme[]; marka: TyMarkaEsleme[]; yukleme: TyYukleme[] }>;
   urunGorselleri(ids: ID[]): Promise<Map<ID, string[]>>;
 }
-export interface TyUrun { barkod: string; stok_kodu: string | null; baslik: string | null; marka: string | null; kategori: string | null; satis_fiyati: number | null; liste_fiyati: number | null; stok: number | null; kdv: number | null; satista: boolean | null; urun_id: ID | null; guncelleme: string }
+export interface TyUrun { barkod: string; stok_kodu: string | null; baslik: string | null; marka: string | null; kategori: string | null; satis_fiyati: number | null; liste_fiyati: number | null; stok: number | null; kdv: number | null; satista: boolean | null; urun_id: ID | null; guncelleme: string; kategori_id?: number | null; komisyon?: number | null }
 export interface TySatir { barkod: string | null; stok_kodu: string | null; ad: string | null; adet: number; birim_fiyat: number | null; brut: number | null; indirim: number; satici_indirim: number; komisyon: number | null; kdv: number | null; durum: string | null }
 export interface TySiparis { paket_id: string; siparis_no: string | null; tarih: string | null; son_degisim: string | null; durum: string | null; sehir: string | null; toplam: number | null; indirim: number | null; kargo_firma: string | null; kargo_takip: string | null; satirlar: TySatir[] }
 export interface TyDurum { son_urun: string | null; son_siparis: string | null; son_hata: string | null; urun_sayisi: number | null; siparis_sayisi: number | null }
@@ -275,11 +275,11 @@ function supabaseBackend(sb: SupabaseClient): Backend {
     async teklifGuncelle(id, p) { ok(await sb.from('fiyat_teklifleri').update(p).eq('id', id)); },
     async tyOku(sonGun) {
       const urunler: TyUrun[] = []; const siparisler: TySiparis[] = []; const bas = new Date(Date.now() - sonGun * 864e5).toISOString();
-      for (let i = 0; i < 100000; i += 1000) { const d = ok(await sb.from('ty_urun').select('barkod,stok_kodu,baslik,marka,kategori,satis_fiyati,liste_fiyati,stok,kdv,satista,urun_id,guncelleme').order('barkod').range(i, i + 999)) as TyUrun[]; urunler.push(...d); if (d.length < 1000) break; }
+      for (let i = 0; i < 100000; i += 1000) { const d = ok(await sb.from('ty_urun').select('barkod,stok_kodu,baslik,marka,kategori,satis_fiyati,liste_fiyati,stok,kdv,satista,urun_id,guncelleme,kategori_id,komisyon').order('barkod').range(i, i + 999)) as TyUrun[]; urunler.push(...d); if (d.length < 1000) break; }
       for (let i = 0; i < 100000; i += 1000) { const d = ok(await sb.from('ty_siparis').select('paket_id,siparis_no,tarih,son_degisim,durum,sehir,toplam,indirim,kargo_firma,kargo_takip,satirlar').gte('tarih', bas).order('tarih', { ascending: false }).range(i, i + 999)) as TySiparis[]; siparisler.push(...d); if (d.length < 1000) break; }
       const n = (v: unknown) => (v === null || v === undefined ? null : Number(v));
       const durum = ok(await sb.from('ty_durum').select('son_urun,son_siparis,son_hata,urun_sayisi,siparis_sayisi').eq('id', 1).maybeSingle()) as TyDurum | null;
-      return { urunler: urunler.map((x) => ({ ...x, satis_fiyati: n(x.satis_fiyati), liste_fiyati: n(x.liste_fiyati), stok: n(x.stok), kdv: n(x.kdv) })), siparisler: siparisler.map((x) => ({ ...x, toplam: n(x.toplam), indirim: n(x.indirim) })), durum };
+      return { urunler: urunler.map((x) => ({ ...x, satis_fiyati: n(x.satis_fiyati), liste_fiyati: n(x.liste_fiyati), stok: n(x.stok), kdv: n(x.kdv), komisyon: n(x.komisyon) })), siparisler: siparisler.map((x) => ({ ...x, toplam: n(x.toplam), indirim: n(x.indirim) })), durum };
     },
     async tyGonderimOku() { return (ok(await sb.from('ty_gonderim').select('id,zaman,barkod,baslik,eski,yeni,durum,hata,kaynak').order('id', { ascending: false }).limit(100)) as TyGonderim[]).map((x) => ({ ...x, eski: x.eski === null ? null : Number(x.eski), yeni: Number(x.yeni) })); },
     async tyIslem(govde) {

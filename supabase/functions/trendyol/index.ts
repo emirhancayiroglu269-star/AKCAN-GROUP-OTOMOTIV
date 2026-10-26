@@ -180,13 +180,22 @@ async function ozellikler(kategoriId: number) {
   const l = ((d.categoryAttributes ?? []) as Obj[]);
   const sonuc = [];
   for (const a of l) {
-    const at = (a.attribute ?? {}) as Obj; let degerler = ((a.attributeValues ?? []) as Obj[]).map((v) => ({ id: Number(v.id), ad: String(v.name ?? '') }));
+    const at = (a.attribute ?? {}) as Obj;
+    const cevir = (v: Obj) => ({ id: Number(v.id ?? v.attributeValueId ?? v.valueId), ad: String(v.name ?? v.value ?? v.attributeValue ?? v.attributeValueName ?? '') });
+    let degerler = ((a.attributeValues ?? a.values ?? []) as Obj[]).map(cevir).filter((x) => Number.isFinite(x.id) && x.ad);
     if (!degerler.length && a.required && !a.allowCustom) {
-      try { const v = await ty(`/product/categories/${kategoriId}/attributes/${at.id}/values?page=0&size=500`); degerler = (((v.content ?? v.attributeValues ?? v.values ?? []) as Obj[])).map((x) => ({ id: Number(x.id), ad: String(x.name ?? x.value ?? '') })); } catch { /* değer listesi alınamadı */ }
+      try {
+        for (let sayfa = 0; sayfa < 12; sayfa++) {
+          const v = await ty(`/product/categories/${kategoriId}/attributes/${at.id}/values?page=${sayfa}&size=500`);
+          const p = ((v.content ?? v.attributeValues ?? v.values ?? []) as Obj[]); degerler.push(...p.map(cevir).filter((x) => Number.isFinite(x.id) && x.ad));
+          const ts = sayi(v.totalPages); if (p.length < 500 || (ts !== null && sayfa + 1 >= ts)) break;
+        }
+      } catch { /* değer listesi alınamadı */ }
     }
-    sonuc.push({ id: Number(at.id), ad: String(at.name ?? ''), zorunlu: !!a.required, serbest: !!a.allowCustom, coklu: !!a.allowMultipleAttributeValues, degerler: degerler.slice(0, 1000) });
+    sonuc.push({ id: Number(at.id), ad: String(at.name ?? ''), zorunlu: !!a.required, serbest: !!a.allowCustom, coklu: !!a.allowMultipleAttributeValues, degerler: degerler.slice(0, 5000) });
   }
-  return { kategori: String(d.name ?? ''), ozellikler: sonuc };
+  const ilk = ((l.find((a) => ((a.attributeValues ?? []) as Obj[]).length)?.attributeValues ?? []) as Obj[])[0];
+  return { kategori: String(d.name ?? ''), ozellikler: sonuc, degerAlanlari: ilk ? Object.keys(ilk) : [] };
 }
 type YukKalem = { urun_id: string; baslik: string; aciklama: string; fiyat: number; liste_fiyat?: number; stok: number; desi?: number; kategori_id: number; marka_id: number; ozellikler: Obj[]; gorseller?: string[] };
 const temizKod = (s: string) => s.replace(/[^A-Za-z0-9._-]/g, '-').replace(/-+/g, '-').slice(0, 40);

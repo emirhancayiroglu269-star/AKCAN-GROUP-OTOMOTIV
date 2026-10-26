@@ -7,8 +7,11 @@ import { sonAlislar } from '../lib/analiz2';
 import { ara, gunu, para, parse, sayi, tarihSaat } from '../lib/format';
 import { UrunLink } from '../components/DetayKart';
 import { Bos, Kpi, SayfaBaslik } from '../components/ui';
+import { TrendyolYukle } from './TrendyolYukle';
 
-type Sekme = 'siparis' | 'ilan' | 'stok' | 'oneri' | 'ayar';
+const yuklemeyeEkle = (ids: string[]) => { try { const l = JSON.parse(localStorage.getItem('ty_yukle_secili') ?? '[]') as string[]; localStorage.setItem('ty_yukle_secili', JSON.stringify([...l, ...ids.filter((x) => !l.includes(x))].slice(0, 200))); } catch { /* yok */ } };
+
+type Sekme = 'siparis' | 'ilan' | 'stok' | 'yukle' | 'oneri' | 'ayar';
 const csvIndir = (ad: string, satirlar: (string | number | null | undefined)[][]) => {
   const icerik = satirlar.map((a) => a.map((v) => `"${String(v ?? '').replace(/"/g, '""')}"`).join(';')).join('\n');
   const el = document.createElement('a'); el.href = URL.createObjectURL(new Blob(['﻿' + icerik], { type: 'text/csv' })); el.download = ad; el.click();
@@ -31,7 +34,7 @@ export default function TrendyolSayfa() {
 
   return (
     <div>
-      <SayfaBaslik baslik="Trendyol" alt="Siparişler, ilanlar, kâr hedefli fiyat ve öneriler · şimdilik yalnız okur, Trendyol'a bir şey yazmaz">
+      <SayfaBaslik baslik="Trendyol" alt="Siparişler, ilanlar, stok eşitleme, yeni ilan yükleme, kâr hedefli fiyat ve öneriler">
         <button className="btn-ghost" onClick={test}><PlugZap size={16} /> Bağlantıyı test et</button>
         <button className="btn-primary" onClick={esitle} disabled={yuk}><RefreshCw size={16} className={yuk ? 'animate-spin' : ''} /> Şimdi eşitle</button>
       </SayfaBaslik>
@@ -40,13 +43,14 @@ export default function TrendyolSayfa() {
           <div><b>Trendyol bağlantısı çalışmıyor:</b> {d.son_hata}{/eksik/i.test(d.son_hata) && <div className="mt-1 text-xs">Trendyol satıcı paneli → Hesap Bilgilerim → Entegrasyon Bilgileri'ndeki Satıcı ID, API Key ve API Secret'ı Supabase → Edge Functions → Secrets'e <code>TRENDYOL_SATICI_ID</code>, <code>TRENDYOL_API_KEY</code>, <code>TRENDYOL_API_SECRET</code> adlarıyla girin.</div>}</div></div>
       ) : (d.son_siparis && <div className="mb-4 flex items-center gap-2 text-xs text-slate-500"><CheckCircle2 size={14} className="text-emerald-600" /> Son eşitleme: siparişler {tarihSaat(d.son_siparis)}{d.son_urun ? ` · ilanlar ${tarihSaat(d.son_urun)}` : ''}</div>))}
       <div className="mb-4 flex flex-wrap gap-1 rounded-xl bg-slate-100 p-1 dark:bg-slate-800/60">
-        {sb('siparis', 'Siparişler', veri?.siparisler.length)}{sb('ilan', 'İlanlar & fiyat', veri?.urunler.length)}{sb('stok', 'Stok gönderimi')}{sb('oneri', "Trendyol'a uygun ürünler")}{sb('ayar', 'Hesap varsayımları')}
+        {sb('siparis', 'Siparişler', veri?.siparisler.length)}{sb('ilan', 'İlanlar & fiyat', veri?.urunler.length)}{sb('stok', 'Stok gönderimi')}{sb('yukle', 'Ürün yükle')}{sb('oneri', "Trendyol'a uygun ürünler")}{sb('ayar', 'Hesap varsayımları')}
       </div>
       {!veri ? <div className="card p-6 text-center text-sm text-slate-500">Yükleniyor…</div>
         : sekme === 'siparis' ? <Siparisler veri={veri} v={v} />
         : sekme === 'ilan' ? <Ilanlar veri={veri} v={v} />
         : sekme === 'stok' ? <StokGonderimi veri={veri} yenile={oku} />
-        : sekme === 'oneri' ? <Oneriler veri={veri} v={v} />
+        : sekme === 'yukle' ? <TrendyolYukle veri={veri} v={v} />
+        : sekme === 'oneri' ? <Oneriler veri={veri} v={v} yukle={(ids) => { yuklemeyeEkle(ids); setSekme('yukle'); }} />
         : <Varsayimlar v={v} />}
     </div>
   );
@@ -171,7 +175,7 @@ function Ilanlar({ veri, v }: { veri: TyVeri; v: TyVarsayim }) {
 }
 
 /* ───────── Öneriler ───────── */
-function Oneriler({ veri, v }: { veri: TyVeri; v: TyVarsayim }) {
+function Oneriler({ veri, v, yukle }: { veri: TyVeri; v: TyVarsayim; yukle: (ids: string[]) => void }) {
   const { db } = useStore();
   const [q, setQ] = useState(''); const [sadeceDuzenli, setSadeceDuzenli] = useState(true); const [barkodlu, setBarkodlu] = useState(true);
   const tum = useMemo(() => tyOneriler(db, veri.urunler, v), [db, veri.urunler, v.komisyon, v.kargo, v.hizmet, v.stopaj, v.hedef_marj]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -183,15 +187,17 @@ function Oneriler({ veri, v }: { veri: TyVeri; v: TyVarsayim }) {
         <label className="flex items-center gap-1.5 text-sm"><input type="checkbox" checked={sadeceDuzenli} onChange={(e) => setSadeceDuzenli(e.target.checked)} /> Dükkânda düzenli satılanlar (6 ayda 3+ fatura)</label>
         <label className="flex items-center gap-1.5 text-sm"><input type="checkbox" checked={barkodlu} onChange={(e) => setBarkodlu(e.target.checked)} /> Barkodu olanlar</label>
         <span className="text-xs text-slate-500">{liste.length} ürün</span>
+        <button className="btn-primary" disabled={!liste.length} onClick={() => yukle(liste.slice(0, 50).map((x) => x.u.id))} title="Listedeki ilk 50 ürünü Ürün yükle sekmesine ekler">İlk {Math.min(50, liste.length)} ürünü yüklemeye ekle</button>
         <button className="btn-ghost ml-auto" disabled={!liste.length} onClick={() => csvIndir(`trendyol-oneri-${gunu()}.csv`, [['Stok kodu', 'Barkod', 'Ürün', 'Marka', 'Kategori', 'Stok', 'Alış (KDV hariç)', 'Dükkân fiyatı', 'Trendyol hedef fiyatı', 'Birim kâr', '6 ay satış'], ...liste.map((x) => [x.u.kod, x.u.barkod, x.u.ad, x.u.marka, x.u.kategori, x.u.stok, x.alis.toFixed(2), x.u.satis_fiyati, x.hedef.toFixed(2), x.kar.toFixed(2), x.satis6])])}><Download size={16} /> CSV</button>
       </div>
       <div className="card">
         {liste.length === 0 ? <Bos metin="Bu filtrede öneri yok." /> : (
           <div className="max-h-[62vh] overflow-auto">
             <table className="tbl">
-              <thead><tr><th>Ürün</th><th className="text-right">Stok</th><th className="text-right">6 ay satış</th><th className="text-right">Dükkân fiyatı</th><th className="text-right">Trendyol hedef fiyatı</th><th className="text-right">Birim kâr</th></tr></thead>
+              <thead><tr><th className="w-8" /><th>Ürün</th><th className="text-right">Stok</th><th className="text-right">6 ay satış</th><th className="text-right">Dükkân fiyatı</th><th className="text-right">Trendyol hedef fiyatı</th><th className="text-right">Birim kâr</th></tr></thead>
               <tbody>{liste.slice(0, 400).map((x) => (
                 <tr key={x.u.id}>
+                  <td><button className="rounded p-1 text-marka-600 hover:bg-slate-100 dark:hover:bg-slate-800" title="Yüklemeye ekle" onClick={() => yukle([x.u.id])}>+</button></td>
                   <td><div className="font-medium"><UrunLink id={x.u.id}>{x.u.ad}</UrunLink></div><div className="text-xs text-slate-500">{[x.u.kod, x.u.marka, x.u.kategori].filter(Boolean).join(' · ')}{!x.barkodVar && <span className="ml-1 rozet bg-amber-50 text-amber-800">barkod yok</span>}</div></td>
                   <td className="text-right">{sayi(x.u.stok)}</td>
                   <td className="text-right">{sayi(x.satis6)} <span className="text-[11px] text-slate-400">({x.belge} fatura)</span></td>
