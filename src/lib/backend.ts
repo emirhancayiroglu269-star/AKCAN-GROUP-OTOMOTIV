@@ -53,7 +53,13 @@ export interface Backend {
   sorulanEkle(r: Omit<Sorulan, 'id' | 'zaman'>): Promise<void>;
   sorulanOku(sonGun: number): Promise<Sorulan[]>;
   sorulanSil(id: number): Promise<void>;
+  /** Ürün Ara'dan verilen fiyat teklifleri */
+  teklifKaydet(r: Omit<FiyatTeklifi, 'id' | 'zaman' | 'durum' | 'durum_zaman'>): Promise<number | null>;
+  teklifOku(sonGun: number): Promise<FiyatTeklifi[]>;
+  teklifGuncelle(id: number, p: Partial<FiyatTeklifi>): Promise<void>;
 }
+export interface TeklifSatiri { urun_id: ID; ad: string; marka?: string | null; adet: number; fiyat: number; ekonomik?: boolean }
+export interface FiyatTeklifi { id: number; zaman: string; musteri: string | null; arac: string | null; kalemler: TeklifSatiri[]; toplam: number; kullanici: string | null; durum: 'acik' | 'satildi' | 'kaybedildi'; durum_zaman: string | null; notlar?: string | null }
 export interface Sorulan { id: number; zaman: string; metin: string; urun_id: ID | null; kullanici: string | null; adet: number }
 export interface SayimSatir { depo_id: ID; urun_id: ID; sayilan: number; sistem: number | null; kullanici: string | null; zaman?: string }
 
@@ -241,6 +247,13 @@ function supabaseBackend(sb: SupabaseClient): Backend {
       return r;
     },
     async sorulanSil(id) { ok(await sb.from('sorulan').delete().eq('id', id)); },
+    async teklifKaydet(r) { const d = ok(await sb.from('fiyat_teklifleri').insert(r).select('id').single()) as { id: number }; return d?.id ?? null; },
+    async teklifOku(sonGun) {
+      const bas = new Date(Date.now() - sonGun * 864e5).toISOString(); const r: FiyatTeklifi[] = [];
+      for (let i = 0; i < 20000; i += 1000) { const d = ok(await sb.from('fiyat_teklifleri').select('*').gte('zaman', bas).order('id', { ascending: false }).range(i, i + 999)) as FiyatTeklifi[]; r.push(...d.map((x) => ({ ...x, toplam: Number(x.toplam) }))); if (d.length < 1000) break; }
+      return r;
+    },
+    async teklifGuncelle(id, p) { ok(await sb.from('fiyat_teklifleri').update(p).eq('id', id)); },
     async sayimKaydet(r) { ok(await sb.from('sayim').upsert({ ...r, zaman: new Date().toISOString() }, { onConflict: 'depo_id,urun_id' })); },
     async sayimSil(depoId, urunId) { let q = sb.from('sayim').delete().eq('depo_id', depoId); if (urunId) q = q.eq('urun_id', urunId); ok(await q); },
     async omDetay(id) { return omCagir(sb, { id }) as Promise<OmDetayYanit>; },
@@ -395,6 +408,7 @@ function demoSeed(): DB {
 
 let demoSayim: SayimSatir[] = [];
 let demoSorulan: Sorulan[] = [];
+let demoTeklif: FiyatTeklifi[] = [];
 function demoBackend(): Backend {
   let db: DB;
   try { db = JSON.parse(localStorage.getItem(LS) || 'null') || demoSeed(); } catch { db = demoSeed(); }
@@ -431,6 +445,9 @@ function demoBackend(): Backend {
     async omIste() { /* demo: yok */ },
     async sorulanEkle(r) { demoSorulan.push({ ...r, id: demoSorulan.length + 1, zaman: new Date().toISOString() }); },
     async sorulanOku() { return [...demoSorulan]; },
+    async teklifKaydet(r) { const id = demoTeklif.length + 1; demoTeklif.unshift({ ...r, id, zaman: new Date().toISOString(), durum: 'acik', durum_zaman: null }); return id; },
+    async teklifOku() { return [...demoTeklif]; },
+    async teklifGuncelle(id, p) { demoTeklif = demoTeklif.map((x) => (x.id === id ? { ...x, ...p } : x)); },
     async sorulanSil(id) { demoSorulan = demoSorulan.filter((x) => x.id !== id); },
     async sayimOku(depoId) { return demoSayim.filter((x) => x.depo_id === depoId); },
     async sayimKaydet(r) { demoSayim = [...demoSayim.filter((x) => !(x.depo_id === r.depo_id && x.urun_id === r.urun_id)), { ...r, zaman: new Date().toISOString() }]; },

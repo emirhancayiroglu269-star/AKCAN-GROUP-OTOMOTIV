@@ -268,16 +268,21 @@ export function mevsim(u: Pick<Urun, 'kategori' | 'ad'>, ayIndeks = new Date().g
 /** Ürün için son 6 ayın alımlarından en ucuz ve en son tedarikçi */
 export function urunTedarikcileri(db: DB) {
   const sinir = gunOnce(180);
-  const m = new Map<ID, Map<string, { ad: string; tutar: number; adet: number; son: string }>>();
+  const m = new Map<ID, Map<string, { ad: string; tutar: number; adet: number; son: string; sonZaman: string; sonFiyat: number }>>();
   for (const h of db.hareketler) {
     if (h.tur !== 'alis' || h.kaynak !== 'fatura' || !h.cari_ad || !(h.alis_fiyati > 0) || gunu(h.tarih) < sinir) continue;
-    const x = m.get(h.urun_id) ?? new Map(); const y = x.get(h.cari_ad) ?? { ad: h.cari_ad, tutar: 0, adet: 0, son: '' };
-    y.tutar += h.miktar * h.alis_fiyati; y.adet += h.miktar; if (gunu(h.tarih) > y.son) y.son = gunu(h.tarih); x.set(h.cari_ad, y); m.set(h.urun_id, x);
+    const x = m.get(h.urun_id) ?? new Map(); const y = x.get(h.cari_ad) ?? { ad: h.cari_ad, tutar: 0, adet: 0, son: '', sonZaman: '', sonFiyat: 0 };
+    y.tutar += h.miktar * h.alis_fiyati; y.adet += h.miktar; if (gunu(h.tarih) > y.son) y.son = gunu(h.tarih);
+    if (h.tarih >= y.sonZaman) { y.sonZaman = h.tarih; y.sonFiyat = h.alis_fiyati; }
+    x.set(h.cari_ad, y); m.set(h.urun_id, x);
   }
-  const sonuc = new Map<ID, { ucuz: { ad: string; fiyat: number }; son: { ad: string; tarih: string }; secenek: number }>();
+  const sonuc = new Map<ID, { ucuz: { ad: string; fiyat: number }; son: { ad: string; tarih: string; fiyat: number }; secenek: number;
+    /** son alış en ucuz tedarikçiden değil ve %5'ten fazla pahalı */ pahali: { oran: number } | null }>();
   for (const [id, x] of m) {
-    const l = [...x.values()]; const ucuz = l.reduce((a, b) => (b.tutar / b.adet < a.tutar / a.adet ? b : a)); const son = l.reduce((a, b) => (b.son > a.son ? b : a));
-    sonuc.set(id, { ucuz: { ad: ucuz.ad, fiyat: ucuz.tutar / ucuz.adet }, son: { ad: son.ad, tarih: son.son }, secenek: l.length });
+    const l = [...x.values()]; const ucuz = l.reduce((a, b) => (b.tutar / b.adet < a.tutar / a.adet ? b : a)); const son = l.reduce((a, b) => (b.sonZaman > a.sonZaman ? b : a));
+    const uf = ucuz.tutar / ucuz.adet;
+    sonuc.set(id, { ucuz: { ad: ucuz.ad, fiyat: uf }, son: { ad: son.ad, tarih: son.son, fiyat: son.sonFiyat }, secenek: l.length,
+      pahali: son.ad !== ucuz.ad && son.sonFiyat > uf * 1.05 ? { oran: (son.sonFiyat / uf - 1) * 100 } : null });
   }
   return sonuc;
 }

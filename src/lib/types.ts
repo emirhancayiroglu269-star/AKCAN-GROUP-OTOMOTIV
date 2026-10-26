@@ -56,6 +56,7 @@ export interface UrunKodu { id: ID; urun_id: ID; kod: string; kod_norm?: string;
 export interface Ayarlar {
   id: 1; firma_adi: string; adres?: string | null; telefon?: string | null; vergi?: string | null; fis_notu?: string | null;
   alis_kdv_haric?: boolean; hedef_gun?: number; haric_masraf?: string[]; hedef_marj?: number; hedef_ciro?: number; kategori_marj?: Record<string, number>; tahsilat_hedef?: number; stok_eritme_hedef?: number; kampanya_oran?: number; usta_liste?: { indirim: number; taban: number; kategoriler: string[]; sadeceStok: boolean } | null;
+  /** personel primi: kâr üzerinden oran (%) ve kişi başı aylık satış hedefi */ personel_prim?: { oran: number; hedefler: Record<string, number> } | null;
 }
 
 export interface DB {

@@ -12,6 +12,7 @@ import { depoSiparisleri, mevsim, urunTedarikcileri, type DepoSiparisSatir } fro
 import { UrunLink } from '../components/DetayKart';
 import { muadilMetin, stoktakiMuadiller } from '../lib/muadil';
 import { OmIsteDugme } from '../components/OmIsteDugme';
+import { PahaliRozet } from '../components/PahaliRozet';
 
 interface Satir {
   u: Urun; satilan: number; satilan90: number; hiz: number; yeter: number; oneri: number; yolda: number;
@@ -325,7 +326,7 @@ export default function Alinacaklar() {
           ))}
         </div>
       )}
-      {guven === 'kesin' && gorunum === 'depo' ? <DepoKesinListe depolar={depoKesin} q={q} setQ={setQ} acik={acik} firma={db.ayarlar.firma_adi} maliyetGor={maliyetGor} tedAd={(u) => ted.get(u.id)?.ucuz.ad ?? null} /> :
+      {guven === 'kesin' && gorunum === 'depo' ? <DepoKesinListe depolar={depoKesin} q={q} setQ={setQ} acik={acik} firma={db.ayarlar.firma_adi} maliyetGor={maliyetGor} tedAd={(u) => ted.get(u.id)?.ucuz.ad ?? null} ted={ted} /> :
       <div className="card">
         <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 p-3 dark:border-slate-800">
           <input className="inp max-w-xs" placeholder="Ürün, kod, marka…" value={q} onChange={(e) => setQ(e.target.value)} />
@@ -347,6 +348,7 @@ export default function Alinacaklar() {
                   <td><div className="font-medium"><UrunLink id={x.u.id}>{x.u.ad}</UrunLink></div><div className="text-xs text-slate-500">{[x.u.kod, x.u.marka].filter(Boolean).join(' · ')}
                     {x.mevsim && <span className={`ml-1.5 rozet ${x.mevsim.katsayi > 1 ? 'bg-sky-50 text-sky-700' : 'bg-orange-50 text-orange-700'}`} title={`${x.mevsim.ad}: gelecek ay talep bu aya göre ×${x.mevsim.katsayi}`}>{x.mevsim.katsayi > 1 ? <Snowflake size={11} className="mr-0.5" /> : <Sun size={11} className="mr-0.5" />}{x.mevsim.ad} {x.mevsim.katsayi > 1 ? '↑' : '↓'}%{Math.round(Math.abs(x.mevsim.katsayi - 1) * 100)}</span>}
                     {ted.get(x.u.id) && <span className="ml-1.5 text-slate-400">· {ted.get(x.u.id)!.ucuz.ad}{maliyetGor ? ` ${para(ted.get(x.u.id)!.ucuz.fiyat)}` : ''}{ted.get(x.u.id)!.secenek > 1 ? ` (${ted.get(x.u.id)!.secenek} tedarikçi)` : ''}</span>}
+                    <PahaliRozet t={ted.get(x.u.id)} maliyet={maliyetGor} />
                     {x.u.stok <= 0 && (() => { const m = stoktakiMuadiller(db, x.u); return m.length ? <span className="ml-1.5 rozet bg-emerald-50 text-emerald-700" title="BizimHesap etiketindeki OEM kodlarına göre">muadili stokta: {muadilMetin(m.slice(0, 2))}</span> : null; })()}
                     {x.kesin && x.duzen && <span className="ml-1.5 rozet bg-emerald-600 text-white" title={`Son 6 ayın ${x.duzen.ay}'${x.duzen.ay === 1 ? 'in' : 'sı'}nda, ${x.duzen.belge} ayrı faturada, ${x.duzen.musteri} farklı müşteriye satıldı`}>KESİN · {x.duzen.ay}/6 ay · {x.duzen.musteri} müşteri</span>}
                     {!x.kesin && x.duzen && guven !== 'kesin' && <span className="ml-1.5 text-[11px] text-slate-400" title="Son 6 ayda">{x.duzen.belge} fatura · {x.duzen.musteri} müşteri · {x.duzen.ay}/6 ay</span>}
@@ -374,9 +376,9 @@ export default function Alinacaklar() {
 const kisaDepo = (s: string) => s.replace(/ DEPO(SU)?$/i, '');
 
 /** Kesin alınacaklar, her depo için ayrı: o deponun 60 günlük satışına göre ihtiyaç; diğer depodaki fazlası transfer olarak ayrılır */
-function DepoKesinListe({ depolar, q, setQ, acik, firma, maliyetGor, tedAd }: {
+function DepoKesinListe({ depolar, q, setQ, acik, firma, maliyetGor, tedAd, ted }: {
   depolar: { anahtar: string; ad: string; satirlar: DepoSiparisSatir[] }[]; q: string; setQ: (s: string) => void; acik: Map<string, AcikSiparis>;
-  firma: string; maliyetGor: boolean; tedAd: (u: Urun) => string | null;
+  firma: string; maliyetGor: boolean; tedAd: (u: Urun) => string | null; ted: ReturnType<typeof urunTedarikcileri>;
 }) {
   const filtre = (l: DepoSiparisSatir[]) => l.filter((x) => ara(q, x.u.ad, x.u.kod, x.u.marka));
   const metin = (ad: string, l: DepoSiparisSatir[]) => {
@@ -420,7 +422,7 @@ function DepoKesinListe({ depolar, q, setQ, acik, firma, maliyetGor, tedAd }: {
                         <td><div className="font-medium"><UrunLink id={x.u.id}>{x.u.ad}</UrunLink></div>
                           <div className="text-xs text-slate-500">{[x.u.kod, x.u.marka, t].filter(Boolean).join(' · ')}
                             {x.stok <= 0 && <span className="ml-1.5 rozet bg-red-50 text-red-600">bu depoda bitti</span>}
-                            {yolda > 0 && <span className="ml-1.5 rozet bg-sky-100 text-sky-800"><Truck size={11} className="mr-0.5" />yolda {sayi(yolda)}</span>}</div></td>
+                            {yolda > 0 && <span className="ml-1.5 rozet bg-sky-100 text-sky-800"><Truck size={11} className="mr-0.5" />yolda {sayi(yolda)}</span>}<PahaliRozet t={ted.get(x.u.id)} maliyet={maliyetGor} /></div></td>
                         <td className={`text-right font-medium ${x.stok <= 0 ? 'text-red-600' : 'text-amber-700'}`}>{sayi(x.stok)}</td>
                         <td className="text-right text-slate-500">{sayi(x.satilan)}</td>
                         <td className="text-right text-base font-bold text-emerald-700">{x.siparis ? sayi(x.siparis) : <span className="text-sm font-normal text-slate-300">—</span>}</td>

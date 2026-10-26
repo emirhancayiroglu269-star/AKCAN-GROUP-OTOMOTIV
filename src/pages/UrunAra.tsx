@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronDown, ChevronUp, Copy, ExternalLink, FileText, HelpCircle, Loader2, MessageCircle, Plus, Printer, Search, Trash2, X } from 'lucide-react';
+import { ChevronDown, ChevronUp, Copy, ExternalLink, FileText, HelpCircle, Loader2, MessageCircle, Plus, Printer, Save, Search, Trash2, X } from 'lucide-react';
 import { useStore, toast } from '../lib/store';
 import { birlikteSatilanlar } from '../lib/analiz5';
 import { yazdir } from '../components/Yazdir';
@@ -139,7 +139,7 @@ function SonucKart({ x, maliyet, depolar, depoStok, teklifEkle, soruldu, teklift
 }
 
 /** Otomarmara'da canlı arama: bizde olmayan kodlar için; sonuçta bizdeki karşılığı (stok kodu / OEM / eşdeğer) işaretlenir */
-function OtomarmaraArama({ q, oto, maliyet }: { q: string; oto: boolean; maliyet: boolean }) {
+export function OtomarmaraArama({ q, oto, maliyet }: { q: string; oto: boolean; maliyet: boolean }) {
   const { db } = useStore();
   const [aranan, setAranan] = useState<string | null>(null);
   const [y, setY] = useState<OmAramaYanit | null>(null); const [hata, setHata] = useState<string | null>(null); const [bekle, setBekle] = useState(false);
@@ -211,8 +211,20 @@ function OmDetay({ d, db }: { d: OmDetayYanit; db: ReturnType<typeof useStore>['
 
 /** Müşteriye fiyat teklifi: seçilen parçalar, adet ve fiyat (KDV dahil); WhatsApp / yazdır / kopyala */
 function TeklifPanel({ teklif, setTeklif, firma }: { teklif: TeklifKalem[]; setTeklif: (f: (t: TeklifKalem[]) => TeklifKalem[]) => void; firma: string }) {
+  const { personel, eposta } = useStore();
   const [musteri, setMusteri] = useState(''); const [arac, setArac] = useState(''); const [kucuk, setKucuk] = useState(false);
   const toplam = teklif.reduce((t, k) => t + k.adet * k.fiyat, 0);
+  // aynı içerik iki kez kaydedilmesin (WhatsApp + yazdır gibi)
+  const [kayitImza, setKayitImza] = useState('');
+  const imza = JSON.stringify([musteri, arac, teklif.map((k) => [k.u.id, k.adet, k.fiyat, !!k.ekonomik])]);
+  const kaydet = async (sessiz = false) => {
+    if (imza === kayitImza || !teklif.length) { if (!sessiz) toast('Teklif zaten kaydedildi'); return; }
+    try {
+      await backend.teklifKaydet({ musteri: musteri.trim() || null, arac: arac.trim() || null, toplam, kullanici: personel || eposta || null,
+        kalemler: teklif.map((k) => ({ urun_id: k.u.id, ad: k.u.ad, marka: k.u.marka ?? null, adet: k.adet, fiyat: k.fiyat, ekonomik: !!k.ekonomik })) });
+      setKayitImza(imza); toast(sessiz ? 'Teklif kaydedildi (Teklifler sekmesinden takip edebilirsiniz)' : 'Teklif kaydedildi');
+    } catch (e) { toast(`Teklif kaydedilemedi: ${(e as Error).message}`, 'hata'); }
+  };
   const guncelle = (id: string, p: Partial<TeklifKalem>) => setTeklif((t) => t.map((k) => (k.u.id === id ? { ...k, ...p } : k)));
   const satir = (k: TeklifKalem) => `• ${k.u.ad}${k.u.marka ? ` (${k.u.marka})` : ''}${k.ekonomik ? ' — ekonomik seçenek' : ''}\n   ${k.adet > 1 ? `${sayi(k.adet)} × ${para(k.fiyat)} = ${para(k.adet * k.fiyat)}` : para(k.fiyat)}${k.u.stok > 0 ? ' · stokta' : ' · sipariş ile'}`;
   const metin = () => [`*${firma}* — Fiyat teklifi (${tarih(new Date().toISOString())})`, ...(musteri ? [`Sayın ${musteri}`] : []), ...(arac ? [`Araç: ${arac}`] : []), '', ...teklif.map(satir), '', `*Toplam: ${para(toplam)}* (KDV dahil)`, 'Fiyatlar stok durumuna göre değişebilir.'].join('\n');
@@ -245,8 +257,9 @@ function TeklifPanel({ teklif, setTeklif, firma }: { teklif: TeklifKalem[]; setT
           </div>))}</div>
         <div className="mt-3 flex flex-wrap justify-end gap-2">
           <button className="btn-ghost px-2 py-1 text-sm" onClick={() => navigator.clipboard?.writeText(metin()).then(() => toast('Teklif kopyalandı'), () => toast('Kopyalanamadı', 'hata'))}><Copy size={15} /> Kopyala</button>
-          <button className="btn-ghost px-2 py-1 text-sm" onClick={bas}><Printer size={15} /> Yazdır / PDF</button>
-          <a className="btn-primary px-3 py-1 text-sm" target="_blank" rel="noreferrer" href={`https://wa.me/?text=${encodeURIComponent(metin())}`}><MessageCircle size={15} /> WhatsApp'tan gönder</a>
+          <button className="btn-ghost px-2 py-1 text-sm" onClick={() => kaydet()} disabled={imza === kayitImza}><Save size={15} /> {imza === kayitImza ? 'Kaydedildi' : 'Kaydet'}</button>
+          <button className="btn-ghost px-2 py-1 text-sm" onClick={() => { kaydet(true); bas(); }}><Printer size={15} /> Yazdır / PDF</button>
+          <a className="btn-primary px-3 py-1 text-sm" target="_blank" rel="noreferrer" onClick={() => kaydet(true)} href={`https://wa.me/?text=${encodeURIComponent(metin())}`}><MessageCircle size={15} /> WhatsApp'tan gönder</a>
         </div>
       </div>}
     </div>

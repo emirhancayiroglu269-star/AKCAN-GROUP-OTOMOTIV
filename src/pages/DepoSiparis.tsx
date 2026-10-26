@@ -8,6 +8,7 @@ import { Bos, Kpi, SayfaBaslik } from '../components/ui';
 import { yazdir } from '../components/Yazdir';
 import { muadilBulucu } from '../lib/muadil';
 import { OmIsteDugme } from '../components/OmIsteDugme';
+import { PahaliRozet } from '../components/PahaliRozet';
 
 const kisa = (s: string) => s.replace(/ DEPO(SU)?$/i, '');
 
@@ -132,7 +133,7 @@ export default function DepoSiparis() {
                         <span className={`ml-1.5 rozet ${x.neden === 'bitti' ? 'bg-red-50 text-red-600' : 'bg-amber-50 text-amber-700'}`}>{x.neden === 'bitti' ? 'bu depoda bitti' : 'azalıyor'}</span>
                         {x.mevsim && <span className="ml-1 rozet bg-sky-50 text-sky-700">{x.mevsim.ad} {x.mevsim.katsayi > 1 ? '↑' : '↓'}</span>}
                         {muadil.get(x.u.id) && <span className="ml-1 rozet bg-emerald-50 text-emerald-700" title="Etiketteki OEM kodlarına göre aynı parça">muadili bu depoda: {muadil.get(x.u.id)!.map((v) => `${v.kod} (${sayi(v.adet)})`).join(', ')}</span>}
-                        {t && <span className="ml-1.5 text-slate-400">· {t.ucuz.ad}{maliyetGor ? ` ${para(t.ucuz.fiyat)}` : ''}</span>}</div></td>
+                        {t && <span className="ml-1.5 text-slate-400">· {t.ucuz.ad}{maliyetGor ? ` ${para(t.ucuz.fiyat)}` : ''}</span>}<PahaliRozet t={t} maliyet={maliyetGor} /></div></td>
                     <td className={`text-right font-semibold ${x.stok <= 0 ? 'text-red-600' : 'text-amber-700'}`}>{sayi(x.stok)}</td>
                     <td className="text-right text-xs">{x.digerStok.map((o) => <div key={o.ad} className={o.fazla > 0 ? 'font-semibold text-sky-700' : 'text-slate-500'}>{kisa(o.ad)}: {sayi(o.stok)}</div>)}</td>
                     <td className="text-right text-slate-500">{sayi(x.satilan)}</td>

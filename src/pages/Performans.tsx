@@ -1,4 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { backend } from '../lib/backend';
+import { gunu, parse } from '../lib/format';
 import { Info } from 'lucide-react';
 import { useStore } from '../lib/store';
 import { musteriKarlilik, personelPerformans, type Performans } from '../lib/analiz5';
@@ -40,7 +42,7 @@ export function PersonelPerformans() {
                     <td className="text-right font-semibold">{para(x.ciro)}</td>
                     <td className="text-right text-slate-500">{yuzde(x.ciro, top.ciro)}</td>
                     <td className="text-right text-emerald-700">{para(x.kar)}</td>
-                    <td className={`text-right ${x.marj < genelMarj - 5 ? 'font-semibold text-red-600' : x.marj > genelMarj + 3 ? 'text-emerald-700' : ''}`}>%{x.marj.toFixed(1)}</td>
+                    <td className={`text-right ${x.ciroNet <= 0 ? 'text-slate-300' : x.marj < genelMarj - 5 ? 'font-semibold text-red-600' : x.marj > genelMarj + 3 ? 'text-emerald-700' : ''}`}>{x.ciroNet > 0 ? `%${x.marj.toFixed(1)}` : '—'}</td>
                     <td className="text-right">{para(x.indirim)}</td>
                     <td className={`text-right ${indOran > genelInd * 1.5 && indOran > 3 ? 'font-semibold text-red-600' : 'text-slate-500'}`}>%{indOran.toFixed(1)}</td>
                     <td className="text-right">{sayi(x.belge)}</td>
@@ -50,6 +52,8 @@ export function PersonelPerformans() {
             </table>
           </div>)}
       </div>
+      <PrimTablosu />
+      <AylikTrend />
       <p className="mt-3 flex items-start gap-1.5 text-xs text-slate-500"><Info size={14} className="mt-0.5 shrink-0" />Kâr: KDV hariç satış − alış maliyeti (alış fiyatı olmayan satırlar kâra katılmaz). İndirim: ürün kartındaki satış fiyatı ile faturadaki fiyat arasındaki fark. Ortalamanın belirgin altındaki marj ve ortalamanın 1,5 katından fazla indirim kırmızı görünür. Araç alım (geçiş) faturaları hariç.</p>
     </div>
   );
@@ -113,6 +117,86 @@ export function UstaKarlilik() {
           </div>)}
       </div>
       <p className="mt-3 flex items-start gap-1.5 text-xs text-slate-500"><Info size={14} className="mt-0.5 shrink-0" />Perakende faturalar tek satırda toplanır ve bu listeye girmez. "Çok alıyor, az kâr": dönemde en çok alan 20 müşteri içinde marjı genel marjın %60'ının altında kalanlar — özel fiyatı gözden geçirmeye değer. İndirim kart satış fiyatına göre hesaplanır.</p>
+    </div>
+  );
+}
+
+const ayDonem = (geri: number) => { const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - geri); const bas = gunu(d); const s = new Date(d); s.setMonth(s.getMonth() + 1); s.setDate(0); return { bas, bit: geri === 0 ? gunu() : gunu(s) }; };
+const AY = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
+const ayAdi = (geri: number) => { const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - geri); return `${AY[d.getMonth()]} ${d.getFullYear()}`; };
+
+/** Aylık hedef ve prim: prim = o ayın kârı × oran; hedef tutturma çubuğu */
+function PrimTablosu() {
+  const { db, calistir } = useStore();
+  const [geri, setGeri] = useState(0);
+  const kayitli = db.ayarlar.personel_prim ?? { oran: 0, hedefler: {} };
+  const [oran, setOran] = useState(String(kayitli.oran || ''));
+  const [hedef, setHedef] = useState<Record<string, string>>(() => Object.fromEntries(Object.entries(kayitli.hedefler ?? {}).map(([k, v]) => [k, String(v)])));
+  useEffect(() => { setOran(String(kayitli.oran || '')); setHedef(Object.fromEntries(Object.entries(kayitli.hedefler ?? {}).map(([k, v]) => [k, String(v)]))); }, [db.ayarlar.personel_prim]); // eslint-disable-line react-hooks/exhaustive-deps
+  const d = ayDonem(geri);
+  const l = useMemo(() => personelPerformans(db, d).filter((x) => x.anahtar !== '—'), [db, d.bas, d.bit]); // eslint-disable-line react-hooks/exhaustive-deps
+  const o = parse(oran) || 0;
+  const degisti = o !== (kayitli.oran || 0) || l.some((x) => (parse(hedef[x.ad] ?? '') || 0) !== (kayitli.hedefler?.[x.ad] ?? 0));
+  const kaydet = () => calistir(() => backend.ayarKaydet({ personel_prim: { oran: o, hedefler: Object.fromEntries(Object.entries({ ...kayitli.hedefler, ...Object.fromEntries(Object.entries(hedef).map(([k, v]) => [k, parse(v) || 0])) }).filter(([, v]) => v > 0)) } }), 'Prim ayarları kaydedildi');
+  // ay içinde geçen gün oranı: bu ay için hedefe gidişat tahmini
+  const bugun = new Date(); const ayGun = new Date(bugun.getFullYear(), bugun.getMonth() + 1, 0).getDate(); const gecen = geri === 0 ? bugun.getDate() / ayGun : 1;
+  const toplamPrim = l.reduce((t, x) => t + Math.max(0, x.kar) * o / 100, 0);
+  return (
+    <div className="card mt-4">
+      <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 p-3 dark:border-slate-800">
+        <b>Aylık hedef & prim</b>
+        <select className="inp w-40 py-1" value={geri} onChange={(e) => setGeri(Number(e.target.value))}>{[0, 1, 2, 3, 4, 5].map((g) => <option key={g} value={g}>{ayAdi(g)}</option>)}</select>
+        <label className="ml-auto flex items-center gap-1.5 text-sm">Prim oranı: kârın %<input className="inp w-16 py-1 text-right" inputMode="decimal" value={oran} onChange={(e) => setOran(e.target.value)} placeholder="0" /></label>
+        <button className="btn-primary py-1" disabled={!degisti} onClick={kaydet}>Kaydet</button>
+      </div>
+      {l.length === 0 ? <Bos metin="Bu ayda satış yok." /> : (
+        <div className="overflow-auto">
+          <table className="tbl">
+            <thead><tr><th>Personel</th><th className="text-right">Satış</th><th className="w-32 text-right">Aylık hedef</th><th className="w-48">Hedefe ilerleme</th><th className="text-right">Kâr</th><th className="text-right">Prim</th></tr></thead>
+            <tbody>{l.map((x) => {
+              const h = parse(hedef[x.ad] ?? '') || 0; const yuzde = h > 0 ? (x.ciro / h) * 100 : 0; const tahmin = h > 0 && gecen < 1 ? (x.ciro / gecen / h) * 100 : null;
+              return (
+                <tr key={x.anahtar}>
+                  <td className="font-medium">{x.ad}</td>
+                  <td className="text-right font-semibold">{para(x.ciro)}</td>
+                  <td><input className="inp py-1 text-right" inputMode="decimal" placeholder="—" value={hedef[x.ad] ?? ''} onChange={(e) => setHedef({ ...hedef, [x.ad]: e.target.value })} /></td>
+                  <td>{h > 0 ? <div>
+                    <div className="h-2.5 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800"><div className={`h-full rounded-full ${yuzde >= 100 ? 'bg-emerald-500' : yuzde >= 70 ? 'bg-amber-400' : 'bg-red-400'}`} style={{ width: `${Math.min(100, yuzde)}%` }} /></div>
+                    <div className="mt-0.5 text-[11px] text-slate-500">%{yuzde.toFixed(0)}{yuzde >= 100 ? ' ✓ hedef tuttu' : ''}{tahmin !== null && yuzde < 100 ? ` · bu hızla ay sonu %${tahmin.toFixed(0)}` : ''}</div>
+                  </div> : <span className="text-xs text-slate-400">hedef girin</span>}</td>
+                  <td className="text-right text-emerald-700">{para(x.kar)}</td>
+                  <td className="text-right text-base font-bold">{o > 0 ? para(Math.max(0, x.kar) * o / 100) : '—'}</td>
+                </tr>);
+            })}</tbody>
+            {o > 0 && <tfoot><tr><td colSpan={5} className="text-right text-sm text-slate-500">Toplam prim</td><td className="text-right text-base font-bold">{para(toplamPrim)}</td></tr></tfoot>}
+          </table>
+        </div>)}
+      <div className="border-t border-slate-100 p-3 text-xs text-slate-500 dark:border-slate-800">Prim = o ayın kârı (KDV hariç satış − alış maliyeti) × oran. Hedef satış tutarı (KDV dahil) üzerinden; bu ay için ayın kaçta kaçının geçtiğine göre ay sonu tahmini gösterilir. Hedef ve oran Ayarlar'a kaydedilir.</div>
+    </div>
+  );
+}
+
+/** Son 6 ay, kişi başı satış ve kâr */
+function AylikTrend() {
+  const { db } = useStore();
+  const aylar = useMemo(() => [5, 4, 3, 2, 1, 0].map((g) => ({ ad: ayAdi(g), l: personelPerformans(db, ayDonem(g)) })), [db]);
+  const kisiler = useMemo(() => { const m = new Map<string, number>(); for (const a of aylar) for (const x of a.l) m.set(x.ad, (m.get(x.ad) ?? 0) + x.ciro); return [...m.entries()].sort((a, b) => b[1] - a[1]).map(([k]) => k); }, [aylar]);
+  const [olcu, setOlcu] = useState<'ciro' | 'kar'>('ciro');
+  const enBuyuk = Math.max(1, ...aylar.flatMap((a) => a.l.map((x) => (olcu === 'ciro' ? x.ciro : x.kar))));
+  return (
+    <div className="card mt-4">
+      <div className="flex items-center gap-2 border-b border-slate-200 p-3 dark:border-slate-800"><b>Son 6 ay</b>
+        <div className="ml-auto flex rounded-full bg-slate-100 p-0.5 text-xs dark:bg-slate-800">{([['ciro', 'Satış'], ['kar', 'Kâr']] as const).map(([k, ad]) => <button key={k} onClick={() => setOlcu(k)} className={`rounded-full px-3 py-1 ${olcu === k ? 'bg-white font-semibold shadow-sm dark:bg-slate-900' : 'text-slate-500'}`}>{ad}</button>)}</div>
+      </div>
+      <div className="overflow-auto">
+        <table className="tbl">
+          <thead><tr><th>Personel</th>{aylar.map((a) => <th key={a.ad} className="text-right">{a.ad.split(' ')[0]}</th>)}</tr></thead>
+          <tbody>{kisiler.map((k) => (
+            <tr key={k}><td className="font-medium">{k}</td>{aylar.map((a) => { const x = a.l.find((y) => y.ad === k); const v = x ? (olcu === 'ciro' ? x.ciro : x.kar) : 0; return (
+              <td key={a.ad} className="text-right"><div className="text-sm">{v ? para(v) : <span className="text-slate-300">—</span>}</div>
+                {v > 0 && <div className="ml-auto mt-0.5 h-1 rounded-full bg-marka-500/70" style={{ width: `${Math.max(4, (v / enBuyuk) * 100)}%` }} />}</td>); })}</tr>))}</tbody>
+        </table>
+      </div>
     </div>
   );
 }

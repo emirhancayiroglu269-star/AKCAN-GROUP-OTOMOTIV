@@ -12,7 +12,6 @@ import Panel from './pages/Panel';
 import Hareketler from './pages/Hareketler';
 import UrunAnalizi from './pages/UrunAnalizi';
 import Cariler from './pages/Cariler';
-import UrunAra from './pages/UrunAra';
 import AyarlarSayfa from './pages/Ayarlar';
 import SatisAnalizi from './pages/SatisAnalizi';
 import MusteriAnalizi from './pages/MusteriAnalizi';
@@ -22,7 +21,7 @@ import Tahsilat from './pages/Tahsilat';
 import UstaFiyat from './pages/UstaFiyat';
 import KayipKacak from './pages/KayipKacak';
 import BirlikteSatilan from './pages/BirlikteSatilan';
-import { DepolarSayfa, EritmeSayfa, FiyatSayfa, KarZararSayfa, PerformansSayfa, TedarikciSayfa, UrunlerSayfa } from './pages/Birlesik';
+import { DepolarSayfa, EritmeSayfa, FiyatSayfa, KarZararSayfa, AramaSayfa, PerformansSayfa, TedarikciSayfa, UrunlerSayfa } from './pages/Birlesik';
 import { DetayKartlari } from './components/DetayKart';
 import { sayfaIzni } from './lib/yetki';
 import { onerileriCikar } from './lib/oneriler';
@@ -70,7 +69,7 @@ const MENU: { id: AnaSayfa; ad: string; ikon: typeof LayoutDashboard; grup?: str
 ];
 type Props = { git: (s: Sayfa) => void; alt?: string };
 const SAYFALAR: Record<AnaSayfa, (p: Props) => React.ReactNode> = {
-  panel: Panel, arama: UrunAra, oneriler: Oneriler, hareketler: Hareketler, satisanaliz: SatisAnalizi, musteri: MusteriAnalizi, sepet: BirlikteSatilan, kayip: KayipKacak, karzarar: KarZararSayfa, tahsilat: Tahsilat, nakit: NakitAkisi, cariler: Cariler,
+  panel: Panel, arama: AramaSayfa, oneriler: Oneriler, hareketler: Hareketler, satisanaliz: SatisAnalizi, musteri: MusteriAnalizi, sepet: BirlikteSatilan, kayip: KayipKacak, karzarar: KarZararSayfa, tahsilat: Tahsilat, nakit: NakitAkisi, cariler: Cariler,
   analiz: UrunAnalizi, fiyat: FiyatSayfa, usta: UstaFiyat, eritme: EritmeSayfa, depolar: DepolarSayfa, tedarikci: TedarikciSayfa, urunler: UrunlerSayfa, performans: PerformansSayfa, ayarlar: AyarlarSayfa,
 };
 
