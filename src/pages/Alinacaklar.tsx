@@ -2,7 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Check, Download, Info, MessageCircle, PackageCheck, Printer, Snowflake, Sun, Truck, X } from 'lucide-react';
 import { useStore } from '../lib/store';
 import { backend } from '../lib/backend';
-import { alinacakHesap, birimKar, stokluMu, takipGunu, urunOzetleri, type Donem, kritikAltinda } from '../lib/analiz';
+import { alinacakHesap, birimKar, gecerliHareketler, stokluMu, takipGunu, urunOzetleri, type Donem, kritikAltinda } from '../lib/analiz';
+import { PERAKENDE_RE } from '../lib/analiz2';
 import { ara, gunu, para, parse, sayi, tarih } from '../lib/format';
 import type { StokAksiyon, Urun } from '../lib/types';
 import { Bos, Kpi, SayfaBaslik } from '../components/ui';
@@ -16,7 +17,10 @@ interface Satir {
   u: Urun; satilan: number; satilan90: number; hiz: number; yeter: number; oneri: number; yolda: number;
   neden: 'kritik' | 'bitti' | 'azaliyor'; olu: boolean; puan: number; birimKar: number;
   mevsim: { ad: string; katsayi: number } | null;
+  /** düzenli satılıyor: kesin rafta olmalı */ kesin: boolean; duzen: Duzen | null;
 }
+/** son 6 ayın satış düzeni: kaç ayda, kaç ayrı faturada, kaç ayrı müşteriye satıldı */
+interface Duzen { ay: number; ay3: number; belge: number; musteri: number; son60: boolean }
 interface AcikSiparis { kayitlar: StokAksiyon[]; adet: number; gelen: number; kalan: number; ilk: string }
 
 /** Tarayıcıda kişiye özel küçük ayarlar (bütçe, kritik gün); okunamazsa varsayılan */
@@ -38,6 +42,7 @@ export default function Alinacaklar() {
   const [butce, setButce] = useState(() => yerel.al('siparis_butce', ''));
   const [kritikGun, setKritikGun] = useState(() => Number(yerel.al('kritik_gun', '10')) || 10);
   const [panel, setPanel] = useState<'' | 'yolda' | 'kritik'>('');
+  const [guven, setGuven] = useState<'kesin' | 'kontrol' | 'hepsi'>(() => (yerel.al('alinacak_guven', 'kesin') as 'kesin' | 'kontrol' | 'hepsi'));
   const ted = useMemo(() => urunTedarikcileri(db), [db]);
   const hedefGun = db.ayarlar.hedef_gun || 30;
   const d: Donem = { bas: gunu(new Date(Date.now() - (gunSec - 1) * 864e5)), bit: gunu() };
@@ -78,6 +83,26 @@ export default function Alinacaklar() {
     Promise.all(kapat.map((k) => backend.update<StokAksiyon>('stok_aksiyon', k.id, { durum: 'yapildi', guncelleme: new Date().toISOString() }))).catch(() => undefined);
   }, [acik, duzenle]);
 
+  // ---------- satış düzeni (son 180 gün): "kesin alınacak" kararı için ----------
+  const duzenler = useMemo(() => {
+    const simdi = Date.now(); const d180: Donem = { bas: gunu(new Date(simdi - 179 * 864e5)), bit: gunu() };
+    const m = new Map<string, { aylar: Set<number>; belge: Set<string>; musteri: Set<string>; son: number }>();
+    for (const h of gecerliHareketler(db, d180)) {
+      if (h.tur !== 'satis' || h.miktar <= 0) continue;
+      let x = m.get(h.urun_id); if (!x) { x = { aylar: new Set(), belge: new Set(), musteri: new Set(), son: 0 }; m.set(h.urun_id, x); }
+      const t = new Date(h.tarih).getTime(); const belge = h.belge_guid ?? h.tarih.slice(0, 10);
+      x.aylar.add(Math.min(5, Math.floor((simdi - t) / (30 * 864e5)))); x.belge.add(belge);
+      // perakende satışlarda her fatura ayrı müşteri sayılır
+      const cari = h.cari_guid || h.cari_ad || ''; x.musteri.add(!cari || PERAKENDE_RE.test(h.cari_ad ?? '') ? `b:${belge}` : `c:${cari}`);
+      if (t > x.son) x.son = t;
+    }
+    const r = new Map<string, Duzen>();
+    for (const [id, x] of m) r.set(id, { ay: x.aylar.size, ay3: [0, 1, 2].filter((i) => x.aylar.has(i)).length, belge: x.belge.size, musteri: x.musteri.size, son60: simdi - x.son <= 60 * 864e5 });
+    return r;
+  }, [db]);
+  // kesin: son 60 günde satılmış, en az 3 ayrı faturada ve 2 ayrı müşteriye, son 6 ayın en az 3'ünde (ya da son 3 ayın 2'sinde) satılmış
+  const kesinMi = (z: Duzen | undefined) => !!z && z.son60 && z.belge >= 3 && z.musteri >= 2 && (z.ay >= 3 || z.ay3 >= 2);
+
   const satirlar = useMemo<Satir[]>(() => {
     const oz = urunOzetleri(db, d), oz90 = urunOzetleri(db, d90);
     return db.urunler.filter((u) => u.aktif && stokluMu(u)).flatMap((u) => {
@@ -98,17 +123,22 @@ export default function Alinacaklar() {
       const aciliyet = u.stok <= 0 ? 3 : h.yeterGun < 7 ? 2 : h.yeterGun < 15 ? 1.5 : 1;
       const puan = olu ? 0 : (h.hiz * 30) * Math.max(birimKarNet, 1) * aciliyet;
       return [{ u, satilan, satilan90, hiz: h.hiz, yeter: h.yeterGun, oneri: Math.max(0, ham - yolda), yolda, olu, puan, birimKar: birimKarNet,
-        neden: kritik ? 'kritik' as const : bitti ? 'bitti' as const : 'azaliyor' as const, mevsim: ms && ms.katsayi !== 1 ? ms : null }];
+        neden: kritik ? 'kritik' as const : bitti ? 'bitti' as const : 'azaliyor' as const, mevsim: ms && ms.katsayi !== 1 ? ms : null,
+        kesin: !olu && kesinMi(duzenler.get(u.id)), duzen: duzenler.get(u.id) ?? null }];
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [db, gunSec, gun, hedefGun, mevsimAcik, acik]);
+  }, [db, gunSec, gun, hedefGun, mevsimAcik, acik, duzenler]);
 
+  const muadilStokHesap = useMemo(() => { const m = new Map<string, number>(); for (const x of satirlar) if (x.u.stok <= 0) { const t = stoktakiMuadiller(db, x.u).reduce((a, v) => a + v.stok, 0); if (t > 0) m.set(x.u.id, t); } return m; }, [db, satirlar]);
+  const kesinSay = satirlar.filter((x) => x.kesin && x.oneri > 0 && !((muadilStokHesap.get(x.u.id) ?? 0) >= x.oneri)).length;
   const markalar = useMemo(() => Array.from(new Set(satirlar.map((x) => x.u.marka).filter(Boolean))).sort() as string[], [satirlar]);
   const kategoriler = useMemo(() => Array.from(new Set(satirlar.map((x) => x.u.kategori).filter(Boolean))).sort() as string[], [satirlar]);
-  const liste = satirlar.filter((x) => (!marka || x.u.marka === marka) && (!kat || x.u.kategori === kat) && ara(q, x.u.ad, x.u.kod, x.u.marka))
+  const muadilYeter = (x: Satir) => (muadilStokHesap.get(x.u.id) ?? 0) >= x.oneri;
+  const guvenUygun = (x: Satir) => guven === 'hepsi' ? true : guven === 'kesin' ? x.kesin && x.oneri > 0 && !muadilYeter(x) : !(x.kesin && x.oneri > 0 && !muadilYeter(x));
+  const liste = satirlar.filter((x) => guvenUygun(x) && (!marka || x.u.marka === marka) && (!kat || x.u.kategori === kat) && ara(q, x.u.ad, x.u.kod, x.u.marka))
     .sort((a, b) => (sirala === 'oncelik' ? b.puan - a.puan : 0) || (a.yeter - b.yeter) || a.u.ad.localeCompare(b.u.ad, 'tr'));
   // stokta muadili (etiketteki OEM kodlarına göre) yeterince olan bitmiş ürünün sipariş varsayılanı 0
-  const muadilStok = useMemo(() => { const m = new Map<string, number>(); for (const x of satirlar) if (x.u.stok <= 0) { const t = stoktakiMuadiller(db, x.u).reduce((a, v) => a + v.stok, 0); if (t > 0) m.set(x.u.id, t); } return m; }, [db, satirlar]);
+  const muadilStok = muadilStokHesap;
   const varsayilan = (x: Satir) => (x.olu || (muadilStok.get(x.u.id) ?? 0) >= x.oneri ? 0 : x.oneri);
   const adet = (x: Satir) => (miktar[x.u.id] !== undefined ? parse(miktar[x.u.id]) : varsayilan(x));
 
@@ -205,6 +235,10 @@ export default function Alinacaklar() {
       </div>
 
       <div className="mb-3 flex flex-wrap items-center gap-1.5">
+        {([['kesin', 'Kesin alınacaklar', kesinSay], ['kontrol', 'Kontrol edilecekler', satirlar.length - kesinSay], ['hepsi', 'Tümü', satirlar.length]] as const).map(([k, ad, n]) => (
+          <button key={k} onClick={() => { setGuven(k); yerel.yaz('alinacak_guven', k); }} title={k === 'kesin' ? 'Düzenli satılan, şu an stoğu yetmeyen ürünler: rafta mutlaka olmalı' : undefined}
+            className={`rounded-full px-3 py-1.5 text-sm font-medium ${guven === k ? (k === 'kesin' ? 'bg-emerald-600 text-white' : 'bg-slate-900 text-white dark:bg-white dark:text-slate-900') : 'bg-white text-slate-600 dark:bg-slate-900 dark:text-slate-300'}`}>{ad} <span className="opacity-70">{n}</span></button>))}
+        <span className="mx-1 h-5 w-px bg-slate-300 dark:bg-slate-700" />
         {sekmeBtn('yolda', 'Yoldaki siparişler', acikListe.length)}
         {duzenle && sekmeBtn('kritik', 'Kritik seviye önerileri')}
         {maliyetGor && <label className="ml-auto flex items-center gap-2 text-sm">Sipariş bütçesi
@@ -267,7 +301,7 @@ export default function Alinacaklar() {
 
       <div className="mb-3 flex items-start gap-2 rounded-xl bg-slate-100 p-3 text-xs text-slate-600 dark:bg-slate-800 dark:text-slate-300">
         <Info size={15} className="mt-0.5 shrink-0" />
-        <span>Önerilen adet = son {gunSec} günün günlük satışı × {hedefGun} gün − mevcut stok − yoldaki sipariş ({gun} günlük veriyle). <b>Öncelik</b> = aylık satış adedi × birim kâr × aciliyet (stok bittiyse ×3, 7 günden az yetiyorsa ×2); bütçe girilirse önceliği yüksek kalemler bütçe dolana kadar seçilir, kalanlar "bütçe dışı" görünür. <b>Ölü sipariş</b>: kritik seviyesi tanımlı ama 90 gündür hiç satılmamış ürünler; sipariş adedi 0 gelir. "Sipariş verildi" ile kaydedilen kalemler mal gelene kadar "yolda" görünür ve tekrar önerilmez. Mevsime göre ayar açıkken akü, antifriz, klima, silecek gibi ürünlerde satış hızı gelecek ayın talebine göre artırılır/azaltılır. Tedarikçi: son 6 ayda en ucuza alınan firma. Kritik seviye "rafta en az bu kadar olsun" demektir (BizimHesap'a yazılmaz). Dönemde tek kez satılanlar (kritik seviyesi yoksa) ve işçilik kalemleri önerilmez; stokta muadili yeterince olan bitmiş ürünlerin adedi 0 gelir.</span>
+        <span><b>Kesin alınacak</b>: son 60 günde satılmış, son 6 ayda en az 3 ayrı faturada ve 2 farklı müşteriye, en az 3 ayda (ya da son 3 ayın 2'sinde) satılmış ve stoğu hedefe yetmeyen ürün; stokta yeterli muadili varsa ve ölü siparişler bu listeye girmez. Tek seferlik, tek müşterilik satışlar "Kontrol edilecekler"de kalır. Önerilen adet = son {gunSec} günün günlük satışı × {hedefGun} gün − mevcut stok − yoldaki sipariş ({gun} günlük veriyle). <b>Öncelik</b> = aylık satış adedi × birim kâr × aciliyet (stok bittiyse ×3, 7 günden az yetiyorsa ×2); bütçe girilirse önceliği yüksek kalemler bütçe dolana kadar seçilir, kalanlar "bütçe dışı" görünür. <b>Ölü sipariş</b>: kritik seviyesi tanımlı ama 90 gündür hiç satılmamış ürünler; sipariş adedi 0 gelir. "Sipariş verildi" ile kaydedilen kalemler mal gelene kadar "yolda" görünür ve tekrar önerilmez. Mevsime göre ayar açıkken akü, antifriz, klima, silecek gibi ürünlerde satış hızı gelecek ayın talebine göre artırılır/azaltılır. Tedarikçi: son 6 ayda en ucuza alınan firma. Kritik seviye "rafta en az bu kadar olsun" demektir (BizimHesap'a yazılmaz). Dönemde tek kez satılanlar (kritik seviyesi yoksa) ve işçilik kalemleri önerilmez; stokta muadili yeterince olan bitmiş ürünlerin adedi 0 gelir.</span>
       </div>
       {grupla && secili.length > 0 && (
         <div className="mb-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
@@ -305,6 +339,8 @@ export default function Alinacaklar() {
                     {x.mevsim && <span className={`ml-1.5 rozet ${x.mevsim.katsayi > 1 ? 'bg-sky-50 text-sky-700' : 'bg-orange-50 text-orange-700'}`} title={`${x.mevsim.ad}: gelecek ay talep bu aya göre ×${x.mevsim.katsayi}`}>{x.mevsim.katsayi > 1 ? <Snowflake size={11} className="mr-0.5" /> : <Sun size={11} className="mr-0.5" />}{x.mevsim.ad} {x.mevsim.katsayi > 1 ? '↑' : '↓'}%{Math.round(Math.abs(x.mevsim.katsayi - 1) * 100)}</span>}
                     {ted.get(x.u.id) && <span className="ml-1.5 text-slate-400">· {ted.get(x.u.id)!.ucuz.ad}{maliyetGor ? ` ${para(ted.get(x.u.id)!.ucuz.fiyat)}` : ''}{ted.get(x.u.id)!.secenek > 1 ? ` (${ted.get(x.u.id)!.secenek} tedarikçi)` : ''}</span>}
                     {x.u.stok <= 0 && (() => { const m = stoktakiMuadiller(db, x.u); return m.length ? <span className="ml-1.5 rozet bg-emerald-50 text-emerald-700" title="BizimHesap etiketindeki OEM kodlarına göre">muadili stokta: {muadilMetin(m.slice(0, 2))}</span> : null; })()}
+                    {x.kesin && x.duzen && <span className="ml-1.5 rozet bg-emerald-600 text-white" title={`Son 6 ayın ${x.duzen.ay}'${x.duzen.ay === 1 ? 'in' : 'sı'}nda, ${x.duzen.belge} ayrı faturada, ${x.duzen.musteri} farklı müşteriye satıldı`}>KESİN · {x.duzen.ay}/6 ay · {x.duzen.musteri} müşteri</span>}
+                    {!x.kesin && x.duzen && guven !== 'kesin' && <span className="ml-1.5 text-[11px] text-slate-400" title="Son 6 ayda">{x.duzen.belge} fatura · {x.duzen.musteri} müşteri · {x.duzen.ay}/6 ay</span>}
                     <span className={`ml-1.5 rozet ${x.neden === 'kritik' ? 'bg-amber-100 text-amber-800' : x.neden === 'bitti' ? 'bg-red-50 text-red-600' : 'bg-slate-100 text-slate-600'}`}>{x.neden === 'kritik' ? 'kritik seviye' : x.neden === 'bitti' ? 'stok bitti' : 'azalıyor'}</span>
                     {x.yolda > 0 && <span className="ml-1.5 rozet bg-sky-100 text-sky-800" title={`Verildi: ${tarih(acik.get(x.u.id)?.ilk)}`}><Truck size={11} className="mr-0.5" />yolda {sayi(x.yolda)}</span>}
                     {x.olu && <span className="ml-1.5 rozet bg-red-100 text-red-700" title="Kritik seviyesi tanımlı ama 90 gündür hiç satılmadı">90 gündür satılmadı</span>}
