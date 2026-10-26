@@ -13,6 +13,9 @@ import KarZarar from './KarZarar';
 import AySonu from './AySonu';
 import Urunler from './Urunler';
 import { FiyatUyarilari, StokSayimi, TransferOnerisi } from './UrunlerEk';
+import Tedarikciler from './Tedarikciler';
+import { PahaliAlimlar, SorulanParcalar } from './Ekler';
+import { PersonelPerformans, UstaKarlilik } from './Performans';
 
 type Sekme = { id: string; ad: string; bilesen: () => ReactNode; izin?: boolean };
 type P = { git: (s: Sayfa) => void; alt?: string };
@@ -43,6 +46,7 @@ export function DepolarSayfa(p: P) {
     { id: 'siparis', ad: 'Siparişler (depo bazında)', bilesen: DepoSiparis },
     { id: 'toplam', ad: 'Kritik stok & alınacaklar', bilesen: Alinacaklar },
     { id: 'karsilastirma', ad: 'Depo karşılaştırması', bilesen: Depolar, izin: izin('maliyet') },
+    { id: 'sorulan', ad: 'Sorulan ama olmayan', bilesen: SorulanParcalar },
   ]} />;
 }
 export const EritmeSayfa = (p: P) => <Sekmeli {...p} sayfa="eritme" sekmeler={[
@@ -67,3 +71,11 @@ export function UrunlerSayfa(p: P) {
     { id: 'fiyat', ad: 'Fiyat uyarıları', bilesen: FiyatUyarilari, izin: izin('maliyet') },
   ]} />;
 }
+export const TedarikciSayfa = (p: P) => <Sekmeli {...p} sayfa="tedarikci" sekmeler={[
+  { id: 'ozet', ad: 'Tedarikçi analizi', bilesen: Tedarikciler },
+  { id: 'pahali', ad: 'Pahalıya alınanlar', bilesen: PahaliAlimlar },
+]} />;
+export const PerformansSayfa = (p: P) => <Sekmeli {...p} sayfa="performans" sekmeler={[
+  { id: 'personel', ad: 'Personel', bilesen: PersonelPerformans },
+  { id: 'usta', ad: 'Usta & müşteri kârlılığı', bilesen: UstaKarlilik },
+]} />;

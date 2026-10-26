@@ -49,7 +49,12 @@ export interface Backend {
   sayimOku(depoId: ID): Promise<SayimSatir[]>;
   sayimKaydet(r: SayimSatir): Promise<void>;
   sayimSil(depoId: ID, urunId?: ID): Promise<void>;
+  /** Sorulan ama stokta olmayan parçalar (kaçan satış) */
+  sorulanEkle(r: Omit<Sorulan, 'id' | 'zaman'>): Promise<void>;
+  sorulanOku(sonGun: number): Promise<Sorulan[]>;
+  sorulanSil(id: number): Promise<void>;
 }
+export interface Sorulan { id: number; zaman: string; metin: string; urun_id: ID | null; kullanici: string | null; adet: number }
 export interface SayimSatir { depo_id: ID; urun_id: ID; sayilan: number; sistem: number | null; kullanici: string | null; zaman?: string }
 
 const num = (v: unknown) => (v === null || v === undefined ? 0 : Number(v));
@@ -229,6 +234,13 @@ function supabaseBackend(sb: SupabaseClient): Backend {
       for (let i = 0; i < 100000; i += 1000) { const d = ok(await sb.from('sayim').select('depo_id,urun_id,sayilan,sistem,kullanici,zaman').eq('depo_id', depoId).order('urun_id').range(i, i + 999)) as SayimSatir[]; r.push(...d.map((x) => ({ ...x, sayilan: Number(x.sayilan), sistem: x.sistem === null ? null : Number(x.sistem) }))); if (d.length < 1000) break; }
       return r;
     },
+    async sorulanEkle(r) { ok(await sb.from('sorulan').insert(r)); },
+    async sorulanOku(sonGun) {
+      const bas = new Date(Date.now() - sonGun * 864e5).toISOString(); const r: Sorulan[] = [];
+      for (let i = 0; i < 50000; i += 1000) { const d = ok(await sb.from('sorulan').select('id,zaman,metin,urun_id,kullanici,adet').gte('zaman', bas).order('id').range(i, i + 999)) as Sorulan[]; r.push(...d); if (d.length < 1000) break; }
+      return r;
+    },
+    async sorulanSil(id) { ok(await sb.from('sorulan').delete().eq('id', id)); },
     async sayimKaydet(r) { ok(await sb.from('sayim').upsert({ ...r, zaman: new Date().toISOString() }, { onConflict: 'depo_id,urun_id' })); },
     async sayimSil(depoId, urunId) { let q = sb.from('sayim').delete().eq('depo_id', depoId); if (urunId) q = q.eq('urun_id', urunId); ok(await q); },
     async omDetay(id) { return omCagir(sb, { id }) as Promise<OmDetayYanit>; },
@@ -382,6 +394,7 @@ function demoSeed(): DB {
 }
 
 let demoSayim: SayimSatir[] = [];
+let demoSorulan: Sorulan[] = [];
 function demoBackend(): Backend {
   let db: DB;
   try { db = JSON.parse(localStorage.getItem(LS) || 'null') || demoSeed(); } catch { db = demoSeed(); }
@@ -416,6 +429,9 @@ function demoBackend(): Backend {
     },
     subscribe(onChange) { listeners.add(onChange); return () => { listeners.delete(onChange); }; },
     async omIste() { /* demo: yok */ },
+    async sorulanEkle(r) { demoSorulan.push({ ...r, id: demoSorulan.length + 1, zaman: new Date().toISOString() }); },
+    async sorulanOku() { return [...demoSorulan]; },
+    async sorulanSil(id) { demoSorulan = demoSorulan.filter((x) => x.id !== id); },
     async sayimOku(depoId) { return demoSayim.filter((x) => x.depo_id === depoId); },
     async sayimKaydet(r) { demoSayim = [...demoSayim.filter((x) => !(x.depo_id === r.depo_id && x.urun_id === r.urun_id)), { ...r, zaman: new Date().toISOString() }]; },
     async sayimSil(depoId, urunId) { demoSayim = demoSayim.filter((x) => !(x.depo_id === depoId && (!urunId || x.urun_id === urunId))); },

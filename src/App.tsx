@@ -2,7 +2,7 @@ import { asama } from './lib/hataKayit';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import {
-  Activity, ArrowLeftRight, Search, ShieldAlert, ShoppingBasket, RefreshCw, Wrench, HandCoins, PackageMinus, Warehouse, Lightbulb, BarChart3, Boxes, LayoutDashboard, LogOut, Menu, Moon, PieChart, Settings, Sun, Tag, Truck, UserCheck, Users, Wallet, X,
+  Activity, ArrowLeftRight, Search, ShieldAlert, ShoppingBasket, RefreshCw, Wrench, HandCoins, PackageMinus, Warehouse, Lightbulb, Medal, BarChart3, Boxes, LayoutDashboard, LogOut, Menu, Moon, PieChart, Settings, Sun, Tag, Truck, UserCheck, Users, Wallet, X,
 } from 'lucide-react';
 import { supabase, MODE, onbellekTemizle } from './lib/backend';
 import { StoreProvider, Toasts, useStore } from './lib/store';
@@ -16,14 +16,13 @@ import UrunAra from './pages/UrunAra';
 import AyarlarSayfa from './pages/Ayarlar';
 import SatisAnalizi from './pages/SatisAnalizi';
 import MusteriAnalizi from './pages/MusteriAnalizi';
-import Tedarikciler from './pages/Tedarikciler';
 import NakitAkisi from './pages/NakitAkisi';
 import Oneriler from './pages/Oneriler';
 import Tahsilat from './pages/Tahsilat';
 import UstaFiyat from './pages/UstaFiyat';
 import KayipKacak from './pages/KayipKacak';
 import BirlikteSatilan from './pages/BirlikteSatilan';
-import { DepolarSayfa, EritmeSayfa, FiyatSayfa, KarZararSayfa, UrunlerSayfa } from './pages/Birlesik';
+import { DepolarSayfa, EritmeSayfa, FiyatSayfa, KarZararSayfa, PerformansSayfa, TedarikciSayfa, UrunlerSayfa } from './pages/Birlesik';
 import { DetayKartlari } from './components/DetayKart';
 import { sayfaIzni } from './lib/yetki';
 import { onerileriCikar } from './lib/oneriler';
@@ -31,7 +30,7 @@ import { tahsilatListesi } from './lib/tahsilat';
 import { ROL_AD } from './lib/types';
 import { tarihSaat } from './lib/format';
 
-export type AnaSayfa = 'panel' | 'arama' | 'oneriler' | 'hareketler' | 'satisanaliz' | 'musteri' | 'sepet' | 'kayip' | 'karzarar' | 'tahsilat' | 'nakit' | 'cariler' | 'analiz' | 'fiyat' | 'usta' | 'eritme' | 'depolar' | 'tedarikci' | 'urunler' | 'ayarlar';
+export type AnaSayfa = 'panel' | 'arama' | 'oneriler' | 'hareketler' | 'satisanaliz' | 'musteri' | 'sepet' | 'kayip' | 'karzarar' | 'tahsilat' | 'nakit' | 'cariler' | 'analiz' | 'fiyat' | 'usta' | 'eritme' | 'depolar' | 'tedarikci' | 'urunler' | 'performans' | 'ayarlar';
 /** Eski sayfa adları (birleştirilen/kaldırılan) — eski bağlantılar ve öneriler çalışmaya devam etsin diye */
 type EskiSayfa = 'aysonu' | 'arac' | 'indirim' | 'deposiparis' | 'katfiyat' | 'stoksagligi' | 'alinacaklar';
 export type Sayfa = AnaSayfa | EskiSayfa | `${AnaSayfa}/${string}`;
@@ -54,6 +53,7 @@ const MENU: { id: AnaSayfa; ad: string; ikon: typeof LayoutDashboard; grup?: str
   { id: 'satisanaliz', ad: 'Satış Analizi', ikon: Activity },
   { id: 'musteri', ad: 'Müşteri Analizi', ikon: UserCheck },
   { id: 'sepet', ad: 'Birlikte Satılanlar', ikon: ShoppingBasket },
+  { id: 'performans', ad: 'Personel & Usta', ikon: Medal },
   { id: 'karzarar', ad: 'Kâr / Zarar', ikon: BarChart3, grup: 'Para' },
   { id: 'tahsilat', ad: 'Tahsilat Takip', ikon: HandCoins },
   { id: 'nakit', ad: 'Nakit Akışı', ikon: Wallet },
@@ -71,7 +71,7 @@ const MENU: { id: AnaSayfa; ad: string; ikon: typeof LayoutDashboard; grup?: str
 type Props = { git: (s: Sayfa) => void; alt?: string };
 const SAYFALAR: Record<AnaSayfa, (p: Props) => React.ReactNode> = {
   panel: Panel, arama: UrunAra, oneriler: Oneriler, hareketler: Hareketler, satisanaliz: SatisAnalizi, musteri: MusteriAnalizi, sepet: BirlikteSatilan, kayip: KayipKacak, karzarar: KarZararSayfa, tahsilat: Tahsilat, nakit: NakitAkisi, cariler: Cariler,
-  analiz: UrunAnalizi, fiyat: FiyatSayfa, usta: UstaFiyat, eritme: EritmeSayfa, depolar: DepolarSayfa, tedarikci: Tedarikciler, urunler: UrunlerSayfa, ayarlar: AyarlarSayfa,
+  analiz: UrunAnalizi, fiyat: FiyatSayfa, usta: UstaFiyat, eritme: EritmeSayfa, depolar: DepolarSayfa, tedarikci: TedarikciSayfa, urunler: UrunlerSayfa, performans: PerformansSayfa, ayarlar: AyarlarSayfa,
 };
 
 export default function App() {
