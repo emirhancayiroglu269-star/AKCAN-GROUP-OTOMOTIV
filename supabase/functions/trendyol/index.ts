@@ -1,5 +1,6 @@
-// Trendyol entegrasyonu (Supabase Edge Function) — ŞİMDİLİK YALNIZ OKUR: onaylı ilanlar ve sipariş paketleri.
-// Trendyol'a stok/fiyat/ürün YAZMAZ (BizimHesap E-Ticaret modülü gönderiyor; çakışmasın).
+// Trendyol entegrasyonu (Supabase Edge Function): onaylı ilanları ve sipariş paketlerini OKUR.
+// YAZDIĞI TEK ŞEY: ayarlarda "stok gönderimi" açıksa eşleşen ilanların STOK adedi (iki deponun toplamı − güvenlik stoğu).
+// Fiyat ve ürün içeriği yazmaz. Her gönderim ty_gonderim tablosuna kaydedilir.
 // Çağıran: siteye giriş yapmış kullanıcı (test/eşitle düğmesi) veya zamanlayıcı (service role).
 // Gizli değerler (kullanıcı girer): TRENDYOL_SATICI_ID, TRENDYOL_API_KEY, TRENDYOL_API_SECRET
 import { createClient } from 'npm:@supabase/supabase-js@2';
@@ -26,6 +27,16 @@ async function ty(yol: string): Promise<Obj> {
     try { return JSON.parse(t) as Obj; } catch { throw new Error('Trendyol yanıtı okunamadı'); }
   }
   throw new Error('Trendyol çok fazla istek dedi (429); biraz sonra tekrar denenecek');
+}
+async function tyPost(yol: string, govde: unknown): Promise<Obj> {
+  for (let deneme = 0; deneme < 3; deneme++) {
+    const r = await fetch(BASE + yol, { method: 'POST', headers: { Authorization: 'Basic ' + btoa(`${KEY}:${SECRET}`), 'User-Agent': `${SATICI} - SelfIntegration`, 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify(govde) });
+    const t = await r.text();
+    if (r.status === 429) { await bekle(2000 * (deneme + 1)); continue; }
+    if (!r.ok) throw new Error(`Trendyol stok gönderimi → HTTP ${r.status}: ${t.slice(0, 200)}`);
+    try { return JSON.parse(t) as Obj; } catch { return {}; }
+  }
+  throw new Error('Trendyol çok fazla istek dedi (429)');
 }
 const sayi = (v: unknown) => (v === null || v === undefined || v === '' ? null : Number.isFinite(Number(v)) ? Number(v) : null);
 const metin = (v: unknown) => (v === null || v === undefined ? null : String(v).trim() || null);
@@ -105,6 +116,45 @@ async function siparisleriCek(gun = SIPARIS_GUN) {
   return { siparis: hepsi.length, ornek };
 }
 
+// ---------- stok gönderimi ----------
+type Ayar = { stok_gonder?: boolean; guvenlik?: number };
+async function ayarOku(): Promise<Ayar> { const { data } = await db.from('ayarlar').select('trendyol').eq('id', 1).maybeSingle(); return ((data?.trendyol ?? {}) as Ayar); }
+async function stokGonder(kaynak: 'otomatik' | 'elle', ayar: Ayar) {
+  const guvenlik = Math.max(0, Number(ayar.guvenlik) || 0);
+  const { data: ilan, error } = await db.from('ty_urun').select('barkod,baslik,stok,urun_id').not('urun_id', 'is', null);
+  if (error) throw new Error(error.message);
+  const ids = [...new Set((ilan ?? []).map((x) => x.urun_id as string))]; const stok = new Map<string, number>();
+  for (let i = 0; i < ids.length; i += 200) { const { data: u } = await db.from('urunler').select('id,stok,aktif').in('id', ids.slice(i, i + 200)); for (const x of u ?? []) stok.set(x.id as string, x.aktif ? Number(x.stok) || 0 : 0); }
+  const degisen = (ilan ?? []).flatMap((x) => {
+    if (!stok.has(x.urun_id as string)) return [];
+    const yeni = Math.min(20000, Math.max(0, Math.floor(stok.get(x.urun_id as string)!) - guvenlik)); const eski = Number(x.stok);
+    return yeni === eski ? [] : [{ barkod: x.barkod as string, baslik: x.baslik as string | null, eski: Number.isFinite(eski) ? eski : null, yeni }];
+  });
+  for (let i = 0; i < degisen.length; i += 1000) {
+    const parca = degisen.slice(i, i + 1000);
+    const r = await tyPost(`/inventory/sellers/${SATICI}/products/price-and-inventory`, { items: parca.map((x) => ({ barcode: x.barkod, quantity: x.yeni })) });
+    const batch = metin(r.batchRequestId);
+    await db.from('ty_gonderim').insert(parca.map((x) => ({ ...x, batch_id: batch, kaynak })));
+    for (const x of parca) await db.from('ty_urun').update({ stok: x.yeni }).eq('barkod', x.barkod);
+  }
+  return degisen.length;
+}
+async function batchKontrol() {
+  const { data } = await db.from('ty_gonderim').select('batch_id').eq('durum', 'gonderildi').not('batch_id', 'is', null).gt('zaman', new Date(Date.now() - 2 * 864e5).toISOString()).limit(500);
+  for (const id of [...new Set((data ?? []).map((x) => x.batch_id as string))].slice(0, 10)) {
+    try {
+      const d = await ty(`/product/sellers/${SATICI}/products/batch-requests/${encodeURIComponent(id)}`);
+      const items = (d.items ?? []) as Obj[]; if (!items.length && !/COMPLETED/i.test(String(d.status ?? ''))) continue;
+      for (const it of items) {
+        const bk = metin(((it.requestItem ?? {}) as Obj).barcode ?? it.barcode); if (!bk) continue;
+        const ok = /SUCCESS/i.test(String(it.status ?? ''));
+        await db.from('ty_gonderim').update({ durum: ok ? 'basarili' : 'hatali', hata: ok ? null : JSON.stringify(it.failureReasons ?? it.status).slice(0, 300) }).eq('batch_id', id).eq('barkod', bk);
+      }
+      if (!items.length) await db.from('ty_gonderim').update({ durum: 'basarili' }).eq('batch_id', id).eq('durum', 'gonderildi');
+    } catch { /* bir sonraki turda tekrar bakılır */ }
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
   const yanit = (b: Obj, status = 200) => new Response(JSON.stringify(b), { status, headers: { ...cors, 'Content-Type': 'application/json' } });
@@ -122,6 +172,8 @@ Deno.serve(async (req) => {
   const b = await req.json().catch(() => ({})) as Obj;
   const islem = String(b.islem ?? 'esitle');
 
+  if (islem === 'stok_gonder' && zamanlayici) return yanit({ ok: false, hata: 'Elle gönderim yalnız siteden yapılır' }, 403);
+
   if (islem === 'test') {
     try { const d = await ty(`/product/sellers/${SATICI}/products/approved?page=0&size=1`); return yanit({ ok: true, ilanSayisi: sayi(d.totalElements), anahtarlar: Object.keys(d) }); }
     catch (e) { return yanit({ ok: false, hata: (e as Error).message }); }
@@ -134,15 +186,20 @@ Deno.serve(async (req) => {
   if (!kilit?.length) return yanit({ ok: true, atlandi: 'önceki eşitleme sürüyor' });
   try {
     const sonUrun = kilit[0].son_urun ? new Date(kilit[0].son_urun as string).getTime() : 0;
-    const ilanZamani = b.ilan === true || Date.now() - sonUrun > URUN_ARALIK_DK * 60000;
-    const s = await siparisleriCek(Number(b.gun) > 0 ? Math.min(30, Number(b.gun)) : SIPARIS_GUN);
+    const ayar = await ayarOku();
+    const gonder = islem === 'stok_gonder' || (islem === 'esitle' && ayar.stok_gonder === true);
+    // stok gönderilecekse Trendyol'daki güncel stok her turda okunur
+    const ilanZamani = gonder || b.ilan === true || Date.now() - sonUrun > URUN_ARALIK_DK * 60000;
+    const s = islem === 'stok_gonder' ? { siparis: 0, ornek: null } : await siparisleriCek(Number(b.gun) > 0 ? Math.min(30, Number(b.gun)) : SIPARIS_GUN);
     const u = ilanZamani ? await ilanlariCek() : null;
+    await batchKontrol();
+    const gonderilen = gonder && u ? await stokGonder(islem === 'stok_gonder' ? 'elle' : 'otomatik', ayar) : 0;
     const { count: sipSay } = await db.from('ty_siparis').select('paket_id', { count: 'exact', head: true });
     await db.from('ty_durum').update({
-      son_siparis: new Date().toISOString(), son_hata: null, siparis_sayisi: sipSay ?? null, kilit: null,
+      ...(islem === 'stok_gonder' ? {} : { son_siparis: new Date().toISOString() }), son_hata: null, siparis_sayisi: sipSay ?? null, kilit: null,
       ...(u ? { son_urun: new Date().toISOString(), urun_sayisi: u.ilan, ornek: { ilan: u.ornek, siparis: s.ornek } } : {}),
     }).eq('id', 1);
-    return yanit({ ok: true, siparis: s.siparis, ilan: u?.ilan ?? null, eslesen: u?.eslesen ?? null });
+    return yanit({ ok: true, siparis: s.siparis, ilan: u?.ilan ?? null, eslesen: u?.eslesen ?? null, stokGonderilen: gonderilen });
   } catch (e) {
     const mesaj = (e as Error).message.slice(0, 600);
     await db.from('ty_durum').update({ son_hata: mesaj, kilit: null }).eq('id', 1);

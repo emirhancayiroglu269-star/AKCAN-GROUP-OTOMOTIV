@@ -5,3 +5,4 @@
 -- ayarlar.trendyol (jsonb): fiyat hesabı varsayımları.
 -- ty_gizli: zamanlayıcının trendyol fonksiyonuna gösterdiği gizli anahtar (yalnız service_role okur)
 -- cron: trendyol-esitle her 15 dakikada (siparişler; ilanlar saatte bir)
+-- ty_gonderim: Trendyol'a gönderilen stok güncellemeleri (eski → yeni, batch sonucu). Otomatik gönderim ayarlar.trendyol.stok_gonder ile açılır.

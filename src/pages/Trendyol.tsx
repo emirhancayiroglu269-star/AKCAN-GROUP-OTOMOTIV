@@ -1,14 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, CheckCircle2, Download, Info, PlugZap, RefreshCw } from 'lucide-react';
 import { useStore, toast } from '../lib/store';
-import { backend, type TySiparis, type TyVeri } from '../lib/backend';
+import { backend, type TyGonderim, type TySiparis, type TyVeri } from '../lib/backend';
 import { IPTAL_RE, TY_VARSAYILAN, komisyonOranlari, maliyet, satirKomisyon, tyHedefFiyat, tyKar, tyOneriler, type TyVarsayim } from '../lib/trendyol';
 import { sonAlislar } from '../lib/analiz2';
 import { ara, gunu, para, parse, sayi, tarihSaat } from '../lib/format';
 import { UrunLink } from '../components/DetayKart';
 import { Bos, Kpi, SayfaBaslik } from '../components/ui';
 
-type Sekme = 'siparis' | 'ilan' | 'oneri' | 'ayar';
+type Sekme = 'siparis' | 'ilan' | 'stok' | 'oneri' | 'ayar';
 const csvIndir = (ad: string, satirlar: (string | number | null | undefined)[][]) => {
   const icerik = satirlar.map((a) => a.map((v) => `"${String(v ?? '').replace(/"/g, '""')}"`).join(';')).join('\n');
   const el = document.createElement('a'); el.href = URL.createObjectURL(new Blob(['﻿' + icerik], { type: 'text/csv' })); el.download = ad; el.click();
@@ -40,11 +40,12 @@ export default function TrendyolSayfa() {
           <div><b>Trendyol bağlantısı çalışmıyor:</b> {d.son_hata}{/eksik/i.test(d.son_hata) && <div className="mt-1 text-xs">Trendyol satıcı paneli → Hesap Bilgilerim → Entegrasyon Bilgileri'ndeki Satıcı ID, API Key ve API Secret'ı Supabase → Edge Functions → Secrets'e <code>TRENDYOL_SATICI_ID</code>, <code>TRENDYOL_API_KEY</code>, <code>TRENDYOL_API_SECRET</code> adlarıyla girin.</div>}</div></div>
       ) : (d.son_siparis && <div className="mb-4 flex items-center gap-2 text-xs text-slate-500"><CheckCircle2 size={14} className="text-emerald-600" /> Son eşitleme: siparişler {tarihSaat(d.son_siparis)}{d.son_urun ? ` · ilanlar ${tarihSaat(d.son_urun)}` : ''}</div>))}
       <div className="mb-4 flex flex-wrap gap-1 rounded-xl bg-slate-100 p-1 dark:bg-slate-800/60">
-        {sb('siparis', 'Siparişler', veri?.siparisler.length)}{sb('ilan', 'İlanlar & fiyat', veri?.urunler.length)}{sb('oneri', "Trendyol'a uygun ürünler")}{sb('ayar', 'Hesap varsayımları')}
+        {sb('siparis', 'Siparişler', veri?.siparisler.length)}{sb('ilan', 'İlanlar & fiyat', veri?.urunler.length)}{sb('stok', 'Stok gönderimi')}{sb('oneri', "Trendyol'a uygun ürünler")}{sb('ayar', 'Hesap varsayımları')}
       </div>
       {!veri ? <div className="card p-6 text-center text-sm text-slate-500">Yükleniyor…</div>
         : sekme === 'siparis' ? <Siparisler veri={veri} v={v} />
         : sekme === 'ilan' ? <Ilanlar veri={veri} v={v} />
+        : sekme === 'stok' ? <StokGonderimi veri={veri} yenile={oku} />
         : sekme === 'oneri' ? <Oneriler veri={veri} v={v} />
         : <Varsayimlar v={v} />}
     </div>
@@ -214,7 +215,8 @@ function Varsayimlar({ v }: { v: TyVarsayim }) {
     <label className="block"><div className="text-sm font-medium">{ad}</div>
       <div className="mt-1 flex items-center gap-2"><input className="inp w-28 text-right" inputMode="decimal" value={d[k]} onChange={(e) => setD({ ...d, [k]: e.target.value })} /><span className="text-sm text-slate-500">{birim}</span></div>
       <div className="mt-0.5 text-xs text-slate-500">{aciklama}</div></label>);
-  const kaydet = () => calistir(() => backend.ayarKaydet({ trendyol: { komisyon: parse(d.komisyon), kargo: parse(d.kargo), hizmet: parse(d.hizmet), stopaj: parse(d.stopaj), hedef_marj: parse(d.hedef_marj) } }), 'Trendyol hesap varsayımları kaydedildi');
+  const { db } = useStore();
+  const kaydet = () => calistir(() => backend.ayarKaydet({ trendyol: { ...(db.ayarlar.trendyol ?? {}), komisyon: parse(d.komisyon), kargo: parse(d.kargo), hizmet: parse(d.hizmet), stopaj: parse(d.stopaj), hedef_marj: parse(d.hedef_marj) } }), 'Trendyol hesap varsayımları kaydedildi');
   return (
     <div className="card max-w-2xl p-5">
       <div className="grid gap-5 sm:grid-cols-2">
@@ -226,6 +228,73 @@ function Varsayimlar({ v }: { v: TyVarsayim }) {
       </div>
       <div className="mt-5 flex justify-end"><button className="btn-primary" onClick={kaydet}>Kaydet</button></div>
       <p className="mt-3 text-xs text-slate-500">Bu değerler yalnız bu sitedeki kâr ve fiyat hesaplarında kullanılır. Kendi hakediş raporunuzdaki rakamlarla güncelleyin.</p>
+    </div>
+  );
+}
+
+/* ───────── Stok gönderimi ───────── */
+function StokGonderimi({ veri, yenile }: { veri: TyVeri; yenile: () => Promise<void> }) {
+  const { db, calistir } = useStore();
+  const ayar = db.ayarlar.trendyol ?? null;
+  const acik = ayar?.stok_gonder === true;
+  const [guvenlik, setGuvenlik] = useState(String(ayar?.guvenlik ?? 0));
+  const [gecmis, setGecmis] = useState<TyGonderim[] | null>(null);
+  const [onay, setOnay] = useState(false);
+  const gOku = () => backend.tyGonderimOku().then(setGecmis, () => setGecmis([]));
+  useEffect(() => { gOku(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const g = Math.max(0, parse(guvenlik) || 0);
+  const urun = useMemo(() => new Map(db.urunler.map((u) => [u.id, u])), [db.urunler]);
+  const degisecek = veri.urunler.flatMap((t) => { const u = t.urun_id ? urun.get(t.urun_id) : undefined; if (!u) return []; const yeni = Math.min(20000, Math.max(0, Math.floor(u.aktif ? u.stok : 0) - g)); return yeni === (t.stok ?? -1) ? [] : [{ t, u, yeni }]; });
+  const ayarYaz = (p: { stok_gonder?: boolean; guvenlik?: number }, mesaj: string) => calistir(() => backend.ayarKaydet({ trendyol: { ...TY_VARSAYILAN, ...(ayar ?? {}), ...p } }), mesaj);
+  const gonder = () => calistir(async () => { const r = await backend.tyCalistir('stok_gonder'); if (r.ok === false) throw new Error(String(r.hata)); toast(`${sayi(Number(r.stokGonderilen) || 0)} ilanın stoğu Trendyol'a gönderildi`); await yenile(); await gOku(); });
+  return (
+    <div className="space-y-4">
+      <div className={`card p-4 ${acik ? 'border-emerald-300 dark:border-emerald-700' : ''}`}>
+        <div className="flex flex-wrap items-start gap-3">
+          <div className="min-w-0 flex-1">
+            <div className="text-base font-semibold">Otomatik stok gönderimi: {acik ? <span className="text-emerald-700">AÇIK</span> : <span className="text-slate-500">KAPALI</span>}</div>
+            <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">Açıkken her 15 dakikada eşleşen Trendyol ilanlarının stoğu <b>iki deponun toplamı − güvenlik stoğu</b> olarak Trendyol'a yazılır. Stoğu biten ürün Trendyol'da 0'a iner. Yalnız stok adedi gönderilir; fiyat ve ürün bilgisi değişmez.</p>
+          </div>
+          {acik ? <button className="btn-ghost text-red-600" onClick={() => ayarYaz({ stok_gonder: false }, 'Otomatik stok gönderimi kapatıldı')}>Kapat</button>
+            : <button className="btn-primary" disabled={!onay} onClick={() => ayarYaz({ stok_gonder: true, guvenlik: g }, 'Otomatik stok gönderimi açıldı')}>Aç</button>}
+        </div>
+        {!acik && <label className="mt-3 flex items-start gap-2 rounded-lg bg-amber-50 p-3 text-sm text-amber-900 dark:bg-amber-500/10 dark:text-amber-200">
+          <input type="checkbox" className="mt-1" checked={onay} onChange={(e) => setOnay(e.target.checked)} />
+          <span><b>BizimHesap'ın Trendyol'a stok göndermesini kapattım.</b> (BizimHesap → E-Ticaret → Trendyol ayarlarında stok gönderimi / stok eşitleme.) İki sistem aynı anda gönderirse stoklar birbirini ezer. Sipariş aktarımı açık kalabilir.</span></label>}
+        <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
+          <span>Güvenlik stoğu:</span><input className="inp w-20 py-1 text-right" inputMode="numeric" value={guvenlik} onChange={(e) => setGuvenlik(e.target.value)} />
+          <span className="text-slate-500">adet (dükkânda satılıp henüz düşmemiş olabilecek mal için; 1 yazarsanız son ürün Trendyol'da görünmez)</span>
+          {g !== (ayar?.guvenlik ?? 0) && <button className="btn-ghost py-1 text-xs" onClick={() => ayarYaz({ guvenlik: g }, 'Güvenlik stoğu kaydedildi')}>Kaydet</button>}
+        </div>
+      </div>
+
+      <div className="card">
+        <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 p-3 dark:border-slate-800">
+          <b>Gönderilecek değişiklikler</b><span className="text-xs text-slate-500">{degisecek.length} ilan · son okumaya göre</span>
+          <button className="btn-primary ml-auto py-1" disabled={!degisecek.length} onClick={gonder} title="Şimdi bir kez gönderir (otomatik kapalı olsa da)">Şimdi gönder</button>
+        </div>
+        {degisecek.length === 0 ? <Bos metin="Trendyol stokları iki deponun toplamıyla aynı 👍" /> : (
+          <table className="tbl">
+            <thead><tr><th>İlan</th><th className="text-right">Trendyol'da</th><th className="text-right">Bizde (2 depo)</th><th className="text-right">Gönderilecek</th></tr></thead>
+            <tbody>{degisecek.map(({ t, u, yeni }) => (
+              <tr key={t.barkod}><td><div className="font-medium"><UrunLink id={u.id}>{t.baslik}</UrunLink></div><div className="text-xs text-slate-500">{t.barkod}</div></td>
+                <td className="text-right">{sayi(t.stok ?? 0)}</td><td className="text-right">{sayi(Math.max(0, u.stok))}</td>
+                <td className={`text-right text-base font-bold ${yeni === 0 ? 'text-red-600' : 'text-sky-700'}`}>{sayi(yeni)}</td></tr>))}</tbody>
+          </table>)}
+      </div>
+
+      <div className="card">
+        <div className="border-b border-slate-200 p-3 dark:border-slate-800"><b>Gönderim geçmişi</b> <span className="text-xs text-slate-500">son 100</span></div>
+        {!gecmis ? <div className="p-4 text-sm text-slate-500">Yükleniyor…</div> : gecmis.length === 0 ? <Bos metin="Henüz gönderim yok." /> : (
+          <div className="max-h-[40vh] overflow-auto">
+            <table className="tbl">
+              <thead><tr><th>Zaman</th><th>İlan</th><th className="text-right">Eski → yeni</th><th>Durum</th></tr></thead>
+              <tbody>{gecmis.map((x) => <tr key={x.id}><td className="whitespace-nowrap text-xs">{tarihSaat(x.zaman)}<div className="text-[10px] text-slate-400">{x.kaynak}</div></td><td className="text-sm">{x.baslik ?? x.barkod}</td><td className="text-right">{x.eski ?? '—'} → <b>{x.yeni}</b></td>
+                <td><span className={`rozet ${x.durum === 'basarili' ? 'bg-emerald-50 text-emerald-700' : x.durum === 'hatali' ? 'bg-red-50 text-red-700' : 'bg-slate-100 text-slate-600'}`} title={x.hata ?? undefined}>{x.durum === 'basarili' ? 'Trendyol onayladı' : x.durum === 'hatali' ? 'hata' : 'gönderildi'}</span></td></tr>)}</tbody>
+            </table>
+          </div>)}
+      </div>
+      <p className="flex items-start gap-1.5 text-xs text-slate-500"><Info size={14} className="mt-0.5 shrink-0" />Yalnız bizdeki bir ürünle (barkod veya stok kodu) eşleşen ilanların stoğu gönderilir. BizimHesap'ta pasif olan ürünün stoğu 0 gönderilir. Trendyol isteği birkaç dakika içinde işler; sonucu "Durum" sütununda görürsünüz.</p>
     </div>
   );
 }
