@@ -8,7 +8,7 @@ import { ara, gunu, para, parse, sayi, tarih } from '../lib/format';
 import type { StokAksiyon, Urun } from '../lib/types';
 import { Bos, Kpi, SayfaBaslik } from '../components/ui';
 import { yazdir } from '../components/Yazdir';
-import { mevsim, urunTedarikcileri } from '../lib/analiz3';
+import { depoSiparisleri, mevsim, urunTedarikcileri, type DepoSiparisSatir } from '../lib/analiz3';
 import { UrunLink } from '../components/DetayKart';
 import { muadilMetin, stoktakiMuadiller } from '../lib/muadil';
 import { OmIsteDugme } from '../components/OmIsteDugme';
@@ -42,6 +42,7 @@ export default function Alinacaklar() {
   const [butce, setButce] = useState(() => yerel.al('siparis_butce', ''));
   const [kritikGun, setKritikGun] = useState(() => Number(yerel.al('kritik_gun', '10')) || 10);
   const [panel, setPanel] = useState<'' | 'yolda' | 'kritik'>('');
+  const [gorunum, setGorunum] = useState<'depo' | 'toplam'>(() => (yerel.al('alinacak_gorunum', 'depo') as 'depo' | 'toplam'));
   const [guven, setGuven] = useState<'kesin' | 'kontrol' | 'hepsi'>(() => (yerel.al('alinacak_guven', 'kesin') as 'kesin' | 'kontrol' | 'hepsi'));
   const ted = useMemo(() => urunTedarikcileri(db), [db]);
   const hedefGun = db.ayarlar.hedef_gun || 30;
@@ -131,6 +132,11 @@ export default function Alinacaklar() {
 
   const muadilStokHesap = useMemo(() => { const m = new Map<string, number>(); for (const x of satirlar) if (x.u.stok <= 0) { const t = stoktakiMuadiller(db, x.u).reduce((a, v) => a + v.stok, 0); if (t > 0) m.set(x.u.id, t); } return m; }, [db, satirlar]);
   const kesinSay = satirlar.filter((x) => x.kesin && x.oneri > 0 && !((muadilStokHesap.get(x.u.id) ?? 0) >= x.oneri)).length;
+  // ---------- kesin alınacaklar depo bazında: her deponun kendi satışı ve stoğu; diğer depoda fazlası varsa transfer ----------
+  const kesinUrun = useMemo(() => new Set(db.urunler.filter((u) => u.aktif && kesinMi(duzenler.get(u.id))).map((u) => u.id)),
+    [db, duzenler]);
+  const depoKesin = useMemo(() => guven !== 'kesin' ? [] : depoSiparisleri(db, 60, hedefGun, mevsimAcik).map((dp) => ({ ...dp, satirlar: dp.satirlar.filter((x) => kesinUrun.has(x.u.id) && (x.siparis > 0 || x.transfer > 0)) })),
+    [db, guven, hedefGun, mevsimAcik, kesinUrun]);
   const markalar = useMemo(() => Array.from(new Set(satirlar.map((x) => x.u.marka).filter(Boolean))).sort() as string[], [satirlar]);
   const kategoriler = useMemo(() => Array.from(new Set(satirlar.map((x) => x.u.kategori).filter(Boolean))).sort() as string[], [satirlar]);
   const muadilYeter = (x: Satir) => (muadilStokHesap.get(x.u.id) ?? 0) >= x.oneri;
@@ -238,6 +244,8 @@ export default function Alinacaklar() {
         {([['kesin', 'Kesin alınacaklar', kesinSay], ['kontrol', 'Kontrol edilecekler', satirlar.length - kesinSay], ['hepsi', 'Tümü', satirlar.length]] as const).map(([k, ad, n]) => (
           <button key={k} onClick={() => { setGuven(k); yerel.yaz('alinacak_guven', k); }} title={k === 'kesin' ? 'Düzenli satılan, şu an stoğu yetmeyen ürünler: rafta mutlaka olmalı' : undefined}
             className={`rounded-full px-3 py-1.5 text-sm font-medium ${guven === k ? (k === 'kesin' ? 'bg-emerald-600 text-white' : 'bg-slate-900 text-white dark:bg-white dark:text-slate-900') : 'bg-white text-slate-600 dark:bg-slate-900 dark:text-slate-300'}`}>{ad} <span className="opacity-70">{n}</span></button>))}
+        {guven === 'kesin' && <div className="ml-1 flex rounded-full bg-white p-0.5 text-xs dark:bg-slate-900">{([['depo', 'Depo bazında'], ['toplam', 'Toplam']] as const).map(([k, ad]) => (
+          <button key={k} onClick={() => { setGorunum(k); yerel.yaz('alinacak_gorunum', k); }} className={`rounded-full px-2.5 py-1 ${gorunum === k ? 'bg-emerald-100 font-semibold text-emerald-800' : 'text-slate-500'}`}>{ad}</button>))}</div>}
         <span className="mx-1 h-5 w-px bg-slate-300 dark:bg-slate-700" />
         {sekmeBtn('yolda', 'Yoldaki siparişler', acikListe.length)}
         {duzenle && sekmeBtn('kritik', 'Kritik seviye önerileri')}
@@ -317,6 +325,7 @@ export default function Alinacaklar() {
           ))}
         </div>
       )}
+      {guven === 'kesin' && gorunum === 'depo' ? <DepoKesinListe depolar={depoKesin} q={q} setQ={setQ} acik={acik} firma={db.ayarlar.firma_adi} maliyetGor={maliyetGor} tedAd={(u) => ted.get(u.id)?.ucuz.ad ?? null} /> :
       <div className="card">
         <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 p-3 dark:border-slate-800">
           <input className="inp max-w-xs" placeholder="Ürün, kod, marka…" value={q} onChange={(e) => setQ(e.target.value)} />
@@ -357,6 +366,69 @@ export default function Alinacaklar() {
             </table>
           )}
         </div>
+      </div>}
+    </div>
+  );
+}
+
+const kisaDepo = (s: string) => s.replace(/ DEPO(SU)?$/i, '');
+
+/** Kesin alınacaklar, her depo için ayrı: o deponun 60 günlük satışına göre ihtiyaç; diğer depodaki fazlası transfer olarak ayrılır */
+function DepoKesinListe({ depolar, q, setQ, acik, firma, maliyetGor, tedAd }: {
+  depolar: { anahtar: string; ad: string; satirlar: DepoSiparisSatir[] }[]; q: string; setQ: (s: string) => void; acik: Map<string, AcikSiparis>;
+  firma: string; maliyetGor: boolean; tedAd: (u: Urun) => string | null;
+}) {
+  const filtre = (l: DepoSiparisSatir[]) => l.filter((x) => ara(q, x.u.ad, x.u.kod, x.u.marka));
+  const metin = (ad: string, l: DepoSiparisSatir[]) => {
+    const sip = l.filter((x) => x.siparis > 0), tr = l.filter((x) => x.transfer > 0);
+    return [`${firma} — ${kisaDepo(ad)} kesin alınacaklar (${tarih(new Date().toISOString())})`, '',
+      ...(sip.length ? ['SİPARİŞ:', ...sip.map((x) => `• ${x.u.ad}${x.u.marka ? ` (${x.u.marka})` : ''}${x.u.kod ? ` [${x.u.kod}]` : ''} — ${sayi(x.siparis)} ${x.u.birim}`), ''] : []),
+      ...(tr.length ? ['DİĞER DEPODAN TRANSFER:', ...tr.map((x) => `• ${x.u.ad}${x.u.kod ? ` [${x.u.kod}]` : ''} — ${sayi(x.transfer)} ${x.u.birim} ← ${x.digerStok.filter((o) => o.fazla > 0).map((o) => kisaDepo(o.ad)).join(', ')}`)] : [])].join('\n');
+  };
+  const bas = (ad: string, l: DepoSiparisSatir[]) => yazdir(
+    <div className="p-4 text-[11px]">
+      <div className="mb-3 flex justify-between border-b-2 border-black pb-2"><b className="text-base">{firma}</b><div className="text-right"><b>{kisaDepo(ad)} — KESİN ALINACAKLAR</b><div>{tarih(new Date().toISOString())}</div></div></div>
+      <table className="w-full border-collapse"><thead><tr className="border-b border-black text-left"><th>Kod</th><th>Ürün</th><th>Marka</th><th className="text-right">Depo stok</th><th className="text-right">Sipariş</th><th className="text-right">Transfer</th></tr></thead>
+        <tbody>{l.map((x) => <tr key={x.u.id} className="border-b"><td>{x.u.kod}</td><td>{x.u.ad}</td><td>{x.u.marka}</td><td className="text-right">{sayi(x.stok)}</td><td className="text-right font-bold">{x.siparis ? `${sayi(x.siparis)} ${x.u.birim}` : ''}</td><td className="text-right">{x.transfer ? sayi(x.transfer) : ''}</td></tr>)}</tbody></table>
+    </div>);
+  if (!depolar.length || depolar.every((d) => !d.satirlar.length)) return <div className="card"><Bos metin="Şu an hiçbir depoda kesin alınacak ürün yok 👍" /></div>;
+  return (
+    <div>
+      <div className="mb-3 flex items-center gap-2"><input className="inp max-w-xs" placeholder="Ürün, kod, marka…" value={q} onChange={(e) => setQ(e.target.value)} />
+        <span className="text-xs text-slate-500">Her deponun kendi son 60 günlük satışına göre · diğer depoda fazlası olan kısım transfer olarak ayrılır</span></div>
+      <div className="grid gap-4 xl:grid-cols-2">
+        {depolar.map((dp) => { const l = filtre(dp.satirlar); const sipSay = l.filter((x) => x.siparis > 0).length; const trSay = l.filter((x) => x.transfer > 0).length;
+          const tutar = l.reduce((t, x) => t + x.siparis * x.u.alis_fiyati, 0);
+          return (
+            <div key={dp.anahtar} className="card">
+              <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 p-3 dark:border-slate-800">
+                <b className="text-base">{kisaDepo(dp.ad)}</b>
+                <span className="rozet bg-emerald-600 text-white">{sipSay} sipariş</span>
+                {trSay > 0 && <span className="rozet bg-sky-100 text-sky-800">{trSay} transfer</span>}
+                {maliyetGor && tutar > 0 && <span className="text-xs text-slate-500">≈ {para(tutar)}</span>}
+                <div className="ml-auto flex gap-1">
+                  <button className="btn-ghost px-2 py-1 text-xs" disabled={!l.length} onClick={() => bas(dp.ad, l)}><Printer size={14} /> Yazdır</button>
+                  <a className={`btn-ghost px-2 py-1 text-xs ${l.length ? '' : 'pointer-events-none opacity-50'}`} target="_blank" rel="noreferrer" href={`https://wa.me/?text=${encodeURIComponent(metin(dp.ad, l))}`}><MessageCircle size={14} /> WhatsApp</a>
+                </div>
+              </div>
+              {l.length === 0 ? <Bos metin="Bu depoda kesin alınacak yok." /> : (
+                <div className="max-h-[60vh] overflow-auto">
+                  <table className="tbl">
+                    <thead><tr><th>Ürün</th><th className="text-right">Depo stok</th><th className="text-right">60 gün satış</th><th className="text-right">Sipariş</th><th className="text-right">Transfer</th></tr></thead>
+                    <tbody>{l.map((x) => { const yolda = acik.get(x.u.id)?.kalan ?? 0; const t = tedAd(x.u); return (
+                      <tr key={x.u.id}>
+                        <td><div className="font-medium"><UrunLink id={x.u.id}>{x.u.ad}</UrunLink></div>
+                          <div className="text-xs text-slate-500">{[x.u.kod, x.u.marka, t].filter(Boolean).join(' · ')}
+                            {x.stok <= 0 && <span className="ml-1.5 rozet bg-red-50 text-red-600">bu depoda bitti</span>}
+                            {yolda > 0 && <span className="ml-1.5 rozet bg-sky-100 text-sky-800"><Truck size={11} className="mr-0.5" />yolda {sayi(yolda)}</span>}</div></td>
+                        <td className={`text-right font-medium ${x.stok <= 0 ? 'text-red-600' : 'text-amber-700'}`}>{sayi(x.stok)}</td>
+                        <td className="text-right text-slate-500">{sayi(x.satilan)}</td>
+                        <td className="text-right text-base font-bold text-emerald-700">{x.siparis ? sayi(x.siparis) : <span className="text-sm font-normal text-slate-300">—</span>}</td>
+                        <td className="text-right text-xs text-sky-700" title={x.digerStok.map((o) => `${kisaDepo(o.ad)}: stok ${sayi(o.stok)}, fazla ${sayi(o.fazla)}`).join(' · ')}>{x.transfer ? <>{sayi(x.transfer)} ← {x.digerStok.filter((o) => o.fazla > 0).map((o) => kisaDepo(o.ad)).join(', ')}</> : ''}</td>
+                      </tr>); })}</tbody>
+                  </table>
+                </div>)}
+            </div>); })}
       </div>
     </div>
   );
