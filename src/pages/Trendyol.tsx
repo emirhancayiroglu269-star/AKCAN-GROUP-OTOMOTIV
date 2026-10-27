@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, CheckCircle2, Download, Info, PlugZap, RefreshCw } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Download, Info, PlugZap, RefreshCw, TrendingUp } from 'lucide-react';
 import { useStore, toast } from '../lib/store';
-import { backend, type TyGonderim, type TySiparis, type TyVeri } from '../lib/backend';
+import { backend, type TyFiyatSupheli, type TyGonderim, type TySiparis, type TyVeri } from '../lib/backend';
 import { IPTAL_RE, TY_VARSAYILAN, komisyonOranlari, maliyet, satirKomisyon, tyHedefFiyat, tyKar, tyOneriler, type TyVarsayim } from '../lib/trendyol';
 import { sonAlislar } from '../lib/analiz2';
 import { ara, gunu, para, parse, sayi, tarihSaat } from '../lib/format';
 import { UrunLink } from '../components/DetayKart';
-import { Bos, Kpi, SayfaBaslik } from '../components/ui';
+import { Bos, Kpi, SayfaBaslik, onayla } from '../components/ui';
 import { TrendyolYukle } from './TrendyolYukle';
 
 const yuklemeyeEkle = (ids: string[]) => { try { const l = JSON.parse(localStorage.getItem('ty_yukle_secili') ?? '[]') as string[]; localStorage.setItem('ty_yukle_secili', JSON.stringify([...l, ...ids.filter((x) => !l.includes(x))].slice(0, 200))); } catch { /* yok */ } };
@@ -127,7 +127,7 @@ function Ilanlar({ veri, v }: { veri: TyVeri; v: TyVarsayim }) {
   const kom = useMemo(() => komisyonOranlari(veri.siparisler), [veri.siparisler]);
   const son = useMemo(() => sonAlislar(db), [db]);
   const satirlar = useMemo(() => veri.urunler.map((t) => {
-    const u = t.urun_id ? urun.get(t.urun_id) : undefined; const k = kom.get(t.barkod) ?? v.komisyon; const a = u ? maliyet(db, u, son) : 0; const kdv = t.kdv ?? u?.kdv ?? 20;
+    const u = t.urun_id ? urun.get(t.urun_id) : undefined; const k = kom.get(t.barkod) ?? (t.komisyon && t.komisyon <= 60 ? t.komisyon : v.komisyon); const a = u ? maliyet(db, u, son) : 0; const kdv = t.kdv ?? u?.kdv ?? 20;
     const simdi = t.satis_fiyati && a > 0 ? tyKar(t.satis_fiyati, a, kdv, v, k) : null; const hedef = a > 0 ? tyHedefFiyat(a, kdv, v, k) : null;
     const stokFark = u && t.stok !== null ? Math.max(0, u.stok) - t.stok : null;
     return { t, u, k, a, simdi, hedef, stokFark, gercekKom: kom.has(t.barkod) };
@@ -145,6 +145,7 @@ function Ilanlar({ veri, v }: { veri: TyVeri; v: TyVarsayim }) {
         <Kpi etiket={`Hedef marj (%${v.hedef_marj}) altında`} deger={sayi(say('hedefAlti'))} renk="amber" />
         <Kpi etiket="Stok farkı" deger={sayi(say('stokFark'))} alt="Trendyol stoğu ≠ iki deponun toplamı" renk="blue" />
       </div>
+      <FiyatGuncelleme hedefAlti={satirlar.filter((x) => x.u && x.hedef && x.t.satis_fiyati && x.t.satista !== false && x.hedef > x.t.satis_fiyati + 0.5).length} />
       <div className="mb-3 flex flex-wrap items-center gap-1.5">
         {fBtn('hepsi', 'Tümü')}{fBtn('zarar', 'Zararına')}{fBtn('hedefAlti', 'Hedef altı')}{fBtn('stokFark', 'Stok farkı')}{fBtn('eslesmeyen', 'Bizde eşleşmeyen')}{fBtn('kapali', 'Satışta değil')}
         <input className="inp ml-auto max-w-xs" placeholder="Ürün, barkod, stok kodu…" value={q} onChange={(e) => setQ(e.target.value)} />
@@ -169,7 +170,47 @@ function Ilanlar({ veri, v }: { veri: TyVeri; v: TyVarsayim }) {
             </table>
           </div>)}
       </div>
-      <p className="mt-3 flex items-start gap-1.5 text-xs text-slate-500"><Info size={14} className="mt-0.5 shrink-0" />Hedef fiyat = alış + komisyon + kargo + hizmet bedeli + stopaj + hedef kâr (%{v.hedef_marj}). Komisyon, o ürünün geçmiş Trendyol siparişlerinden alınır; siparişi yoksa varsayılan %{v.komisyon} kullanılır. Bizim stok = iki deponun toplamı. Fiyat ve stok Trendyol'a şimdilik BizimHesap E-Ticaret modülünden gidiyor; buradaki öneriler bilgi amaçlıdır.</p>
+      <p className="mt-3 flex items-start gap-1.5 text-xs text-slate-500"><Info size={14} className="mt-0.5 shrink-0" />Hedef fiyat = alış + komisyon + kargo + hizmet bedeli + stopaj + hedef kâr (%{v.hedef_marj}). Komisyon, o ürünün geçmiş Trendyol siparişlerinden alınır; siparişi yoksa varsayılan %{v.komisyon} kullanılır. Bizim stok = iki deponun toplamı. Otomatik fiyat güncelleme açıksa hedefin altındaki ilanların fiyatı hedefe yükseltilir; hedefin üstündekilere dokunulmaz.</p>
+    </div>
+  );
+}
+
+/** Hedef altındaki ilanların Trendyol fiyatını hedef fiyata yükseltir (otomatik: her eşitleme turunda) */
+function FiyatGuncelleme({ hedefAlti }: { hedefAlti: number }) {
+  const { db, calistir } = useStore();
+  const ayar = db.ayarlar.trendyol ?? null; const acik = ayar?.fiyat_gonder === true;
+  const [gecmis, setGecmis] = useState<TyGonderim[]>([]); const [supheli, setSupheli] = useState<TyFiyatSupheli[]>([]);
+  const [ac, setAc] = useState(false); const [bekle, setBekle] = useState(false);
+  const oku = () => { backend.tyGonderimOku('fiyat').then(setGecmis, () => setGecmis([])); backend.tyFiyatSupheli().then(setSupheli, () => setSupheli([])); };
+  useEffect(() => { oku(); }, []);
+  const yaz = (fiyat_gonder: boolean) => calistir(() => backend.ayarKaydet({ trendyol: { ...TY_VARSAYILAN, ...(ayar ?? {}), fiyat_gonder } }), fiyat_gonder ? 'Otomatik fiyat güncelleme açıldı' : 'Otomatik fiyat güncelleme kapatıldı');
+  const simdi = async () => {
+    if (!onayla(`Hedef fiyatın altında kalan ${hedefAlti} ilanın Trendyol fiyatı hedef fiyata yükseltilecek. Devam edilsin mi?`)) return;
+    setBekle(true);
+    try { const r = await backend.tyIslem<{ gonderilen: number; supheli: number }>({ islem: 'fiyat_gonder' }); toast(`${r.gonderilen} ilanın fiyatı güncellendi${r.supheli ? `, ${r.supheli} ilan kontrol bekliyor` : ''}`); oku(); }
+    catch (e) { toast(`Gönderilemedi: ${(e as Error).message}`, 'hata'); } finally { setBekle(false); }
+  };
+  return (
+    <div className={`card mb-4 p-4 ${acik ? 'ring-1 ring-emerald-300 dark:ring-emerald-700' : ''}`}>
+      <div className="flex flex-wrap items-center gap-2">
+        <TrendingUp size={18} className={acik ? 'text-emerald-600' : 'text-slate-400'} /><b>Otomatik fiyat güncelleme</b>
+        <span className={`rozet ${acik ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>{acik ? 'AÇIK' : 'kapalı'}</span>
+        <span className="text-xs text-slate-500">{hedefAlti} ilan hedefin altında</span>
+        <div className="ml-auto flex gap-2">
+          <button className="btn-ghost" disabled={bekle || !hedefAlti} onClick={simdi}>{bekle ? 'Gönderiliyor…' : 'Şimdi güncelle'}</button>
+          {acik ? <button className="btn-ghost text-red-600" onClick={() => yaz(false)}>Kapat</button> : <button className="btn-primary" onClick={() => yaz(true)}>Aç</button>}
+        </div>
+      </div>
+      <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">Açıkken her eşitlemede (15 dakikada bir) alış fiyatı, komisyon, kargo ve kâr hedefine göre hesaplanan fiyatın altında kalan ilanların Trendyol fiyatı hedefe yükseltilir. Alış fiyatı artan ürün kendiliğinden güncellenir. Hedefin üstündeki fiyatlara dokunulmaz.</p>
+      {supheli.length > 0 && <div className="mt-2 rounded-lg bg-amber-50 p-2 text-xs text-amber-900 dark:bg-amber-500/10 dark:text-amber-200"><b>Kontrol bekleyen {supheli.length} ilan</b> (gönderilmedi):
+        <ul className="mt-1 space-y-0.5">{supheli.slice(0, 20).map((x) => <li key={x.barkod}>{x.baslik ?? x.barkod}: {para(x.eski)} → {para(x.hedef)} — {x.neden}</li>)}</ul></div>}
+      {gecmis.length > 0 && <div className="mt-2 text-xs">
+        <button className="text-slate-600 hover:underline" onClick={() => setAc(!ac)}>{ac ? '▾' : '▸'} Fiyat geçmişi ({gecmis.length})</button>
+        {ac && <div className="mt-1 max-h-56 overflow-auto rounded border border-slate-200 dark:border-slate-800">{gecmis.map((g) => (
+          <div key={g.id} className="flex flex-wrap gap-2 border-b border-slate-100 px-2 py-1 dark:border-slate-800"><span className="text-slate-500">{tarihSaat(g.zaman)}</span><span className="min-w-0 flex-1 truncate">{g.baslik ?? g.barkod}</span>
+            <span>{g.fiyat_eski != null ? para(g.fiyat_eski) : '—'} → <b>{g.fiyat_yeni != null ? para(g.fiyat_yeni) : '—'}</b></span>
+            <span className={g.durum === 'basarili' ? 'text-emerald-700' : g.durum === 'hatali' ? 'text-red-600' : 'text-slate-500'}>{g.durum === 'basarili' ? 'Trendyol kabul etti' : g.durum === 'hatali' ? `hata: ${g.hata ?? ''}` : 'işleniyor'}</span></div>))}</div>}
+      </div>}
     </div>
   );
 }

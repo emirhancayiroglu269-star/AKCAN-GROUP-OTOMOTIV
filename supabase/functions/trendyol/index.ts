@@ -1,6 +1,6 @@
 // Trendyol entegrasyonu (Supabase Edge Function): onaylı ilanları ve sipariş paketlerini OKUR.
 // YAZDIKLARI: (1) ayarlarda "stok gönderimi" açıksa eşleşen ilanların STOK adedi (iki deponun toplamı − güvenlik stoğu),
-// (2) kullanıcı sitede onaylayınca seçtiği ürünler için YENİ İLAN (ürün oluşturma). Mevcut ilanın fiyat/içeriğini değiştirmez.
+// (2) yeni ilan (elle ya da ayardan açıksa otomatik), (3) ayardan açıksa kâr hedefinin altında kalan ilanların fiyatını hedefe yükseltir.
 // Her gönderim ty_gonderim / ty_yukleme tablolarına kaydedilir.
 // Çağıran: siteye giriş yapmış kullanıcı (test/eşitle düğmesi) veya zamanlayıcı (service role).
 // Gizli değerler (kullanıcı girer): TRENDYOL_SATICI_ID, TRENDYOL_API_KEY, TRENDYOL_API_SECRET
@@ -247,7 +247,7 @@ async function yuklemeKontrol() {
 // ---------- otomatik yükleme ----------
 // Ayarlarda "otomatik yükleme" açıksa her turda, kategori+marka eşleşmesi hazır, stoklu, barkodlu, görselli ürünlerden
 // günlük sınıra kadar yeni ilan açar. Eksik bilgisi olan ürün atlanır ve nedeni ty_oto_atla'ya yazılır (7 gün sonra tekrar denenir).
-type OtoAyar = Ayar & { oto_yukle?: boolean; oto_limit?: number; oto_duzenli?: boolean; komisyon?: number; kargo?: number; hizmet?: number; stopaj?: number; hedef_marj?: number };
+type OtoAyar = Ayar & { fiyat_gonder?: boolean; oto_yukle?: boolean; oto_limit?: number; oto_duzenli?: boolean; komisyon?: number; kargo?: number; hizmet?: number; stopaj?: number; hedef_marj?: number };
 type Oz = { id: number; ad: string; zorunlu: boolean; serbest: boolean; degerler: { id: number; ad: string }[] };
 const ARAC_ID = 370;
 const urunOzel = (o: { id: number; ad: string }) => o.id === ARAC_ID || /motor|araç|arac/i.test(o.ad);
@@ -356,6 +356,48 @@ async function otoYukle(a: OtoAyar, adet?: number) {
   return { gonderilen: r.gonderilen, atlanan: atla.length, hatalar: r.hatalar, markaYeni };
 }
 
+// ---------- fiyat güncelleme ----------
+// Trendyol fiyatı kâr hedefinin altında kalan (veya zararına) ilanların fiyatını hedef fiyata YÜKSELTİR; hedefin üstündekilere dokunmaz.
+// Güvenlik: hedef, mevcut fiyatın 2,5 katından fazlaysa (alış fiyatı hatalı olabilir) gönderilmez, listede gösterilir.
+// Aynı ilana 24 saatte 3'ten fazla fiyat gönderilmişse başka bir sistem (ör. BizimHesap) fiyatı geri çekiyor demektir: durdurulur.
+async function fiyatGonder(kaynak: 'otomatik' | 'elle', a: OtoAyar) {
+  const { data: ilan, error } = await db.from('ty_urun').select('barkod,baslik,stok,urun_id,satista,satis_fiyati,liste_fiyati,komisyon,kdv').not('urun_id', 'is', null);
+  if (error) throw new Error(error.message);
+  const l = (ilan ?? []).filter((x) => x.satista !== false && Number(x.satis_fiyati) > 0);
+  const ids = [...new Set(l.map((x) => x.urun_id as string))];
+  const um = new Map<string, Obj>(); const sonAlis = new Map<string, number>();
+  for (let i = 0; i < ids.length; i += 200) {
+    const parca = ids.slice(i, i + 200);
+    const { data: u } = await db.from('urunler').select('id,alis_fiyati,kdv,aktif').in('id', parca); for (const x of u ?? []) um.set(x.id as string, x);
+    const { data: h } = await db.from('hareketler').select('urun_id,alis_fiyati,tarih').eq('tur', 'alis').in('urun_id', parca).order('tarih', { ascending: false }).limit(5000);
+    for (const x of h ?? []) if (!sonAlis.has(x.urun_id as string) && Number(x.alis_fiyati) > 0) sonAlis.set(x.urun_id as string, Number(x.alis_fiyati));
+  }
+  const { data: ay } = await db.from('ayarlar').select('alis_kdv_haric').eq('id', 1).maybeSingle(); const kdvHaric = ay?.alis_kdv_haric !== false;
+  const { data: gecmis } = await db.from('ty_gonderim').select('barkod').eq('tur', 'fiyat').gt('zaman', new Date(Date.now() - 864e5).toISOString());
+  const sayac = new Map<string, number>(); for (const g of gecmis ?? []) sayac.set(g.barkod as string, (sayac.get(g.barkod as string) ?? 0) + 1);
+  const gonder: { barkod: string; baslik: string | null; stok: number | null; eski: number; yeni: number; liste: number }[] = []; const supheli: Obj[] = [];
+  for (const t of l) {
+    const u = um.get(t.urun_id as string); if (!u || !u.aktif) continue;
+    const kdv = Number(u.kdv) || Number(t.kdv) || 20; const alis = Number(u.alis_fiyati) || 0;
+    const maliyet = Math.max(kdvHaric ? alis : alis / (1 + kdv / 100), sonAlis.get(u.id as string) ?? 0);
+    const kom = Number(t.komisyon) > 0 && Number(t.komisyon) <= 60 ? Number(t.komisyon) : Number(a.komisyon ?? 20);
+    const hedef = hedefFiyat(maliyet, kdv, a, kom); const eski = Number(t.satis_fiyati);
+    if (!hedef || hedef <= eski + 0.5) continue;
+    if (hedef > eski * 2.5) { supheli.push({ barkod: t.barkod, baslik: t.baslik, eski, hedef, neden: 'Hedef fiyat mevcut fiyatın 2,5 katından fazla — alış fiyatını kontrol edin' }); continue; }
+    if ((sayac.get(t.barkod as string) ?? 0) >= 3) { supheli.push({ barkod: t.barkod, baslik: t.baslik, eski, hedef, neden: 'Fiyat 24 saatte 3 kez gönderildi ama geri düşüyor — başka bir sistem (BizimHesap E-Ticaret?) fiyatı değiştiriyor olabilir' }); continue; }
+    gonder.push({ barkod: t.barkod as string, baslik: t.baslik as string | null, stok: sayi(t.stok), eski, yeni: hedef, liste: Math.max(hedef, Number(t.liste_fiyati) || 0) });
+  }
+  for (let i = 0; i < gonder.length; i += 1000) {
+    const parca = gonder.slice(i, i + 1000);
+    const r = await tyPost(`/inventory/sellers/${SATICI}/products/price-and-inventory`, { items: parca.map((x) => ({ barcode: x.barkod, ...(x.stok !== null ? { quantity: Math.max(0, Math.floor(x.stok)) } : {}), salePrice: x.yeni, listPrice: x.liste })) });
+    const batch = metin(r.batchRequestId);
+    await db.from('ty_gonderim').insert(parca.map((x) => ({ barkod: x.barkod, baslik: x.baslik, eski: x.stok, yeni: x.stok, fiyat_eski: x.eski, fiyat_yeni: x.yeni, tur: 'fiyat', batch_id: batch, kaynak })));
+    for (const x of parca) await db.from('ty_urun').update({ satis_fiyati: x.yeni, liste_fiyati: x.liste }).eq('barkod', x.barkod);
+  }
+  await db.from('ty_onbellek').upsert({ anahtar: 'fiyat_supheli', veri: supheli, zaman: new Date().toISOString() });
+  return { gonderilen: gonder.length, supheli: supheli.length };
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
   const yanit = (b: Obj, status = 200) => new Response(JSON.stringify(b), { status, headers: { ...cors, 'Content-Type': 'application/json' } });
@@ -373,7 +415,7 @@ Deno.serve(async (req) => {
   const b = await req.json().catch(() => ({})) as Obj;
   const islem = String(b.islem ?? 'esitle');
 
-  if (['stok_gonder', 'urun_yukle', 'esleme_kaydet', 'oto_yukle'].includes(islem) && zamanlayici) return yanit({ ok: false, hata: 'Bu işlem yalnız siteden yapılır' }, 403);
+  if (['stok_gonder', 'urun_yukle', 'esleme_kaydet', 'oto_yukle', 'fiyat_gonder'].includes(islem) && zamanlayici) return yanit({ ok: false, hata: 'Bu işlem yalnız siteden yapılır' }, 403);
 
   try {
     if (islem === 'kategori_ara') {
@@ -393,6 +435,7 @@ Deno.serve(async (req) => {
       else { const { error } = await db.from('ty_marka_esleme').upsert({ bh_marka: String(b.bh), ty_marka_id: Number(b.id), ty_marka_ad: metin(b.ad), guncelleme: new Date().toISOString() }); if (error) throw new Error(error.message); }
       return yanit({ ok: true });
     }
+    if (islem === 'fiyat_gonder') return yanit({ ok: true, ...(await fiyatGonder('elle', await ayarOku() as OtoAyar)) });
     if (islem === 'oto_yukle') {
       // siteden "şimdi çalıştır": ayar kapalı olsa da kullanıcının isteğiyle bir tur çalışır
       return yanit({ ok: true, ...(await otoYukle(await ayarOku() as OtoAyar, Math.min(30, Number(b.adet) || 10))) });
@@ -424,6 +467,9 @@ Deno.serve(async (req) => {
     await batchKontrol();
     await yuklemeKontrol();
     const gonderilen = gonder && u ? await stokGonder(islem === 'stok_gonder' ? 'elle' : 'otomatik', ayar) : 0;
+    // fiyat güncelleme: ayardan açıksa, ilanlar taze okunduğu turlarda
+    let fiyat: Obj | null = null;
+    if (islem === 'esitle' && u && (ayar as OtoAyar).fiyat_gonder === true) { try { fiyat = await fiyatGonder('otomatik', ayar as OtoAyar); } catch (e) { fiyat = { hata: (e as Error).message.slice(0, 300) }; } }
     // otomatik yükleme: ayardan açıksa zamanlayıcı turlarında (hata olursa eşitleme durmaz)
     let oto: Obj | null = null;
     if (islem === 'esitle' && (ayar as OtoAyar).oto_yukle === true) { try { oto = await otoYukle(ayar as OtoAyar); } catch (e) { oto = { hata: (e as Error).message.slice(0, 300) }; } }
@@ -432,7 +478,7 @@ Deno.serve(async (req) => {
       ...(islem === 'stok_gonder' ? {} : { son_siparis: new Date().toISOString() }), son_hata: null, siparis_sayisi: sipSay ?? null, kilit: null,
       ...(u ? { son_urun: new Date().toISOString(), urun_sayisi: u.ilan, ornek: { ilan: u.ornek, siparis: s.ornek } } : {}),
     }).eq('id', 1);
-    return yanit({ ok: true, siparis: s.siparis, ilan: u?.ilan ?? null, eslesen: u?.eslesen ?? null, stokGonderilen: gonderilen, oto });
+    return yanit({ ok: true, siparis: s.siparis, ilan: u?.ilan ?? null, eslesen: u?.eslesen ?? null, stokGonderilen: gonderilen, fiyat, oto });
   } catch (e) {
     const mesaj = (e as Error).message.slice(0, 600);
     await db.from('ty_durum').update({ son_hata: mesaj, kilit: null }).eq('id', 1);
