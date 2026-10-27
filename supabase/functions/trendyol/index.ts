@@ -244,6 +244,118 @@ async function yuklemeKontrol() {
   }
 }
 
+// ---------- otomatik yükleme ----------
+// Ayarlarda "otomatik yükleme" açıksa her turda, kategori+marka eşleşmesi hazır, stoklu, barkodlu, görselli ürünlerden
+// günlük sınıra kadar yeni ilan açar. Eksik bilgisi olan ürün atlanır ve nedeni ty_oto_atla'ya yazılır (7 gün sonra tekrar denenir).
+type OtoAyar = Ayar & { oto_yukle?: boolean; oto_limit?: number; oto_duzenli?: boolean; komisyon?: number; kargo?: number; hizmet?: number; stopaj?: number; hedef_marj?: number };
+type Oz = { id: number; ad: string; zorunlu: boolean; serbest: boolean; degerler: { id: number; ad: string }[] };
+const ARAC_ID = 370;
+const urunOzel = (o: { id: number; ad: string }) => o.id === ARAC_ID || /motor|araç|arac/i.test(o.ad);
+async function ozellikOnbellek(kategoriId: number): Promise<Oz[]> {
+  const anahtar = `oz:${kategoriId}`;
+  const { data: o } = await db.from('ty_onbellek').select('veri,zaman').eq('anahtar', anahtar).maybeSingle();
+  if (o && Date.now() - new Date(o.zaman as string).getTime() < 7 * 864e5) return o.veri as Oz[];
+  const r = await ozellikler(kategoriId);
+  await db.from('ty_onbellek').upsert({ anahtar, veri: r.ozellikler, zaman: new Date().toISOString() });
+  return r.ozellikler as Oz[];
+}
+function aracBul(ad: string, o: Oz) {
+  const metin = ` ${katla(ad).replace(/[^a-z0-9]+/g, ' ')} `; let enIyi: { d: { id: number; ad: string }; i: number } | null = null;
+  for (const d of o.degerler) {
+    const model = katla(d.ad).split(/\s+/).slice(1).join(' ').replace(/[^a-z0-9]+/g, ' ').trim(); if (model.length < 3 || model === 'universal') continue;
+    const i = metin.indexOf(` ${model} `); if (i >= 0 && (!enIyi || i < enIyi.i || (i === enIyi.i && d.ad.length > enIyi.d.ad.length))) enIyi = { d, i };
+  }
+  return enIyi?.d ?? o.degerler.find((d) => katla(d.ad) === 'universal') ?? null;
+}
+function ozBul(ad: string, o: Oz) {
+  if (o.id === ARAC_ID) return aracBul(ad, o);
+  if (/hac[iı]?m/i.test(o.ad)) { const m = ad.match(/(^|[^0-9])([0-6])[.,]([0-9])(?![0-9])/); return m ? o.degerler.find((x) => x.ad.startsWith(`${m[2]}.${m[3]}L`)) ?? null : null; }
+  if (/teknoloji/i.test(o.ad)) { const k = katla(ad); return [...o.degerler].sort((a, b) => b.ad.length - a.ad.length).find((d) => { const x = katla(d.ad); return x.length >= 3 && new RegExp(`(^|[^a-z])${x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}([^a-z0-9]|$)`).test(k); }) ?? null; }
+  return null;
+}
+function hedefFiyat(alisNet: number, kdv: number, a: OtoAyar, komisyon: number) {
+  const marj = a.hedef_marj ?? 15, stopaj = a.stopaj ?? 1, kargo = a.kargo ?? 100, hizmet = a.hizmet ?? 0;
+  const pay = (1 - marj / 100) / (1 + kdv / 100) - komisyon / 100 / 1.2 - stopaj / 100;
+  if (!(alisNet > 0) || pay <= 0) return null;
+  return Math.ceil((alisNet + (kargo + hizmet) / 1.2) / pay) - 0.1;
+}
+/** Eşleşmemiş markaları Trendyol'da birebir aynı adla arar; tam eşleşen varsa kaydeder (yanlış marka riskini almamak için yalnız tam ad) */
+async function markaOgren(n = 6) {
+  const { data } = await db.rpc('ty_eslesmemis', { n: 40 });
+  const { data: denenen } = await db.from('ty_onbellek').select('veri').eq('anahtar', 'marka_denenen').maybeSingle();
+  const dn = new Set((denenen?.veri ?? []) as string[]); let ogrenilen = 0, bakilan = 0;
+  for (const m of ((data ?? []) as { tur: string; ad: string }[]).filter((x) => x.tur === 'marka' && !dn.has(x.ad))) {
+    if (bakilan++ >= n) break; dn.add(m.ad);
+    try {
+      const d = await ty(`/product/brands/by-name?name=${encodeURIComponent(m.ad)}`) as unknown;
+      const l = (Array.isArray(d) ? d : ((d as Obj).brands ?? (d as Obj).content ?? [])) as Obj[];
+      const tam = l.find((x) => katla(String(x.name ?? '')).replace(/[^a-z0-9]/g, '') === katla(m.ad).replace(/[^a-z0-9]/g, ''));
+      if (tam) { await db.from('ty_marka_esleme').upsert({ bh_marka: m.ad, ty_marka_id: Number(tam.id), ty_marka_ad: String(tam.name), guncelleme: new Date().toISOString() }); ogrenilen++; }
+    } catch { /* sonra */ }
+    await bekle(300);
+  }
+  await db.from('ty_onbellek').upsert({ anahtar: 'marka_denenen', veri: [...dn], zaman: new Date().toISOString() });
+  return ogrenilen;
+}
+async function otoYukle(a: OtoAyar, adet?: number) {
+  const limit = Math.max(1, Math.min(200, Number(a.oto_limit) || 30));
+  const gun = new Date(Date.now() + 3 * 3600000).toISOString().slice(0, 10); // İstanbul günü
+  const { count } = await db.from('ty_yukleme').select('id', { count: 'exact', head: true }).eq('kullanici', 'otomatik').gte('zaman', new Date(`${gun}T00:00:00+03:00`).toISOString());
+  const kalan = limit - (count ?? 0);
+  const markaYeni = await markaOgren();
+  if (kalan <= 0) return { gonderilen: 0, atlanan: 0, markaYeni, not: 'günlük sınır doldu' };
+  const n = Math.min(kalan, adet ?? 10);
+  const { data: aday, error } = await db.rpc('ty_oto_adaylar', { n: n * 3, duzenli: a.oto_duzenli !== false });
+  if (error) throw new Error(error.message);
+  const l = (aday ?? []) as Obj[]; if (!l.length) return { gonderilen: 0, atlanan: 0, markaYeni };
+  const ids = l.map((x) => x.id as string);
+  const { data: ay } = await db.from('ayarlar').select('alis_kdv_haric').eq('id', 1).maybeSingle();
+  const kdvHaric = ay?.alis_kdv_haric !== false;
+  const sonAlis = new Map<string, number>();
+  const { data: h } = await db.from('hareketler').select('urun_id,alis_fiyati,tarih').eq('tur', 'alis').in('urun_id', ids).order('tarih', { ascending: false }).limit(2000);
+  for (const x of h ?? []) if (!sonAlis.has(x.urun_id as string) && Number(x.alis_fiyati) > 0) sonAlis.set(x.urun_id as string, Number(x.alis_fiyati));
+  const { data: kd } = await db.from('urun_kodlari').select('urun_id,kod,tur').in('urun_id', ids).neq('tur', 'OTOMARMARA');
+  const { data: kom } = await db.from('ty_urun').select('kategori_id,komisyon').not('komisyon', 'is', null);
+  const komKat = new Map((kom ?? []).map((x) => [Number(x.kategori_id), Number(x.komisyon)]));
+  const kalemler: YukKalem[] = []; const atla: { urun_id: string; neden: string }[] = [];
+  for (const u of l) {
+    if (kalemler.length >= n) break;
+    const id = u.id as string; const ad = String(u.ad ?? ''); const kat = Number(u.ty_kategori_id); const kdv = Number(u.kdv) || 20;
+    try {
+      const ozs = await ozellikOnbellek(kat);
+      const katOz = ((u.kat_ozellikler ?? []) as Obj[]).filter((x) => Number(x.attributeId) !== ARAC_ID);
+      const ozel = ozs.filter((o) => urunOzel(o) && !o.serbest && o.degerler.length && (o.zorunlu || o.id === ARAC_ID));
+      const ozelIds = new Set(ozel.map((o) => o.id));
+      const sec = ozel.map((o) => ({ o, d: ozBul(ad, o) }));
+      const oz: Obj[] = [...katOz.filter((x) => !ozelIds.has(Number(x.attributeId))), ...sec.filter((x) => x.d).map((x) => ({ attributeId: x.o.id, attributeValueId: x.d!.id }))];
+      const verilen = new Set(oz.map((x) => Number(x.attributeId)));
+      const eksik = ozs.filter((o) => o.zorunlu && !verilen.has(o.id)).map((o) => o.ad);
+      if (eksik.length) { atla.push({ urun_id: id, neden: `Seçilemeyen zorunlu özellik: ${eksik.join(', ')}` }); continue; }
+      const alis = Number(u.alis_fiyati) || 0; const net = kdvHaric ? alis : alis / (1 + kdv / 100);
+      const maliyet = Math.max(net, sonAlis.get(id) ?? 0);
+      const komisyon = komKat.get(kat) ?? Number(a.komisyon ?? 20);
+      const fiyat = hedefFiyat(maliyet, kdv, a, komisyon);
+      if (!fiyat) { atla.push({ urun_id: id, neden: 'Fiyat hesaplanamadı' }); continue; }
+      const arac = sec.find((x) => x.o.id === ARAC_ID)?.d;
+      const kodlar = (kd ?? []).filter((k) => k.urun_id === id).map((k) => String(k.kod));
+      const oem = [u.etiket as string | null, ...kodlar].filter(Boolean).join(', ');
+      const marka = metin(u.marka);
+      kalemler.push({
+        urun_id: id, baslik: `${marka ? marka + ' ' : ''}${ad}`.slice(0, 100), fiyat,
+        aciklama: [ad, marka && `Marka: ${marka}`, u.kod && `Stok kodu: ${u.kod}`, oem && `OEM / muadil kodları: ${oem}`, arac && `Uyumlu araç: ${arac.ad}`].filter(Boolean).join('\n'),
+        stok: Math.max(0, Math.floor(Number(u.stok) || 0) - Math.max(0, Number(a.guvenlik) || 0)), desi: Number(u.desi) || 1,
+        kategori_id: kat, marka_id: Number(u.ty_marka_id), ozellikler: oz,
+      });
+    } catch (e) { atla.push({ urun_id: id, neden: `Kategori özellikleri okunamadı: ${(e as Error).message.slice(0, 120)}` }); }
+  }
+  const sifir = kalemler.filter((k) => k.stok < 1);
+  for (const k of sifir) atla.push({ urun_id: k.urun_id, neden: 'Güvenlik stoğu düşülünce stok kalmıyor' });
+  const gonder = kalemler.filter((k) => k.stok >= 1);
+  if (atla.length) await db.from('ty_oto_atla').upsert(atla.map((x) => ({ ...x, zaman: new Date().toISOString() })));
+  const r = gonder.length ? await urunYukle(gonder, 'otomatik') : { gonderilen: 0, hatalar: [] as string[] };
+  return { gonderilen: r.gonderilen, atlanan: atla.length, hatalar: r.hatalar, markaYeni };
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
   const yanit = (b: Obj, status = 200) => new Response(JSON.stringify(b), { status, headers: { ...cors, 'Content-Type': 'application/json' } });
@@ -261,7 +373,7 @@ Deno.serve(async (req) => {
   const b = await req.json().catch(() => ({})) as Obj;
   const islem = String(b.islem ?? 'esitle');
 
-  if (['stok_gonder', 'urun_yukle', 'esleme_kaydet'].includes(islem) && zamanlayici) return yanit({ ok: false, hata: 'Bu işlem yalnız siteden yapılır' }, 403);
+  if (['stok_gonder', 'urun_yukle', 'esleme_kaydet', 'oto_yukle'].includes(islem) && zamanlayici) return yanit({ ok: false, hata: 'Bu işlem yalnız siteden yapılır' }, 403);
 
   try {
     if (islem === 'kategori_ara') {
@@ -280,6 +392,10 @@ Deno.serve(async (req) => {
       if (b.tur === 'kategori') { const { error } = await db.from('ty_kategori_esleme').upsert({ bh_kategori: String(b.bh), ty_kategori_id: Number(b.id), ty_kategori_ad: metin(b.ad), ozellikler: b.ozellikler ?? [], desi: sayi(b.desi), guncelleme: new Date().toISOString() }); if (error) throw new Error(error.message); }
       else { const { error } = await db.from('ty_marka_esleme').upsert({ bh_marka: String(b.bh), ty_marka_id: Number(b.id), ty_marka_ad: metin(b.ad), guncelleme: new Date().toISOString() }); if (error) throw new Error(error.message); }
       return yanit({ ok: true });
+    }
+    if (islem === 'oto_yukle') {
+      // siteden "şimdi çalıştır": ayar kapalı olsa da kullanıcının isteğiyle bir tur çalışır
+      return yanit({ ok: true, ...(await otoYukle(await ayarOku() as OtoAyar, Math.min(30, Number(b.adet) || 10))) });
     }
     if (islem === 'urun_yukle') {
       const { data: k } = await db.auth.getUser(jwt);
@@ -308,12 +424,15 @@ Deno.serve(async (req) => {
     await batchKontrol();
     await yuklemeKontrol();
     const gonderilen = gonder && u ? await stokGonder(islem === 'stok_gonder' ? 'elle' : 'otomatik', ayar) : 0;
+    // otomatik yükleme: ayardan açıksa zamanlayıcı turlarında (hata olursa eşitleme durmaz)
+    let oto: Obj | null = null;
+    if (islem === 'esitle' && (ayar as OtoAyar).oto_yukle === true) { try { oto = await otoYukle(ayar as OtoAyar); } catch (e) { oto = { hata: (e as Error).message.slice(0, 300) }; } }
     const { count: sipSay } = await db.from('ty_siparis').select('paket_id', { count: 'exact', head: true });
     await db.from('ty_durum').update({
       ...(islem === 'stok_gonder' ? {} : { son_siparis: new Date().toISOString() }), son_hata: null, siparis_sayisi: sipSay ?? null, kilit: null,
       ...(u ? { son_urun: new Date().toISOString(), urun_sayisi: u.ilan, ornek: { ilan: u.ornek, siparis: s.ornek } } : {}),
     }).eq('id', 1);
-    return yanit({ ok: true, siparis: s.siparis, ilan: u?.ilan ?? null, eslesen: u?.eslesen ?? null, stokGonderilen: gonderilen });
+    return yanit({ ok: true, siparis: s.siparis, ilan: u?.ilan ?? null, eslesen: u?.eslesen ?? null, stokGonderilen: gonderilen, oto });
   } catch (e) {
     const mesaj = (e as Error).message.slice(0, 600);
     await db.from('ty_durum').update({ son_hata: mesaj, kilit: null }).eq('id', 1);

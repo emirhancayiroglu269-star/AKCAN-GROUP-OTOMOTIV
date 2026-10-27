@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, CheckCircle2, ImageOff, Info, Pencil, Plus, Search, Send, Trash2 } from 'lucide-react';
+import { AlertTriangle, Bot, CheckCircle2, ImageOff, Info, Pencil, Play, Plus, Search, Send, Trash2 } from 'lucide-react';
 import { useStore, toast } from '../lib/store';
-import { backend, type TyKategoriEsleme, type TyMarkaEsleme, type TyOzellikDeger, type TyVeri, type TyYukleme } from '../lib/backend';
-import { maliyet, tyHedefFiyat, type TyVarsayim } from '../lib/trendyol';
+import { backend, type TyKategoriEsleme, type TyMarkaEsleme, type TyOtoOzet, type TyOzellikDeger, type TyVeri, type TyYukleme } from '../lib/backend';
+import { maliyet, tyHedefFiyat, TY_VARSAYILAN, type TyVarsayim } from '../lib/trendyol';
 import { sonAlislar } from '../lib/analiz2';
 import { stokluMu } from '../lib/analiz';
 import { aracCikar } from '../lib/analiz3';
@@ -87,7 +87,7 @@ export function TrendyolYukle({ veri, v }: { veri: TyVeri; v: TyVarsayim }) {
     if (o.id === ARAC_ID) return aracOner(u, [o]);
     const ad = katla(u.ad);
     if (/hac[iı]?m/i.test(o.ad)) { const m = u.ad.match(/(^|[^0-9])([0-6])[.,]([0-9])(?![0-9])/); if (m) { const d = o.degerler.find((x) => x.ad.startsWith(`${m[2]}.${m[3]}L`)); if (d) return d; } return null; }
-    if (/teknoloji/i.test(o.ad)) { const l = [...o.degerler].sort((a, b) => b.ad.length - a.ad.length); return l.find((d) => { const k = katla(d.ad); return k.length >= 3 && new RegExp(`(^|[^a-z0-9])${k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}([^a-z0-9]|$)`).test(ad); }) ?? null; }
+    if (/teknoloji/i.test(o.ad)) { const l = [...o.degerler].sort((a, b) => b.ad.length - a.ad.length); return l.find((d) => { const k = katla(d.ad); return k.length >= 3 && new RegExp(`(^|[^a-z])${k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}([^a-z0-9]|$)`).test(ad); }) ?? null; }
     return null;
   };
 
@@ -132,6 +132,7 @@ export function TrendyolYukle({ veri, v }: { veri: TyVeri; v: TyVarsayim }) {
 
   return (
     <div className="space-y-4">
+      <OtoYukleme kategoriSec={setKatModal} markaSec={setMarkaModal} yenile={eslemeOku} />
       <div className="card p-4">
         <div className="flex flex-wrap items-center gap-2">
           <div className="relative min-w-[16rem] flex-1"><Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -206,6 +207,66 @@ export function TrendyolYukle({ veri, v }: { veri: TyVeri; v: TyVarsayim }) {
 
       {katModal !== null && <KategoriModal bh={katModal} mevcut={katMap.get(katModal)} kapat={() => setKatModal(null)} kaydedildi={() => { setKatModal(null); setKatBilgi(new Map()); eslemeOku(); }} />}
       {markaModal !== null && <MarkaModal bh={markaModal} kapat={() => setMarkaModal(null)} kaydedildi={() => { setMarkaModal(null); eslemeOku(); }} />}
+    </div>
+  );
+}
+
+/** Otomatik yükleme: zamanlayıcı her 15 dakikada eşleşmesi hazır ürünlerden günlük sınıra kadar ilan açar */
+function OtoYukleme({ kategoriSec, markaSec, yenile }: { kategoriSec: (k: string) => void; markaSec: (m: string) => void; yenile: () => void }) {
+  const { db, calistir } = useStore();
+  const ayar = db.ayarlar.trendyol ?? null;
+  const acik = ayar?.oto_yukle === true; const duzenli = ayar?.oto_duzenli !== false;
+  const [limit, setLimit] = useState(String(ayar?.oto_limit ?? 30));
+  const [ozet, setOzet] = useState<TyOtoOzet | null>(null);
+  const [calisiyor, setCalisiyor] = useState(false);
+  const [atlananAc, setAtlananAc] = useState(false);
+  const oku = () => backend.tyOtoOzet().then(setOzet, (e) => toast(`Otomatik yükleme özeti okunamadı: ${(e as Error).message}`, 'hata'));
+  useEffect(() => { oku(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const yaz = (p: { oto_yukle?: boolean; oto_limit?: number; oto_duzenli?: boolean }, mesaj: string) =>
+    calistir(async () => { await backend.ayarKaydet({ trendyol: { ...TY_VARSAYILAN, ...(ayar ?? {}), ...p } }); await oku(); }, mesaj);
+  const simdi = async () => {
+    if (!onayla("Eşleşmesi hazır ürünlerden en fazla 10 tanesi şimdi Trendyol'a yeni ilan olarak gönderilecek. Devam edilsin mi?")) return;
+    setCalisiyor(true);
+    try {
+      const r = await backend.tyIslem<{ gonderilen: number; atlanan: number; markaYeni?: number; not?: string }>({ islem: 'oto_yukle', adet: 10 });
+      toast(`${r.gonderilen} ürün gönderildi${r.atlanan ? `, ${r.atlanan} ürün eksik bilgiden atlandı` : ''}${r.markaYeni ? `, ${r.markaYeni} marka otomatik eşleşti` : ''}${r.not ? ` (${r.not})` : ''}`);
+      await oku(); yenile();
+    } catch (e) { toast(`Çalıştırılamadı: ${(e as Error).message}`, 'hata'); } finally { setCalisiyor(false); }
+  };
+  const l = parse(limit) || 30;
+  const katlar = (ozet?.eslesmemis ?? []).filter((x) => x.tur === 'kategori'); const markalar = (ozet?.eslesmemis ?? []).filter((x) => x.tur === 'marka');
+  return (
+    <div className={`card p-4 ${acik ? 'ring-1 ring-emerald-300 dark:ring-emerald-700' : ''}`}>
+      <div className="flex flex-wrap items-center gap-2">
+        <Bot size={18} className={acik ? 'text-emerald-600' : 'text-slate-400'} />
+        <b>Otomatik ürün yükleme</b>
+        <span className={`rozet ${acik ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>{acik ? 'AÇIK' : 'kapalı'}</span>
+        <div className="ml-auto flex flex-wrap items-center gap-2">
+          <button className="btn-ghost" disabled={calisiyor} onClick={simdi}><Play size={15} /> {calisiyor ? 'Çalışıyor…' : 'Şimdi çalıştır'}</button>
+          {acik ? <button className="btn-ghost text-red-600" onClick={() => yaz({ oto_yukle: false }, 'Otomatik yükleme kapatıldı')}>Kapat</button>
+            : <button className="btn-primary" onClick={() => yaz({ oto_yukle: true, oto_limit: l }, 'Otomatik yükleme açıldı')}>Aç</button>}
+        </div>
+      </div>
+      <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">Açıkken sistem her 15 dakikada bir; stokta olan, barkodu ve fotoğrafı bulunan, kategorisi ve markası Trendyol'la eşleşmiş, henüz ilanı olmayan ürünleri kâr hedefine göre fiyatlayıp yeni ilan olarak açar. Aracı ürün adından seçer (bulamazsa Universal). Zorunlu bir özelliği seçemediği ürünü atlar.</p>
+      <div className="mt-3 grid gap-2 text-sm sm:grid-cols-4">
+        <div className="rounded-lg bg-slate-50 p-2 dark:bg-slate-800/50"><div className="text-xs text-slate-500">Bugün yüklenen</div><b>{ozet ? `${ozet.bugun} / ${ayar?.oto_limit ?? 30}` : '…'}</b></div>
+        <div className="rounded-lg bg-slate-50 p-2 dark:bg-slate-800/50"><div className="text-xs text-slate-500">Yüklenmeye hazır</div><b>{ozet ? (duzenli ? ozet.duzenli : ozet.aday) : '…'}</b> <span className="text-xs text-slate-500">ürün</span></div>
+        <label className="rounded-lg bg-slate-50 p-2 dark:bg-slate-800/50"><div className="text-xs text-slate-500">Günlük en fazla</div>
+          <span className="flex items-center gap-1"><input className="inp w-20 py-0.5 text-right" inputMode="numeric" value={limit} onChange={(e) => setLimit(e.target.value)} />
+            {l !== (ayar?.oto_limit ?? 30) && <button className="text-xs text-marka-600 hover:underline" onClick={() => yaz({ oto_limit: Math.max(1, Math.min(200, Math.round(l))) }, 'Günlük sınır kaydedildi')}>Kaydet</button>}</span></label>
+        <label className="flex cursor-pointer items-start gap-2 rounded-lg bg-slate-50 p-2 dark:bg-slate-800/50"><input type="checkbox" className="mt-1" checked={duzenli} onChange={(e) => yaz({ oto_duzenli: e.target.checked }, e.target.checked ? 'Yalnız düzenli satılanlar yüklenecek' : 'Stoktaki tüm uygun ürünler yüklenecek')} />
+          <span><span className="text-xs text-slate-500">Seçim</span><br />Yalnız düzenli satılanlar <span className="text-xs text-slate-500">(6 ayda 2+ satış; tümü: {ozet?.aday ?? '…'})</span></span></label>
+      </div>
+      {(katlar.length > 0 || markalar.length > 0) && <div className="mt-3 space-y-1.5 text-xs">
+        <div className="text-slate-500">Eşleşmesi olmadığı için yüklenemeyenler (tıklayıp bir kez eşleştirin; markalar Trendyol'da aynı adla varsa sistem kendisi eşleştirir):</div>
+        {katlar.length > 0 && <div className="flex flex-wrap gap-1"><span className="font-medium">Kategori:</span>{katlar.map((k) => <button key={k.ad} className="rounded bg-amber-50 px-1.5 py-0.5 text-amber-800 hover:bg-amber-100 dark:bg-amber-500/10 dark:text-amber-200" onClick={() => kategoriSec(k.ad)}>{k.ad} <b>{k.adet}</b></button>)}</div>}
+        {markalar.length > 0 && <div className="flex flex-wrap gap-1"><span className="font-medium">Marka:</span>{markalar.map((k) => <button key={k.ad} className="rounded bg-amber-50 px-1.5 py-0.5 text-amber-800 hover:bg-amber-100 dark:bg-amber-500/10 dark:text-amber-200" onClick={() => markaSec(k.ad)}>{k.ad} <b>{k.adet}</b></button>)}</div>}
+      </div>}
+      {(ozet?.atlanan.length ?? 0) > 0 && <div className="mt-3 text-xs">
+        <button className="text-slate-600 hover:underline" onClick={() => setAtlananAc(!atlananAc)}>{atlananAc ? '▾' : '▸'} Atlanan ürünler ({ozet!.atlanan.length}) — 7 gün sonra tekrar denenir; elle aşağıdan yükleyebilirsiniz</button>
+        {atlananAc && <div className="mt-1 max-h-56 overflow-auto rounded border border-slate-200 dark:border-slate-800">{ozet!.atlanan.map((a) => (
+          <div key={a.urun_id} className="flex gap-2 border-b border-slate-100 px-2 py-1 dark:border-slate-800"><UrunLink id={a.urun_id}>{a.ad}</UrunLink><span className="ml-auto text-amber-700">{a.neden}</span></div>))}</div>}
+      </div>}
     </div>
   );
 }
