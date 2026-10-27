@@ -253,7 +253,7 @@ function OtoYukleme({ kategoriSec, markaSec, yenile }: { kategoriSec: (k: string
         <div className="rounded-lg bg-slate-50 p-2 dark:bg-slate-800/50"><div className="text-xs text-slate-500">Yüklenmeye hazır</div><b>{ozet ? (duzenli ? ozet.duzenli : ozet.aday) : '…'}</b> <span className="text-xs text-slate-500">ürün</span></div>
         <label className="rounded-lg bg-slate-50 p-2 dark:bg-slate-800/50"><div className="text-xs text-slate-500">Günlük en fazla</div>
           <span className="flex items-center gap-1"><input className="inp w-20 py-0.5 text-right" inputMode="numeric" value={limit} onChange={(e) => setLimit(e.target.value)} />
-            {l !== (ayar?.oto_limit ?? 30) && <button className="text-xs text-marka-600 hover:underline" onClick={() => yaz({ oto_limit: Math.max(1, Math.min(200, Math.round(l))) }, 'Günlük sınır kaydedildi')}>Kaydet</button>}</span></label>
+            {l !== (ayar?.oto_limit ?? 30) && <button className="text-xs text-marka-600 hover:underline" onClick={() => yaz({ oto_limit: Math.max(1, Math.min(2000, Math.round(l))) }, 'Günlük sınır kaydedildi')}>Kaydet</button>}</span></label>
         <label className="flex cursor-pointer items-start gap-2 rounded-lg bg-slate-50 p-2 dark:bg-slate-800/50"><input type="checkbox" className="mt-1" checked={duzenli} onChange={(e) => yaz({ oto_duzenli: e.target.checked }, e.target.checked ? 'Yalnız düzenli satılanlar yüklenecek' : 'Stoktaki tüm uygun ürünler yüklenecek')} />
           <span><span className="text-xs text-slate-500">Seçim</span><br />Yalnız düzenli satılanlar <span className="text-xs text-slate-500">(6 ayda 2+ satış; tümü: {ozet?.aday ?? '…'})</span></span></label>
       </div>

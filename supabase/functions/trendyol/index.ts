@@ -298,13 +298,13 @@ async function markaOgren(n = 6) {
   return ogrenilen;
 }
 async function otoYukle(a: OtoAyar, adet?: number) {
-  const limit = Math.max(1, Math.min(200, Number(a.oto_limit) || 30));
+  const limit = Math.max(1, Math.min(2000, Number(a.oto_limit) || 30));
   const gun = new Date(Date.now() + 3 * 3600000).toISOString().slice(0, 10); // İstanbul günü
   const { count } = await db.from('ty_yukleme').select('id', { count: 'exact', head: true }).eq('kullanici', 'otomatik').gte('zaman', new Date(`${gun}T00:00:00+03:00`).toISOString());
   const kalan = limit - (count ?? 0);
   const markaYeni = await markaOgren();
   if (kalan <= 0) return { gonderilen: 0, atlanan: 0, markaYeni, not: 'günlük sınır doldu' };
-  const n = Math.min(kalan, adet ?? 10);
+  const n = Math.min(kalan, adet ?? 20);
   const { data: aday, error } = await db.rpc('ty_oto_adaylar', { n: n * 3, duzenli: a.oto_duzenli !== false });
   if (error) throw new Error(error.message);
   const l = (aday ?? []) as Obj[]; if (!l.length) return { gonderilen: 0, atlanan: 0, markaYeni };
