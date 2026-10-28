@@ -72,7 +72,13 @@ async function hazirla() {
 
 async function tur() {
   const sinir = new Date(Date.now() - YENILEME_GUN * 864e5).toISOString();
-  const { data: sayfalar } = await db.from('rakip_sayfa').select('url,kategori').or(`son_tarama.is.null,son_tarama.lt.${sinir}`).order('son_tarama', { ascending: true, nullsFirst: true }).limit(TUR_SAYFA);
+  // her araç markası sırayla taransın: her turda rastgele markalardan, o markanın en eski (hiç taranmamış önce) sayfası
+  const markalar = [...MARKALAR].sort(() => Math.random() - 0.5); const sayfalar: { url: string; kategori: string }[] = [];
+  for (const m of markalar) {
+    if (sayfalar.length >= TUR_SAYFA) break;
+    const { data } = await db.from('rakip_sayfa').select('url,kategori').eq('arac', m).or(`son_tarama.is.null,son_tarama.lt.${sinir}`).order('son_tarama', { ascending: true, nullsFirst: true }).limit(1);
+    if (data?.length) sayfalar.push(data[0] as { url: string; kategori: string });
+  }
   let okunan = 0, urun = 0; const basla = Date.now();
   for (const s of sayfalar ?? []) {
     if (Date.now() - basla > 100_000) break;
