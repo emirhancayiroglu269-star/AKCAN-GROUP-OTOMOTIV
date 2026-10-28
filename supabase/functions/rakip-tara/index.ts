@@ -9,7 +9,7 @@ const SITE = 'https://otoparcasan.com';
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0 Safari/537.36';
 const MARKALAR = ['renault', 'fiat', 'volkswagen', 'ford', 'opel', 'hyundai', 'toyota', 'peugeot', 'citroen', 'dacia', 'skoda', 'seat', 'honda', 'kia', 'nissan', 'chevrolet', 'mercedes', 'bmw', 'audi'];
 const TUR_SAYFA = 8;          // bir turda en fazla bu kadar sayfa
-const BEKLEME_MS = 3000;      // sayfalar arası bekleme
+const BEKLEME_MS = 4000;      // sayfalar arası bekleme (siteye dakikada en fazla ~8 istek)
 const YENILEME_GUN = 7;
 
 const db = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!, { auth: { persistSession: false } });
@@ -72,11 +72,11 @@ async function hazirla() {
 
 async function tur() {
   const sinir = new Date(Date.now() - YENILEME_GUN * 864e5).toISOString();
-  // her araç markası sırayla taransın: her turda rastgele markalardan, o markanın en eski (hiç taranmamış önce) sayfası
+  // her araç markası sırayla taransın: her turda rastgele markalardan, o markanın hızlı giden kategorileri önce, en eski (hiç taranmamış önce) sayfası
   const markalar = [...MARKALAR].sort(() => Math.random() - 0.5); const sayfalar: { url: string; kategori: string }[] = [];
   for (const m of markalar) {
     if (sayfalar.length >= TUR_SAYFA) break;
-    const { data } = await db.from('rakip_sayfa').select('url,kategori').eq('arac', m).or(`son_tarama.is.null,son_tarama.lt.${sinir}`).order('son_tarama', { ascending: true, nullsFirst: true }).limit(1);
+    const { data } = await db.from('rakip_sayfa').select('url,kategori').eq('arac', m).or(`son_tarama.is.null,son_tarama.lt.${sinir}`).order('oncelik', { ascending: false }).order('son_tarama', { ascending: true, nullsFirst: true }).limit(1);
     if (data?.length) sayfalar.push(data[0] as { url: string; kategori: string });
   }
   let okunan = 0, urun = 0; const basla = Date.now();
