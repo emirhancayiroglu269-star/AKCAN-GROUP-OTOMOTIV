@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, CheckCircle2, Download, Info, PlugZap, RefreshCw, TrendingUp } from 'lucide-react';
 import { useStore, toast } from '../lib/store';
 import { backend, type TyFiyatSupheli, type TyGonderim, type TySiparis, type TyVeri } from '../lib/backend';
-import { IPTAL_RE, TY_VARSAYILAN, komisyonOranlari, maliyet, satirKomisyon, tyHedefFiyat, tyKar, tyOneriler, type TyVarsayim } from '../lib/trendyol';
+import { IPTAL_RE, TY_VARSAYILAN, komisyonOranlari, maliyet, satirKomisyon, tyOneriFiyat, tyKar, tyOneriler, type TyVarsayim } from '../lib/trendyol';
 import { sonAlislar } from '../lib/analiz2';
 import { ara, gunu, para, parse, sayi, tarihSaat } from '../lib/format';
 import { UrunLink } from '../components/DetayKart';
@@ -128,10 +128,10 @@ function Ilanlar({ veri, v }: { veri: TyVeri; v: TyVarsayim }) {
   const son = useMemo(() => sonAlislar(db), [db]);
   const satirlar = useMemo(() => veri.urunler.map((t) => {
     const u = t.urun_id ? urun.get(t.urun_id) : undefined; const k = kom.get(t.barkod) ?? (t.komisyon && t.komisyon <= 60 ? t.komisyon : v.komisyon); const a = u ? maliyet(db, u, son) : 0; const kdv = t.kdv ?? u?.kdv ?? 20;
-    const simdi = t.satis_fiyati && a > 0 ? tyKar(t.satis_fiyati, a, kdv, v, k) : null; const hedef = a > 0 ? tyHedefFiyat(a, kdv, v, k) : null;
+    const simdi = t.satis_fiyati && a > 0 ? tyKar(t.satis_fiyati, a, kdv, v, k) : null; const hedef = a > 0 ? tyOneriFiyat(a, kdv, v, k, u?.satis_fiyati ?? 0) : null;
     const stokFark = u && t.stok !== null ? Math.max(0, u.stok) - t.stok : null;
     return { t, u, k, a, simdi, hedef, stokFark, gercekKom: kom.has(t.barkod) };
-  }), [veri, urun, kom, son, db, v.komisyon, v.kargo, v.hizmet, v.stopaj, v.hedef_marj]); // eslint-disable-line react-hooks/exhaustive-deps
+  }), [veri, urun, kom, son, db, v.komisyon, v.kargo, v.hizmet, v.stopaj, v.hedef_marj, v.taban_marj, v.tavan_yuzde]); // eslint-disable-line react-hooks/exhaustive-deps
   const uygun = (x: (typeof satirlar)[number], k: IlanFiltre) => k === 'hepsi' ? true : k === 'zarar' ? !!x.simdi && x.simdi.kar < 0 : k === 'hedefAlti' ? !!x.simdi && x.simdi.kar >= 0 && x.simdi.marj < v.hedef_marj - 0.5
     : k === 'stokFark' ? x.stokFark !== null && x.stokFark !== 0 : k === 'eslesmeyen' ? !x.u : x.t.satista === false;
   const say = (k: IlanFiltre) => satirlar.filter((x) => uygun(x, k)).length;
@@ -145,7 +145,7 @@ function Ilanlar({ veri, v }: { veri: TyVeri; v: TyVarsayim }) {
         <Kpi etiket={`Hedef marj (%${v.hedef_marj}) altında`} deger={sayi(say('hedefAlti'))} renk="amber" />
         <Kpi etiket="Stok farkı" deger={sayi(say('stokFark'))} alt="Trendyol stoğu ≠ iki deponun toplamı" renk="blue" />
       </div>
-      <FiyatGuncelleme hedefAlti={satirlar.filter((x) => x.u && x.hedef && x.t.satis_fiyati && x.t.satista !== false && x.hedef > x.t.satis_fiyati + 0.5).length} />
+      <FiyatGuncelleme hedefAlti={satirlar.filter((x) => x.u && x.hedef && x.t.satis_fiyati && x.t.satista !== false && Math.abs(x.hedef - x.t.satis_fiyati) >= Math.max(1, x.t.satis_fiyati * 0.01)).length} />
       <div className="mb-3 flex flex-wrap items-center gap-1.5">
         {fBtn('hepsi', 'Tümü')}{fBtn('zarar', 'Zararına')}{fBtn('hedefAlti', 'Hedef altı')}{fBtn('stokFark', 'Stok farkı')}{fBtn('eslesmeyen', 'Bizde eşleşmeyen')}{fBtn('kapali', 'Satışta değil')}
         <input className="inp ml-auto max-w-xs" placeholder="Ürün, barkod, stok kodu…" value={q} onChange={(e) => setQ(e.target.value)} />
@@ -155,7 +155,7 @@ function Ilanlar({ veri, v }: { veri: TyVeri; v: TyVarsayim }) {
         {liste.length === 0 ? <Bos metin="Bu filtrede ilan yok." /> : (
           <div className="max-h-[60vh] overflow-auto">
             <table className="tbl">
-              <thead><tr><th>İlan</th><th className="text-right">Stok (TY / bizde)</th><th className="text-right">Alış</th><th className="text-right">Trendyol fiyatı</th><th className="text-right">Şu anki kâr</th><th className="text-right">Hedef fiyat</th></tr></thead>
+              <thead><tr><th>İlan</th><th className="text-right">Stok (TY / bizde)</th><th className="text-right">Alış</th><th className="text-right">Trendyol fiyatı</th><th className="text-right">Şu anki kâr</th><th className="text-right">Önerilen fiyat</th></tr></thead>
               <tbody>{liste.slice(0, 600).map((x) => (
                 <tr key={x.t.barkod}>
                   <td><div className="font-medium">{x.u ? <UrunLink id={x.u.id}>{x.t.baslik}</UrunLink> : x.t.baslik}</div>
@@ -170,7 +170,7 @@ function Ilanlar({ veri, v }: { veri: TyVeri; v: TyVarsayim }) {
             </table>
           </div>)}
       </div>
-      <p className="mt-3 flex items-start gap-1.5 text-xs text-slate-500"><Info size={14} className="mt-0.5 shrink-0" />Hedef fiyat = alış + komisyon + kargo + hizmet bedeli + stopaj + hedef kâr (%{v.hedef_marj}). Komisyon, o ürünün geçmiş Trendyol siparişlerinden alınır; siparişi yoksa varsayılan %{v.komisyon} kullanılır. Bizim stok = iki deponun toplamı. Otomatik fiyat güncelleme açıksa hedefin altındaki ilanların fiyatı hedefe yükseltilir; hedefin üstündekilere dokunulmaz.</p>
+      <p className="mt-3 flex items-start gap-1.5 text-xs text-slate-500"><Info size={14} className="mt-0.5 shrink-0" />Önerilen fiyat = alış + komisyon + kargo + hizmet bedeli + stopaj + hedef kâr (%{v.hedef_marj}); dükkân fiyatının %{v.tavan_yuzde} üstünü geçmez, ama kâr %{v.taban_marj}'in altına inmez. Komisyon, o ürünün geçmiş Trendyol siparişlerinden alınır; siparişi yoksa varsayılan %{v.komisyon} kullanılır. Bizim stok = iki deponun toplamı. Otomatik fiyat güncelleme açıksa Trendyol fiyatı önerilen fiyata çekilir (gerekirse düşürülür).</p>
     </div>
   );
 }
@@ -185,7 +185,7 @@ function FiyatGuncelleme({ hedefAlti }: { hedefAlti: number }) {
   useEffect(() => { oku(); }, []);
   const yaz = (fiyat_gonder: boolean) => calistir(() => backend.ayarKaydet({ trendyol: { ...TY_VARSAYILAN, ...(ayar ?? {}), fiyat_gonder } }), fiyat_gonder ? 'Otomatik fiyat güncelleme açıldı' : 'Otomatik fiyat güncelleme kapatıldı');
   const simdi = async () => {
-    if (!onayla(`Hedef fiyatın altında kalan ${hedefAlti} ilanın Trendyol fiyatı hedef fiyata yükseltilecek. Devam edilsin mi?`)) return;
+    if (!onayla(`${hedefAlti} ilanın Trendyol fiyatı önerilen fiyata çekilecek (bir kısmı düşecek, bir kısmı yükselecek). Devam edilsin mi?`)) return;
     setBekle(true);
     try { const r = await backend.tyIslem<{ gonderilen: number; supheli: number }>({ islem: 'fiyat_gonder' }); toast(`${r.gonderilen} ilanın fiyatı güncellendi${r.supheli ? `, ${r.supheli} ilan kontrol bekliyor` : ''}`); oku(); }
     catch (e) { toast(`Gönderilemedi: ${(e as Error).message}`, 'hata'); } finally { setBekle(false); }
@@ -195,13 +195,13 @@ function FiyatGuncelleme({ hedefAlti }: { hedefAlti: number }) {
       <div className="flex flex-wrap items-center gap-2">
         <TrendingUp size={18} className={acik ? 'text-emerald-600' : 'text-slate-400'} /><b>Otomatik fiyat güncelleme</b>
         <span className={`rozet ${acik ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>{acik ? 'AÇIK' : 'kapalı'}</span>
-        <span className="text-xs text-slate-500">{hedefAlti} ilan hedefin altında</span>
+        <span className="text-xs text-slate-500">{hedefAlti} ilanın fiyatı değişecek</span>
         <div className="ml-auto flex gap-2">
           <button className="btn-ghost" disabled={bekle || !hedefAlti} onClick={simdi}>{bekle ? 'Gönderiliyor…' : 'Şimdi güncelle'}</button>
           {acik ? <button className="btn-ghost text-red-600" onClick={() => yaz(false)}>Kapat</button> : <button className="btn-primary" onClick={() => yaz(true)}>Aç</button>}
         </div>
       </div>
-      <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">Açıkken her eşitlemede (15 dakikada bir) alış fiyatı, komisyon, kargo ve kâr hedefine göre hesaplanan fiyatın altında kalan ilanların Trendyol fiyatı hedefe yükseltilir. Alış fiyatı artan ürün kendiliğinden güncellenir. Hedefin üstündeki fiyatlara dokunulmaz.</p>
+      <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">Açıkken her eşitlemede (15 dakikada bir) Trendyol fiyatı önerilen fiyata çekilir: kâr hedefine göre hesaplanır, dükkân fiyatının belirlenen oranından fazla üstüne çıkmaz (rekabet için), ama taban kârın altına inmez — zararına satış olmaz. Alış fiyatı değişen ürün kendiliğinden güncellenir. Düşürülen fiyatlarda eski fiyat üstü çizili gösterilir.</p>
       {supheli.length > 0 && <div className="mt-2 rounded-lg bg-amber-50 p-2 text-xs text-amber-900 dark:bg-amber-500/10 dark:text-amber-200"><b>Kontrol bekleyen {supheli.length} ilan</b> (gönderilmedi):
         <ul className="mt-1 space-y-0.5">{supheli.slice(0, 20).map((x) => <li key={x.barkod}>{x.baslik ?? x.barkod}: {para(x.eski)} → {para(x.hedef)} — {x.neden}</li>)}</ul></div>}
       {gecmis.length > 0 && <div className="mt-2 text-xs">
@@ -263,11 +263,13 @@ function Varsayimlar({ v }: { v: TyVarsayim }) {
       <div className="mt-1 flex items-center gap-2"><input className="inp w-28 text-right" inputMode="decimal" value={d[k]} onChange={(e) => setD({ ...d, [k]: e.target.value })} /><span className="text-sm text-slate-500">{birim}</span></div>
       <div className="mt-0.5 text-xs text-slate-500">{aciklama}</div></label>);
   const { db } = useStore();
-  const kaydet = () => calistir(() => backend.ayarKaydet({ trendyol: { ...(db.ayarlar.trendyol ?? {}), komisyon: parse(d.komisyon), kargo: parse(d.kargo), hizmet: parse(d.hizmet), stopaj: parse(d.stopaj), hedef_marj: parse(d.hedef_marj) } }), 'Trendyol hesap varsayımları kaydedildi');
+  const kaydet = () => calistir(() => backend.ayarKaydet({ trendyol: { ...(db.ayarlar.trendyol ?? {}), komisyon: parse(d.komisyon), kargo: parse(d.kargo), hizmet: parse(d.hizmet), stopaj: parse(d.stopaj), hedef_marj: parse(d.hedef_marj), taban_marj: parse(d.taban_marj), tavan_yuzde: parse(d.tavan_yuzde) } }), 'Trendyol hesap varsayımları kaydedildi');
   return (
     <div className="card max-w-2xl p-5">
       <div className="grid gap-5 sm:grid-cols-2">
         {alan('hedef_marj', 'Hedef kâr marjı', '%', 'Satışın (KDV hariç) yüzde kaçı kâr kalsın')}
+        {alan('taban_marj', 'En düşük kâr marjı', '%', 'Fiyat rekabet için düşürülse bile kâr bunun altına inmez')}
+        {alan('tavan_yuzde', 'Dükkân fiyatına göre tavan', '% üstü', 'Trendyol fiyatı dükkân fiyatının en fazla bu kadar üstünde olsun (taban kâr korunur)')}
         {alan('komisyon', 'Varsayılan komisyon', '%', 'Ürünün Trendyol siparişi yoksa kullanılır; varsa gerçek oran alınır')}
         {alan('kargo', 'Sipariş başı kargo', 'TL (KDV dahil)', 'Anlaşmalı kargo ücretiniz (desi ortalaması)')}
         {alan('hizmet', 'Sipariş başı hizmet bedeli', 'TL (KDV dahil)', 'Trendyol platform hizmet bedeli vb. sabit kesinti')}

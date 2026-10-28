@@ -1,6 +1,6 @@
 // Trendyol entegrasyonu (Supabase Edge Function): onaylı ilanları ve sipariş paketlerini OKUR.
 // YAZDIKLARI: (1) ayarlarda "stok gönderimi" açıksa eşleşen ilanların STOK adedi (iki deponun toplamı − güvenlik stoğu),
-// (2) yeni ilan (elle ya da ayardan açıksa otomatik), (3) ayardan açıksa kâr hedefinin altında kalan ilanların fiyatını hedefe yükseltir.
+// (2) yeni ilan (elle ya da ayardan açıksa otomatik), (3) ayardan açıksa ilan fiyatlarını rekabetçi fiyata çeker (kâr hedefi, dükkân fiyatı tavanı, taban marj).
 // Her gönderim ty_gonderim / ty_yukleme tablolarına kaydedilir.
 // Çağıran: siteye giriş yapmış kullanıcı (test/eşitle düğmesi) veya zamanlayıcı (service role).
 // Gizli değerler (kullanıcı girer): TRENDYOL_SATICI_ID, TRENDYOL_API_KEY, TRENDYOL_API_SECRET
@@ -247,7 +247,7 @@ async function yuklemeKontrol() {
 // ---------- otomatik yükleme ----------
 // Ayarlarda "otomatik yükleme" açıksa her turda, kategori+marka eşleşmesi hazır, stoklu, barkodlu, görselli ürünlerden
 // günlük sınıra kadar yeni ilan açar. Eksik bilgisi olan ürün atlanır ve nedeni ty_oto_atla'ya yazılır (7 gün sonra tekrar denenir).
-type OtoAyar = Ayar & { fiyat_gonder?: boolean; oto_yukle?: boolean; oto_limit?: number; oto_duzenli?: boolean; komisyon?: number; kargo?: number; hizmet?: number; stopaj?: number; hedef_marj?: number };
+type OtoAyar = Ayar & { taban_marj?: number; tavan_yuzde?: number; fiyat_gonder?: boolean; oto_yukle?: boolean; oto_limit?: number; oto_duzenli?: boolean; komisyon?: number; kargo?: number; hizmet?: number; stopaj?: number; hedef_marj?: number };
 type Oz = { id: number; ad: string; zorunlu: boolean; serbest: boolean; degerler: { id: number; ad: string }[] };
 const ARAC_ID = 370;
 const urunOzel = (o: { id: number; ad: string }) => o.id === ARAC_ID || /motor|araç|arac/i.test(o.ad);
@@ -278,6 +278,40 @@ function hedefFiyat(alisNet: number, kdv: number, a: OtoAyar, komisyon: number) 
   const pay = (1 - marj / 100) / (1 + kdv / 100) - komisyon / 100 / 1.2 - stopaj / 100;
   if (!(alisNet > 0) || pay <= 0) return null;
   return Math.ceil((alisNet + (kargo + hizmet) / 1.2) / pay) - 0.1;
+}
+/**
+ * Trendyol satış fiyatı (rekabetçi): kâr hedefli fiyat, dükkân fiyatının %tavan üstünü geçmez;
+ * ama asla taban marjın (varsayılan %5) altına inmez — zararına satış olmaz.
+ */
+function satisFiyati(maliyet: number, kdv: number, a: OtoAyar, komisyon: number, dukkan: number) {
+  const taban = hedefFiyat(maliyet, kdv, { ...a, hedef_marj: Math.max(0, Number(a.taban_marj ?? 5)) }, komisyon);
+  if (!taban) return null;
+  const hedef = hedefFiyat(maliyet, kdv, a, komisyon) ?? taban;
+  const tavanY = a.tavan_yuzde === undefined || a.tavan_yuzde === null ? 10 : Number(a.tavan_yuzde);
+  const tavan = dukkan > 0 && tavanY >= 0 ? Math.ceil(dukkan * (1 + tavanY / 100)) - 0.1 : Infinity;
+  return Math.max(taban, Math.min(hedef, tavan));
+}
+/** BizimHesap adını Trendyol aramasına uygun başlığa çevirir: marka + düzgün harfli ad + üretici kodu */
+const KISALTMA = new Set(['VW', 'BMW', 'KIA', 'DAF', 'MAN', 'GM', 'TDI', 'TDİ', 'TSI', 'TSİ', 'TFSI', 'FSI', 'HDI', 'HDİ', 'CDI', 'CDTI', 'DCI', 'DCİ', 'CRDI', 'CRDİ', 'TDCI', 'TDCİ', 'JTD', 'MJTD', 'MJET', 'GTI', 'ABS', 'EGR', 'LPG', 'CNG', 'VTEC', 'OEM', 'AMG', 'SUV', 'TCE', 'II', 'III', 'IV', 'VI', 'VII', 'VIII', 'IX', 'XI', 'XC', 'CR', 'WVA', 'UN', 'AB', 'MT', 'AT', 'BZ', 'DZ']);
+const TR_HARF = /[ÇĞİÖŞÜçğıöşü]/;
+function kelimeDuzelt(w: string) {
+  if (!w) return w;
+  if (/\d/.test(w) || KISALTMA.has(w.toLocaleUpperCase('tr'))) return w.toLocaleUpperCase('tr');
+  // Türkçe harf içermeyen kelimelerde I genelde i'dir (TRANSIT, FIAT); içerenlerde Türkçe kural uygulanır
+  if (w.length === 1) return w;
+  const tr = TR_HARF.test(w); const k = tr ? w.toLocaleLowerCase('tr') : w.toLowerCase();
+  return (tr ? k.charAt(0).toLocaleUpperCase('tr') : k.charAt(0).toUpperCase()) + k.slice(1);
+}
+function baslikYap(ad: string, marka: string | null, kod: string | null) {
+  const temiz = ad.replace(/(\d)\s*>\s*(\d)/g, '$1-$2').replace(/\s*(=>|->|>)\s*/g, '+ ').replace(/[()]/g, ' ').replace(/\s+/g, ' ').trim();
+  const govde = temiz.split(' ').map((w) => w.split(/([-/])/).map((p) => (p === '-' || p === '/' ? p : kelimeDuzelt(p))).join('')).join(' ');
+  const mk = marka ? (marka.length <= 3 ? marka.toLocaleUpperCase('tr') : kelimeDuzelt(marka)) : '';
+  const ureticiKod = kod ? kod.replace(/^[A-ZÇĞİÖŞÜ]{2,4}-/, '') : '';
+  let b = `${mk ? mk + ' ' : ''}${govde}`;
+  const ekle = ureticiKod.length >= 4 && !b.toUpperCase().replace(/[^A-Z0-9]/g, '').includes(ureticiKod.toUpperCase().replace(/[^A-Z0-9]/g, ''));
+  const sinir = ekle ? 99 - ureticiKod.length : 100;
+  if (b.length > sinir) b = b.slice(0, sinir).replace(/\s+\S*$/, '');
+  return ekle ? `${b} ${ureticiKod}` : b;
 }
 /** Eşleşmemiş markaları Trendyol'da birebir aynı adla arar; tam eşleşen varsa kaydeder (yanlış marka riskini almamak için yalnız tam ad) */
 async function markaOgren(n = 6) {
@@ -334,14 +368,14 @@ async function otoYukle(a: OtoAyar, adet?: number) {
       const alis = Number(u.alis_fiyati) || 0; const net = kdvHaric ? alis : alis / (1 + kdv / 100);
       const maliyet = Math.max(net, sonAlis.get(id) ?? 0);
       const komisyon = komKat.get(kat) ?? Number(a.komisyon ?? 20);
-      const fiyat = hedefFiyat(maliyet, kdv, a, komisyon);
+      const fiyat = satisFiyati(maliyet, kdv, a, komisyon, Number(u.satis_fiyati) || 0);
       if (!fiyat) { atla.push({ urun_id: id, neden: 'Fiyat hesaplanamadı' }); continue; }
       const arac = sec.find((x) => x.o.id === ARAC_ID)?.d;
       const kodlar = (kd ?? []).filter((k) => k.urun_id === id).map((k) => String(k.kod));
       const oem = [u.etiket as string | null, ...kodlar].filter(Boolean).join(', ');
       const marka = metin(u.marka);
       kalemler.push({
-        urun_id: id, baslik: `${marka ? marka + ' ' : ''}${ad}`.slice(0, 100), fiyat,
+        urun_id: id, baslik: baslikYap(ad, marka, metin(u.kod)), fiyat,
         aciklama: [ad, marka && `Marka: ${marka}`, u.kod && `Stok kodu: ${u.kod}`, oem && `OEM / muadil kodları: ${oem}`, arac && `Uyumlu araç: ${arac.ad}`].filter(Boolean).join('\n'),
         stok: Math.max(0, Math.floor(Number(u.stok) || 0) - Math.max(0, Number(a.guvenlik) || 0)), desi: Number(u.desi) || 1,
         kategori_id: kat, marka_id: Number(u.ty_marka_id), ozellikler: oz,
@@ -357,8 +391,8 @@ async function otoYukle(a: OtoAyar, adet?: number) {
 }
 
 // ---------- fiyat güncelleme ----------
-// Trendyol fiyatı kâr hedefinin altında kalan (veya zararına) ilanların fiyatını hedef fiyata YÜKSELTİR; hedefin üstündekilere dokunmaz.
-// Güvenlik: hedef, mevcut fiyatın 2,5 katından fazlaysa (alış fiyatı hatalı olabilir) gönderilmez, listede gösterilir.
+// Trendyol fiyatını rekabetçi fiyata (satisFiyati: kâr hedefi, dükkân fiyatı + %tavan ile sınırlı, taban marjın altına inmez) çeker; gerekirse düşürür de.
+// Güvenlik: yeni fiyat mevcut fiyatın 2,5 katından fazla ya da %40'ından azsa (alış/dükkân fiyatı hatalı olabilir) gönderilmez, listede gösterilir.
 // Aynı ilana 24 saatte 3'ten fazla fiyat gönderilmişse başka bir sistem (ör. BizimHesap) fiyatı geri çekiyor demektir: durdurulur.
 async function fiyatGonder(kaynak: 'otomatik' | 'elle', a: OtoAyar) {
   const { data: ilan, error } = await db.from('ty_urun').select('barkod,baslik,stok,urun_id,satista,satis_fiyati,liste_fiyati,komisyon,kdv').not('urun_id', 'is', null);
@@ -368,7 +402,7 @@ async function fiyatGonder(kaynak: 'otomatik' | 'elle', a: OtoAyar) {
   const um = new Map<string, Obj>(); const sonAlis = new Map<string, number>();
   for (let i = 0; i < ids.length; i += 200) {
     const parca = ids.slice(i, i + 200);
-    const { data: u } = await db.from('urunler').select('id,alis_fiyati,kdv,aktif').in('id', parca); for (const x of u ?? []) um.set(x.id as string, x);
+    const { data: u } = await db.from('urunler').select('id,alis_fiyati,satis_fiyati,kdv,aktif').in('id', parca); for (const x of u ?? []) um.set(x.id as string, x);
     const { data: h } = await db.from('hareketler').select('urun_id,alis_fiyati,tarih').eq('tur', 'alis').in('urun_id', parca).order('tarih', { ascending: false }).limit(5000);
     for (const x of h ?? []) if (!sonAlis.has(x.urun_id as string) && Number(x.alis_fiyati) > 0) sonAlis.set(x.urun_id as string, Number(x.alis_fiyati));
   }
@@ -381,11 +415,11 @@ async function fiyatGonder(kaynak: 'otomatik' | 'elle', a: OtoAyar) {
     const kdv = Number(u.kdv) || Number(t.kdv) || 20; const alis = Number(u.alis_fiyati) || 0;
     const maliyet = Math.max(kdvHaric ? alis : alis / (1 + kdv / 100), sonAlis.get(u.id as string) ?? 0);
     const kom = Number(t.komisyon) > 0 && Number(t.komisyon) <= 60 ? Number(t.komisyon) : Number(a.komisyon ?? 20);
-    const hedef = hedefFiyat(maliyet, kdv, a, kom); const eski = Number(t.satis_fiyati);
-    if (!hedef || hedef <= eski + 0.5) continue;
-    if (hedef > eski * 2.5) { supheli.push({ barkod: t.barkod, baslik: t.baslik, eski, hedef, neden: 'Hedef fiyat mevcut fiyatın 2,5 katından fazla — alış fiyatını kontrol edin' }); continue; }
+    const hedef = satisFiyati(maliyet, kdv, a, kom, Number(u.satis_fiyati) || 0); const eski = Number(t.satis_fiyati);
+    if (!hedef || Math.abs(hedef - eski) < Math.max(1, eski * 0.01)) continue;
+    if (hedef > eski * 2.5 || hedef < eski * 0.4) { supheli.push({ barkod: t.barkod, baslik: t.baslik, eski, hedef, neden: 'Yeni fiyat mevcut fiyattan çok farklı — alış ve dükkân fiyatını kontrol edin' }); continue; }
     if ((sayac.get(t.barkod as string) ?? 0) >= 3) { supheli.push({ barkod: t.barkod, baslik: t.baslik, eski, hedef, neden: 'Fiyat 24 saatte 3 kez gönderildi ama geri düşüyor — başka bir sistem (BizimHesap E-Ticaret?) fiyatı değiştiriyor olabilir' }); continue; }
-    gonder.push({ barkod: t.barkod as string, baslik: t.baslik as string | null, stok: sayi(t.stok), eski, yeni: hedef, liste: Math.max(hedef, Number(t.liste_fiyati) || 0) });
+    gonder.push({ barkod: t.barkod as string, baslik: t.baslik as string | null, stok: sayi(t.stok), eski, yeni: hedef, liste: Math.max(hedef, hedef < eski ? eski : 0, Number(t.liste_fiyati) || 0) });
   }
   for (let i = 0; i < gonder.length; i += 1000) {
     const parca = gonder.slice(i, i + 1000);

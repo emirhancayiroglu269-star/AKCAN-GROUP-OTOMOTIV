@@ -4,9 +4,9 @@ import { netAlis, stokluMu } from './analiz';
 import { sonAlislar } from './analiz2';
 import { gunu } from './format';
 
-export interface TyVarsayim { komisyon: number; kargo: number; hizmet: number; stopaj: number; hedef_marj: number }
+export interface TyVarsayim { komisyon: number; kargo: number; hizmet: number; stopaj: number; hedef_marj: number; taban_marj: number; tavan_yuzde: number }
 /** Varsayılanlar: kullanıcı Trendyol sayfasından kendi değerlerini girer */
-export const TY_VARSAYILAN: TyVarsayim = { komisyon: 20, kargo: 100, hizmet: 0, stopaj: 1, hedef_marj: 15 };
+export const TY_VARSAYILAN: TyVarsayim = { komisyon: 20, kargo: 100, hizmet: 0, stopaj: 1, hedef_marj: 15, taban_marj: 5, tavan_yuzde: 10 };
 
 /** Satıcının ürün başına güncel maliyeti (KDV hariç): BizimHesap alışı ile son fatura alışının büyüğü */
 export function maliyet(db: DB, u: Urun, son = sonAlislar(db)) {
@@ -30,6 +30,18 @@ export function tyHedefFiyat(alisNet: number, kdv: number, v: TyVarsayim, komisy
   if (pay <= 0) return null;
   const P = (alisNet + (v.kargo + v.hizmet) / 1.2) / pay;
   return Math.ceil(P) - 0.1;
+}
+
+/**
+ * Rekabetçi Trendyol fiyatı (sunucudaki satisFiyati ile aynı): kâr hedefli fiyat, dükkân fiyatının %tavan üstünü geçmez,
+ * ama taban marjın altına inmez (zararına satış olmaz). Hesaplanamıyorsa null.
+ */
+export function tyOneriFiyat(alisNet: number, kdv: number, v: TyVarsayim, komisyon: number, dukkan: number) {
+  const taban = tyHedefFiyat(alisNet, kdv, { ...v, hedef_marj: Math.max(0, v.taban_marj ?? 5) }, komisyon);
+  if (!taban) return null;
+  const hedef = tyHedefFiyat(alisNet, kdv, v, komisyon) ?? taban;
+  const tavan = dukkan > 0 && (v.tavan_yuzde ?? 10) >= 0 ? Math.ceil(dukkan * (1 + (v.tavan_yuzde ?? 10) / 100)) - 0.1 : Infinity;
+  return Math.max(taban, Math.min(hedef, tavan));
 }
 
 /** Siparişlerden barkod başına gerçek komisyon oranı (%) — Trendyol kategoriye göre farklı oran keser */
@@ -58,7 +70,7 @@ export function tyOneriler(db: DB, tyUrunler: TyUrun[], v: TyVarsayim) {
   }
   return db.urunler.filter((u) => u.aktif && stokluMu(u) && u.stok > 0 && !ilanli.has(u.id) && !(u.barkod && ilanBarkod.has(u.barkod))).flatMap((u) => {
     const a = maliyet(db, u, son); if (!(a > 0)) return [];
-    const s = satis.get(u.id); const hedef = tyHedefFiyat(a, u.kdv, v); if (!hedef) return [];
+    const s = satis.get(u.id); const hedef = tyOneriFiyat(a, u.kdv, v, v.komisyon, u.satis_fiyati); if (!hedef) return [];
     const k = tyKar(hedef, a, u.kdv, v);
     return [{ u, alis: a, hedef, kar: k.kar, satis6: s?.adet ?? 0, belge: s?.belge.size ?? 0, barkodVar: !!(u.barkod ?? '').trim(),
       // dükkân fiyatına göre Trendyol fiyatı ne kadar yukarıda (çok yüksekse rekabet zor)

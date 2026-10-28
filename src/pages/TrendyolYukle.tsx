@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, Bot, CheckCircle2, ImageOff, Info, Pencil, Play, Plus, Search, Send, Trash2 } from 'lucide-react';
 import { useStore, toast } from '../lib/store';
 import { backend, type TyKategoriEsleme, type TyMarkaEsleme, type TyOtoOzet, type TyOzellikDeger, type TyVeri, type TyYukleme } from '../lib/backend';
-import { maliyet, tyHedefFiyat, TY_VARSAYILAN, type TyVarsayim } from '../lib/trendyol';
+import { maliyet, tyOneriFiyat, TY_VARSAYILAN, type TyVarsayim } from '../lib/trendyol';
 import { sonAlislar } from '../lib/analiz2';
 import { stokluMu } from '../lib/analiz';
 import { aracCikar } from '../lib/analiz3';
@@ -99,7 +99,7 @@ export function TrendyolYukle({ veri, v }: { veri: TyVeri; v: TyVarsayim }) {
     const ozSecim = new Map<number, Secim>(ozelOz.map((o) => [o.id, d.oz && o.id in d.oz ? d.oz[o.id] : ozOner(u, o)]));
     const arac = ozSecim.get(ARAC_ID) ?? null;
     const a = maliyet(db, u, son); const kom = km ? komisyonKat.get(km.ty_kategori_id) ?? v.komisyon : v.komisyon;
-    const hedef = a > 0 ? tyHedefFiyat(a, u.kdv, v, kom) : null;
+    const hedef = a > 0 ? tyOneriFiyat(a, u.kdv, v, kom, u.satis_fiyati) : null;
     const fiyat = d.fiyat !== undefined ? parse(d.fiyat) : hedef ?? 0;
     const g = gorsel.get(u.id); const stok = Math.max(0, Math.floor(u.stok) - (db.ayarlar.trendyol?.guvenlik ?? 0));
     const baslik = (d.baslik ?? `${u.marka ? u.marka + ' ' : ''}${u.ad}`).slice(0, 100);
