@@ -1,0 +1,2 @@
+-- 025 — Otoparçasan pazar taraması (rakip_sayfa, rakip_urun, rakip_gorunum, rakip_pazar) — uygulandı: migration "rakip_pazar"
+-- Cron: rakip-tara her 2 dakikada (x-zamanlayici = ty_gizli.anahtar)

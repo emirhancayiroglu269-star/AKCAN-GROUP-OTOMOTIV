@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { RafaCek } from './RafaCek';
 import type { Sayfa } from '../App';
 import { useStore } from '../lib/store';
 import Depolar from './Depolar';
@@ -48,6 +49,7 @@ export function DepolarSayfa(p: P) {
     { id: 'toplam', ad: 'Kritik stok & alınacaklar', bilesen: Alinacaklar },
     { id: 'karsilastirma', ad: 'Depo karşılaştırması', bilesen: Depolar, izin: izin('maliyet') },
     { id: 'sorulan', ad: 'Sorulan ama olmayan', bilesen: SorulanParcalar },
+    { id: 'pazar', ad: 'Rafa çekilecekler (pazar)', bilesen: RafaCek },
   ]} />;
 }
 export const EritmeSayfa = (p: P) => <Sekmeli {...p} sayfa="eritme" sekmeler={[
