@@ -247,7 +247,7 @@ async function yuklemeKontrol() {
 // ---------- otomatik yükleme ----------
 // Ayarlarda "otomatik yükleme" açıksa her turda, kategori+marka eşleşmesi hazır, stoklu, barkodlu, görselli ürünlerden
 // günlük sınıra kadar yeni ilan açar. Eksik bilgisi olan ürün atlanır ve nedeni ty_oto_atla'ya yazılır (7 gün sonra tekrar denenir).
-type OtoAyar = Ayar & { taban_marj?: number; tavan_yuzde?: number; fiyat_gonder?: boolean; oto_yukle?: boolean; oto_limit?: number; oto_duzenli?: boolean; komisyon?: number; kargo?: number; hizmet?: number; stopaj?: number; hedef_marj?: number };
+type OtoAyar = Ayar & { kargo_tablo?: number[]; taban_marj?: number; tavan_yuzde?: number; fiyat_gonder?: boolean; oto_yukle?: boolean; oto_limit?: number; oto_duzenli?: boolean; komisyon?: number; kargo?: number; hizmet?: number; stopaj?: number; hedef_marj?: number };
 type Oz = { id: number; ad: string; zorunlu: boolean; serbest: boolean; degerler: { id: number; ad: string }[] };
 const ARAC_ID = 370;
 const urunOzel = (o: { id: number; ad: string }) => o.id === ARAC_ID || /motor|araç|arac/i.test(o.ad);
@@ -283,7 +283,14 @@ function hedefFiyat(alisNet: number, kdv: number, a: OtoAyar, komisyon: number) 
  * Trendyol satış fiyatı (rekabetçi): kâr hedefli fiyat, dükkân fiyatının %tavan üstünü geçmez;
  * ama asla taban marjın (varsayılan %5) altına inmez — zararına satış olmaz.
  */
-function satisFiyati(maliyet: number, kdv: number, a: OtoAyar, komisyon: number, dukkan: number) {
+/** Desiye göre kargo (KDV dahil): ayarlarda Trendyol anlaşmalı kargo tablosu (KDV hariç, desi sırasıyla) varsa ondan, yoksa sabit kargo */
+function kargoTL(a: OtoAyar, desi: number | null | undefined) {
+  const t = a.kargo_tablo;
+  if (!Array.isArray(t) || !t.length || desi === null || desi === undefined || !Number.isFinite(Number(desi))) return a.kargo ?? 100;
+  return Math.round(Number(t[Math.min(t.length - 1, Math.max(0, Math.ceil(Number(desi))))]) * 1.2 * 100) / 100;
+}
+function satisFiyati(maliyet: number, kdv: number, a0: OtoAyar, komisyon: number, dukkan: number, desi?: number | null) {
+  const a: OtoAyar = { ...a0, kargo: kargoTL(a0, desi) };
   const taban = hedefFiyat(maliyet, kdv, { ...a, hedef_marj: Math.max(0, Number(a.taban_marj ?? 5)) }, komisyon);
   if (!taban) return null;
   const hedef = hedefFiyat(maliyet, kdv, a, komisyon) ?? taban;
@@ -368,7 +375,7 @@ async function otoYukle(a: OtoAyar, adet?: number) {
       const alis = Number(u.alis_fiyati) || 0; const net = kdvHaric ? alis : alis / (1 + kdv / 100);
       const maliyet = Math.max(net, sonAlis.get(id) ?? 0);
       const komisyon = komKat.get(kat) ?? Number(a.komisyon ?? 20);
-      const fiyat = satisFiyati(maliyet, kdv, a, komisyon, Number(u.satis_fiyati) || 0);
+      const fiyat = satisFiyati(maliyet, kdv, a, komisyon, Number(u.satis_fiyati) || 0, Number(u.desi) || 1);
       if (!fiyat) { atla.push({ urun_id: id, neden: 'Fiyat hesaplanamadı' }); continue; }
       const arac = sec.find((x) => x.o.id === ARAC_ID)?.d;
       const kodlar = (kd ?? []).filter((k) => k.urun_id === id).map((k) => String(k.kod));
@@ -395,7 +402,7 @@ async function otoYukle(a: OtoAyar, adet?: number) {
 // Güvenlik: yeni fiyat mevcut fiyatın 2,5 katından fazla ya da %40'ından azsa (alış/dükkân fiyatı hatalı olabilir) gönderilmez, listede gösterilir.
 // Aynı ilana 24 saatte 3'ten fazla fiyat gönderilmişse başka bir sistem (ör. BizimHesap) fiyatı geri çekiyor demektir: durdurulur.
 async function fiyatGonder(kaynak: 'otomatik' | 'elle', a: OtoAyar) {
-  const { data: ilan, error } = await db.from('ty_urun').select('barkod,baslik,stok,urun_id,satista,satis_fiyati,liste_fiyati,komisyon,kdv').not('urun_id', 'is', null);
+  const { data: ilan, error } = await db.from('ty_urun').select('barkod,baslik,stok,urun_id,satista,satis_fiyati,liste_fiyati,komisyon,kdv,desi').not('urun_id', 'is', null);
   if (error) throw new Error(error.message);
   const l = (ilan ?? []).filter((x) => x.satista !== false && Number(x.satis_fiyati) > 0);
   const ids = [...new Set(l.map((x) => x.urun_id as string))];
@@ -415,7 +422,7 @@ async function fiyatGonder(kaynak: 'otomatik' | 'elle', a: OtoAyar) {
     const kdv = Number(u.kdv) || Number(t.kdv) || 20; const alis = Number(u.alis_fiyati) || 0;
     const maliyet = Math.max(kdvHaric ? alis : alis / (1 + kdv / 100), sonAlis.get(u.id as string) ?? 0);
     const kom = Number(t.komisyon) > 0 && Number(t.komisyon) <= 60 ? Number(t.komisyon) : Number(a.komisyon ?? 20);
-    const hedef = satisFiyati(maliyet, kdv, a, kom, Number(u.satis_fiyati) || 0); const eski = Number(t.satis_fiyati);
+    const hedef = satisFiyati(maliyet, kdv, a, kom, Number(u.satis_fiyati) || 0, sayi(t.desi) ?? 1); const eski = Number(t.satis_fiyati);
     if (!hedef || Math.abs(hedef - eski) < Math.max(1, eski * 0.01)) continue;
     if (hedef > eski * 2.5 || hedef < eski * 0.4) { supheli.push({ barkod: t.barkod, baslik: t.baslik, eski, hedef, neden: 'Yeni fiyat mevcut fiyattan çok farklı — alış ve dükkân fiyatını kontrol edin' }); continue; }
     if ((sayac.get(t.barkod as string) ?? 0) >= 3) { supheli.push({ barkod: t.barkod, baslik: t.baslik, eski, hedef, neden: 'Fiyat 24 saatte 3 kez gönderildi ama geri düşüyor — başka bir sistem (BizimHesap E-Ticaret?) fiyatı değiştiriyor olabilir' }); continue; }

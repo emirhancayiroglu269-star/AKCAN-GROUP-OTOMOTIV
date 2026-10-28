@@ -4,7 +4,15 @@ import { netAlis, stokluMu } from './analiz';
 import { sonAlislar } from './analiz2';
 import { gunu } from './format';
 
-export interface TyVarsayim { komisyon: number; kargo: number; hizmet: number; stopaj: number; hedef_marj: number; taban_marj: number; tavan_yuzde: number }
+export interface TyVarsayim { komisyon: number; kargo: number; hizmet: number; stopaj: number; hedef_marj: number; taban_marj: number; tavan_yuzde: number; kargo_tablo?: number[]; kargo_firma?: string }
+/** Trendyol Express (TEX) anlaşmalı kargo fiyatları, 5 Ekim 2026 listesi, KDV hariç TL; dizinin sırası desi (0–30) */
+export const TEX_KARGO = [81.95,81.95,81.95,100.20,107.20,114.10,125.60,133.41,142.32,150.64,164.18,173.42,182.20,190.46,198.10,206.03,213.82,224.32,233.82,243.28,252.77,263.34,272.61,283.24,293.35,303.36,315.98,327.76,338.64,350.65,360.55];
+/** Desiye göre kargo (KDV dahil) uygulanmış varsayım: tablo yoksa ya da desi bilinmiyorsa sabit kargo kalır */
+export function desiliV(v: TyVarsayim, desi: number | null | undefined): TyVarsayim {
+  const t = v.kargo_tablo;
+  if (!t?.length || desi === null || desi === undefined || !Number.isFinite(desi)) return v;
+  return { ...v, kargo: Math.round(t[Math.min(t.length - 1, Math.max(0, Math.ceil(desi)))] * 1.2 * 100) / 100 };
+}
 /** Varsayılanlar: kullanıcı Trendyol sayfasından kendi değerlerini girer */
 export const TY_VARSAYILAN: TyVarsayim = { komisyon: 20, kargo: 100, hizmet: 0, stopaj: 1, hedef_marj: 15, taban_marj: 5, tavan_yuzde: 10 };
 

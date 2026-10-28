@@ -57,7 +57,7 @@ export interface Ayarlar {
   id: 1; firma_adi: string; adres?: string | null; telefon?: string | null; vergi?: string | null; fis_notu?: string | null;
   alis_kdv_haric?: boolean; hedef_gun?: number; haric_masraf?: string[]; hedef_marj?: number; hedef_ciro?: number; kategori_marj?: Record<string, number>; tahsilat_hedef?: number; stok_eritme_hedef?: number; kampanya_oran?: number; usta_liste?: { indirim: number; taban: number; kategoriler: string[]; sadeceStok: boolean } | null;
   /** personel primi: kâr üzerinden oran (%) ve kişi başı aylık satış hedefi */ personel_prim?: { oran: number; hedefler: Record<string, number> } | null;
-  /** Trendyol fiyat hesabı varsayımları */ trendyol?: { komisyon: number; kargo: number; hizmet: number; stopaj: number; hedef_marj: number; taban_marj?: number; tavan_yuzde?: number; stok_gonder?: boolean; guvenlik?: number; fiyat_gonder?: boolean; oto_yukle?: boolean; oto_limit?: number; oto_duzenli?: boolean } | null;
+  /** Trendyol fiyat hesabı varsayımları */ trendyol?: { komisyon: number; kargo: number; hizmet: number; stopaj: number; hedef_marj: number; taban_marj?: number; tavan_yuzde?: number; kargo_tablo?: number[]; kargo_firma?: string; stok_gonder?: boolean; guvenlik?: number; fiyat_gonder?: boolean; oto_yukle?: boolean; oto_limit?: number; oto_duzenli?: boolean } | null;
 }
 
 export interface DB {

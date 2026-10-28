@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, CheckCircle2, Download, Info, PlugZap, RefreshCw, TrendingUp } from 'lucide-react';
 import { useStore, toast } from '../lib/store';
 import { backend, type TyFiyatSupheli, type TyGonderim, type TySiparis, type TyVeri } from '../lib/backend';
-import { IPTAL_RE, TY_VARSAYILAN, komisyonOranlari, maliyet, satirKomisyon, tyOneriFiyat, tyKar, tyOneriler, type TyVarsayim } from '../lib/trendyol';
+import { IPTAL_RE, TY_VARSAYILAN, komisyonOranlari, maliyet, satirKomisyon, desiliV, tyOneriFiyat, tyKar, tyOneriler, type TyVarsayim } from '../lib/trendyol';
 import { sonAlislar } from '../lib/analiz2';
 import { ara, gunu, para, parse, sayi, tarihSaat } from '../lib/format';
 import { UrunLink } from '../components/DetayKart';
@@ -128,7 +128,8 @@ function Ilanlar({ veri, v }: { veri: TyVeri; v: TyVarsayim }) {
   const son = useMemo(() => sonAlislar(db), [db]);
   const satirlar = useMemo(() => veri.urunler.map((t) => {
     const u = t.urun_id ? urun.get(t.urun_id) : undefined; const k = kom.get(t.barkod) ?? (t.komisyon && t.komisyon <= 60 ? t.komisyon : v.komisyon); const a = u ? maliyet(db, u, son) : 0; const kdv = t.kdv ?? u?.kdv ?? 20;
-    const simdi = t.satis_fiyati && a > 0 ? tyKar(t.satis_fiyati, a, kdv, v, k) : null; const hedef = a > 0 ? tyOneriFiyat(a, kdv, v, k, u?.satis_fiyati ?? 0) : null;
+    const vd = desiliV(v, t.desi == null ? 1 : Number(t.desi));
+    const simdi = t.satis_fiyati && a > 0 ? tyKar(t.satis_fiyati, a, kdv, vd, k) : null; const hedef = a > 0 ? tyOneriFiyat(a, kdv, vd, k, u?.satis_fiyati ?? 0) : null;
     const stokFark = u && t.stok !== null ? Math.max(0, u.stok) - t.stok : null;
     return { t, u, k, a, simdi, hedef, stokFark, gercekKom: kom.has(t.barkod) };
   }), [veri, urun, kom, son, db, v.komisyon, v.kargo, v.hizmet, v.stopaj, v.hedef_marj, v.taban_marj, v.tavan_yuzde]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -271,7 +272,7 @@ function Varsayimlar({ v }: { v: TyVarsayim }) {
         {alan('taban_marj', 'En düşük kâr marjı', '%', 'Fiyat rekabet için düşürülse bile kâr bunun altına inmez')}
         {alan('tavan_yuzde', 'Dükkân fiyatına göre tavan', '% üstü', 'Trendyol fiyatı dükkân fiyatının en fazla bu kadar üstünde olsun (taban kâr korunur)')}
         {alan('komisyon', 'Varsayılan komisyon', '%', 'Ürünün Trendyol siparişi yoksa kullanılır; varsa gerçek oran alınır')}
-        {alan('kargo', 'Sipariş başı kargo', 'TL (KDV dahil)', 'Anlaşmalı kargo ücretiniz (desi ortalaması)')}
+        {alan('kargo', 'Sipariş başı kargo', 'TL (KDV dahil)', v.kargo_tablo?.length ? `Desi bilinmeyen ürünlerde kullanılır; diğerlerinde ${v.kargo_firma ?? 'anlaşmalı'} kargo tablosundan desiye göre hesaplanır` : 'Anlaşmalı kargo ücretiniz (desi ortalaması)')}
         {alan('hizmet', 'Sipariş başı hizmet bedeli', 'TL (KDV dahil)', 'Trendyol platform hizmet bedeli vb. sabit kesinti')}
         {alan('stopaj', 'Stopaj', '%', 'E-ticaret stopajı (satış tutarı üzerinden)')}
       </div>
