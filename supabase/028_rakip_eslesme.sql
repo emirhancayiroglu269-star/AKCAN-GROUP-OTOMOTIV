@@ -1,1 +1,2 @@
 -- 028 — rakip_pazar3: eşleştirme düzeltmesi (aynı ürün = stok kodu + üretici markası; muadil = OEM kodu + kategori uyumu), tr_sade() — uygulandı
+-- (güncelleme) muadil: rakip kategorisinin son kelimesi bizdeki kategori/adda geçmeli; bizdeki set/kit ise rakip de set/kit olmalı — migration "rakip_pazar3_muadil_siki"
