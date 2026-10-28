@@ -5,6 +5,7 @@ import { useStore } from '../lib/store';
 import Depolar from './Depolar';
 import DepoSiparis from './DepoSiparis';
 import Alinacaklar from './Alinacaklar';
+import BuHafta from './BuHafta';
 import StokEritme from './StokEritme';
 import StokSagligi from './StokSagligi';
 import FiyatMarj from './FiyatMarj';
@@ -45,6 +46,7 @@ function Sekmeli({ sayfa, sekmeler, alt, git }: P & { sayfa: string; sekmeler: S
 export function DepolarSayfa(p: P) {
   const { izin } = useStore();
   return <Sekmeli {...p} sayfa="depolar" sekmeler={[
+    { id: 'buhafta', ad: 'Bu hafta alınacaklar', bilesen: BuHafta },
     { id: 'siparis', ad: 'Siparişler (depo bazında)', bilesen: DepoSiparis },
     { id: 'toplam', ad: 'Kritik stok & alınacaklar', bilesen: Alinacaklar },
     { id: 'karsilastirma', ad: 'Depo karşılaştırması', bilesen: Depolar, izin: izin('maliyet') },
