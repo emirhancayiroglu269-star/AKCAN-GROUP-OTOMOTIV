@@ -67,6 +67,7 @@ export interface Backend {
   tyIslem<T = Record<string, unknown>>(govde: Record<string, unknown>): Promise<T>;
   tyEslemeOku(): Promise<{ kategori: TyKategoriEsleme[]; marka: TyMarkaEsleme[]; yukleme: TyYukleme[] }>;
   tyOtoOzet(): Promise<TyOtoOzet>;
+  sorulanRafa(gun: number): Promise<SorulanRafa[]>;
   rakipNotKaydet(url: string, n: { satin_aldi: number | null; sepette: number | null; inceledi: number | null }): Promise<void>;
   rakipPazar(): Promise<{ urunler: RakipUrun[]; sayfa: number; taranan: number; son: string | null }>;
   urunGorselleri(ids: ID[]): Promise<Map<ID, string[]>>;
@@ -80,7 +81,8 @@ export interface TyFiyatSupheli { barkod: string; baslik: string | null; eski: n
 export interface TyOzellikDeger { attributeId: number; attributeValueId?: number | null; customAttributeValue?: string | null; ad?: string; deger?: string }
 export interface TyKategoriEsleme { bh_kategori: string; ty_kategori_id: number; ty_kategori_ad: string | null; ozellikler: TyOzellikDeger[]; desi: number | null }
 export interface TyMarkaEsleme { bh_marka: string; ty_marka_id: number; ty_marka_ad: string | null }
-export interface RakipUrun { url: string; ad: string | null; uretici: string | null; kod: string | null; fiyat: number | null; stokta: boolean | null; kategori: string | null; puan: number; gorulme: number; araclar: string[]; urun_id: ID | null; bizim_ad: string | null; bizim_stok: number | null; bizim_fiyat: number | null; satin_aldi?: number | null; sepette?: number | null; inceledi?: number | null }
+export interface SorulanRafa { anahtar: string; metin: string; kod_norm: string; kez: number; adet: number; son: string; urun_id: ID | null; bizim_ad: string | null; bizim_stok: number | null; rakip_url: string | null; rakip_ad: string | null; rakip_uretici: string | null; rakip_fiyat: number | null; rakip_stokta: boolean | null; rakip_kategori: string | null }
+export interface RakipUrun { url: string; ad: string | null; uretici: string | null; kod: string | null; fiyat: number | null; stokta: boolean | null; kategori: string | null; puan: number; gorulme: number; araclar: string[]; urun_id: ID | null; bizim_ad: string | null; bizim_stok: number | null; bizim_fiyat: number | null; satin_aldi?: number | null; sepette?: number | null; inceledi?: number | null; soruldu?: number }
 export interface TyOtoOzet { aday: number; duzenli: number; bugun: number; eslesmemis: { tur: 'marka' | 'kategori'; ad: string; adet: number }[]; atlanan: { urun_id: ID; ad: string; neden: string; zaman: string }[] }
 export interface TyYukleme { id: number; zaman: string; urun_id: ID | null; barkod: string; baslik: string | null; fiyat: number | null; stok: number | null; durum: string; hata: string | null }
 export interface TyVeri { urunler: TyUrun[]; siparisler: TySiparis[]; durum: TyDurum | null }
@@ -303,6 +305,10 @@ function supabaseBackend(sb: SupabaseClient): Backend {
       return { kategori: k.map((x) => ({ ...x, desi: x.desi === null ? null : Number(x.desi) })), marka: m, yukleme: y.map((x) => ({ ...x, fiyat: x.fiyat === null ? null : Number(x.fiyat), stok: x.stok === null ? null : Number(x.stok) })) };
     },
     async tyOtoOzet() { const { data, error } = await sb.rpc('ty_oto_ozet'); if (error) throw new Error(error.message); return data as TyOtoOzet; },
+    async sorulanRafa(gun) {
+      const { data, error } = await sb.rpc('sorulan_rafa', { gun }); if (error) throw new Error(error.message);
+      return ((data ?? []) as SorulanRafa[]).map((x) => ({ ...x, bizim_stok: x.bizim_stok == null ? null : Number(x.bizim_stok), rakip_fiyat: x.rakip_fiyat == null ? null : Number(x.rakip_fiyat) }));
+    },
     async rakipNotKaydet(url, n) {
       const { data: k } = await sb.auth.getUser();
       ok(await sb.from('rakip_not').upsert({ url, ...n, guncelleme: new Date().toISOString(), kullanici: k?.user?.email ?? null }));
@@ -530,6 +536,7 @@ function demoBackend(): Backend {
     async tyOtoOzet() { return { aday: 0, duzenli: 0, bugun: 0, eslesmemis: [], atlanan: [] }; },
     async rakipPazar() { return { urunler: [], sayfa: 0, taranan: 0, son: null }; },
     async rakipNotKaydet() { /* demo */ },
+    async sorulanRafa() { return []; },
     async urunGorselleri() { return new Map(); },
     async teklifGuncelle(id, p) { demoTeklif = demoTeklif.map((x) => (x.id === id ? { ...x, ...p } : x)); },
     async sorulanSil(id) { demoSorulan = demoSorulan.filter((x) => x.id !== id); },

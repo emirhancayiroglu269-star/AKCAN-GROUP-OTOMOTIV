@@ -44,6 +44,17 @@ export default function UrunAra() {
   const tum = useMemo(() => genelArama(db, q, 300), [db, q]);
   const liste = tum.filter((x) => (!stokta || (depo ? depoStok(x.u, depo) > 0 : x.u.stok > 0)));
   const kodGibi = /\d/.test(q) && q.replace(/\s/g, '').length >= 4;
+  // kodla aranıp stokta karşılığı çıkmayan parça otomatik "soruldu, yok" kaydı olur (aynı kod oturumda bir kez; yazım sürerken kaydedilmez)
+  const otoKayit = useRef<Set<string>>(new Set());
+  const stoktaVar = tum.some((x) => x.u.stok > 0);
+  useEffect(() => {
+    const k = q.trim().toUpperCase(); if (!kodGibi || stoktaVar || k.replace(/[^A-Z0-9]/g, '').length < 5 || otoKayit.current.has(k) || mode === 'demo') return;
+    const t = setTimeout(() => {
+      otoKayit.current.add(k);
+      backend.sorulanEkle({ metin: k, urun_id: tum[0]?.u.stok <= 0 && tum[0]?.tur !== 'metin' && tum[0]?.tur !== 'kismi' ? tum[0].u.id : null, kullanici: `oto · ${personel || eposta || 'tezgâh'}`, adet: 1 }).catch(() => undefined);
+    }, 6000);
+    return () => clearTimeout(t);
+  }, [q, kodGibi, stoktaVar]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className={`mx-auto max-w-4xl space-y-4 ${teklif.length ? "pb-72" : ""}`}>

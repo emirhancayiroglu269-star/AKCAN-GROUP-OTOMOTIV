@@ -1,0 +1,1 @@
+-- 027 — sorulan_rafa(gun): sorulan ama olmayan parçalar + bizdeki/pazardaki karşılığı — uygulandı: migration "sorulan_rafa"

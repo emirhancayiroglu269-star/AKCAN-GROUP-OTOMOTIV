@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ChevronDown, ChevronRight, Copy, Download, ExternalLink, Info, RefreshCw, Search } from 'lucide-react';
 import { useStore, toast } from '../lib/store';
-import { backend, type RakipUrun, type TyUrun } from '../lib/backend';
+import { backend, type RakipUrun, type SorulanRafa, type TyUrun } from '../lib/backend';
 import { OtomarmaraArama } from './UrunAra';
 import { ara, gunu, para, sayi, tarihSaat } from '../lib/format';
 import { UrunLink } from '../components/DetayKart';
@@ -13,10 +13,10 @@ const csvIndir = (ad: string, satirlar: (string | number | null | undefined)[][]
 };
 const katAd = (s: string | null) => (s ?? '—').split('-').map((w) => w.charAt(0).toLocaleUpperCase('tr') + w.slice(1)).join(' ');
 const aracAd = (s: string) => s.charAt(0).toLocaleUpperCase('tr') + s.slice(1);
-type Gorunum = 'cek' | 'kategori' | 'fiyat';
+type Gorunum = 'sorulan' | 'cek' | 'kategori' | 'fiyat';
 const kodYaz = (x: RakipUrun) => (x.kod ?? '').toUpperCase();
 /** Elle girilen rozet (satın aldı > sepette > inceledi) varsa önce o, yoksa pazar puanı */
-const talepDeger = (x: RakipUrun) => (x.satin_aldi ?? 0) * 10 + (x.sepette ?? 0) * 3 + (x.inceledi ?? 0) * 0.2;
+const talepDeger = (x: RakipUrun) => (x.soruldu ?? 0) * 25 + (x.satin_aldi ?? 0) * 10 + (x.sepette ?? 0) * 3 + (x.inceledi ?? 0) * 0.2;
 const talepSirala = (a: RakipUrun, b: RakipUrun) => talepDeger(b) - talepDeger(a) || b.puan - a.puan;
 async function kopyala(metin: string, mesaj: string) {
   try { await navigator.clipboard.writeText(metin); toast(mesaj); }
@@ -44,6 +44,7 @@ function KodKopya({ x }: { x: RakipUrun }) {
 /** Pazarda (Otoparçasan) öne çıkan ürünler: bizde olmayanlar → rafa çekilecekler; bizde olanlar → fiyat karşılaştırması */
 export function RafaCek() {
   const { izin } = useStore();
+  const [sorulan, setSorulan] = useState<SorulanRafa[]>([]);
   const [veri, setVeri] = useState<{ urunler: RakipUrun[]; sayfa: number; taranan: number; son: string | null } | null>(null);
   const [ty, setTy] = useState<Map<string, TyUrun>>(new Map());
   const [yuk, setYuk] = useState(false);
@@ -55,7 +56,11 @@ export function RafaCek() {
   const oku = async () => {
     setYuk(true);
     try {
-      setVeri(await backend.rakipPazar());
+      const [p, so] = await Promise.all([backend.rakipPazar(), backend.sorulanRafa(180).catch(() => [] as SorulanRafa[])]);
+      // tezgâhta sorulan kodlar pazar listesinde öne çıksın
+      const kez = new Map(so.map((x) => [x.kod_norm, x.kez]));
+      const norm = (k: string | null) => (k ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+      setVeri({ ...p, urunler: p.urunler.map((x) => ({ ...x, soruldu: kez.get(norm(x.kod)) ?? 0 })) }); setSorulan(so);
       const t = await backend.tyOku(1).catch(() => null);
       if (t) setTy(new Map(t.urunler.filter((x) => x.urun_id).map((x) => [x.urun_id as string, x])));
     } catch (e) { toast(`Okunamadı: ${(e as Error).message}`, 'hata'); } finally { setYuk(false); }
@@ -71,6 +76,7 @@ export function RafaCek() {
     try { await backend.rakipNotKaydet(url, n); setVeri((v) => v && { ...v, urunler: v.urunler.map((x) => (x.url === url ? { ...x, ...n } : x)) }); toast('Talep bilgisi kaydedildi'); }
     catch (e) { toast(`Kaydedilemedi: ${(e as Error).message}`, 'hata'); }
   };
+  const sorulanEksik = sorulan.filter((x) => (!x.urun_id || (x.bizim_stok ?? 0) <= 0) && ara(q, x.metin, x.rakip_ad, x.rakip_uretici, x.bizim_ad));
   const cek = bizdeYok.filter((x) => filtre(x) && (!sadeceStokta || x.stokta !== false)).sort(talepSirala);
   const bizde = l.filter((x) => x.urun_id && (x.bizim_stok ?? 0) > 0 && filtre(x));
   // kategori özeti (bir araç markası için ya da tümü): pazarda öne çıkan ürünlerden kaçı bizde stokta, eksikler talebe göre
@@ -117,7 +123,7 @@ export function RafaCek() {
                         <tbody>{g.eksikler.slice(0, 200).map((x) => (
                           <tr key={x.url} className="align-top">
                             <td><a href={x.url} target="_blank" rel="noreferrer" className="hover:underline">{x.ad ?? x.url} <ExternalLink size={11} className="inline" /></a>
-                              <div className="text-xs text-slate-500">{x.uretici ?? ''}{x.araclar.length ? ` · ${x.araclar.map(aracAd).join(', ')}` : ''}</div>
+                              <div className="text-xs text-slate-500">{x.uretici ?? ''}{x.araclar.length ? ` · ${x.araclar.map(aracAd).join(', ')}` : ''}{x.soruldu ? <span className="ml-1 rozet bg-red-50 text-red-700">tezgâhta {x.soruldu} kez soruldu</span> : null}</div>
                               {omAcik === x.url && <div className="mt-2"><OtomarmaraArama q={x.kod ?? x.ad ?? ''} oto maliyet={izin('maliyet')} /></div>}</td>
                             <td><KodKopya x={x} /></td>
                             <td className="text-right font-semibold">{x.puan.toFixed(1)}<div className="text-[11px] font-normal text-slate-500">{x.gorulme} listede</div></td>
@@ -151,13 +157,39 @@ export function RafaCek() {
         {markaOzet.map((m) => <button key={m.marka} onClick={() => setArac(m.marka)} className={`rounded-full px-3 py-1.5 text-sm ${arac === m.marka ? 'bg-marka-600 text-white' : 'bg-white text-slate-600 dark:bg-slate-900 dark:text-slate-300'}`}>{aracAd(m.marka)} <span className="opacity-60">{sayi(m.eksik)}</span></button>)}
       </div>
       <div className="mb-3 flex flex-wrap items-center gap-2">
-        <div className="flex flex-wrap gap-1 rounded-xl bg-slate-100 p-1 dark:bg-slate-800/60">{sb('kategori', 'Kategoriye göre (hızlı gidenler)', katOzet.length)}{sb('cek', 'Tüm eksik parçalar', cek.length)}{sb('fiyat', 'Fiyat karşılaştırma', bizde.length)}</div>
+        <div className="flex flex-wrap gap-1 rounded-xl bg-slate-100 p-1 dark:bg-slate-800/60">{sb('sorulan', 'Tezgâhta sorulan', sorulanEksik.length)}{sb('kategori', 'Kategoriye göre (hızlı gidenler)', katOzet.length)}{sb('cek', 'Tüm eksik parçalar', cek.length)}{sb('fiyat', 'Fiyat karşılaştırma', bizde.length)}</div>
         <div className="relative min-w-[12rem] flex-1"><Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input className="inp pl-9" placeholder="Parça, kod, üretici…" value={q} onChange={(e) => setQ(e.target.value)} /></div>
         {gor !== 'kategori' && <select className="inp w-48" value={kat} onChange={(e) => setKat(e.target.value)}><option value="">Tüm kategoriler</option>{kategoriler.map((k) => <option key={k} value={k}>{katAd(k)}</option>)}</select>}
         {gor !== 'fiyat' && <label className="flex items-center gap-1.5 text-sm"><input type="checkbox" checked={sadeceStokta} onChange={(e) => setSadeceStokta(e.target.checked)} /> Yalnız rakipte stokta olanlar</label>}
       </div>
 
       {!veri ? <div className="card p-6 text-center text-sm text-slate-500">Yükleniyor…</div>
+        : gor === 'sorulan' ? (
+          <div className="card">
+            <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 p-3 text-sm dark:border-slate-800">
+              <span>Son 6 ayda tezgâhta sorulup bizde olmayan parçalar · en çok sorulan en üstte · pazardaki (Otoparçasan) karşılığı koddan bulunur</span>
+              <button className="btn-ghost ml-auto py-1 text-xs" disabled={!sorulanEksik.length} onClick={() => { const k = sorulanEksik.map((x) => x.metin.trim()); kopyala(k.join('\n'), `${k.length} kod kopyalandı`); }}><Copy size={13} /> Sorulan kodları kopyala</button>
+            </div>
+            {sorulanEksik.length === 0 ? <Bos metin="Sorulan ama olmayan parça kaydı yok. Ürün Ara'da bulunamayan parçada “Soruldu, yok” düğmesine basınca buraya düşer." /> : (
+              <div className="max-h-[62vh] overflow-auto">
+                <table className="tbl">
+                  <thead><tr><th>Sorulan kod / parça</th><th className="text-right">Kaç kez</th><th>Son soruluş</th><th>Bizde</th><th>Pazardaki karşılığı</th><th /></tr></thead>
+                  <tbody>{sorulanEksik.map((x) => (
+                    <tr key={x.anahtar} className="align-top">
+                      <td><button className="inline-flex items-center gap-1 rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 font-mono text-sm hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800" title="Kopyala" onClick={() => kopyala(x.metin.trim(), `${x.metin.trim()} kopyalandı`)}>{x.metin} <Copy size={11} /></button>
+                        {omAcik === x.anahtar && <div className="mt-2"><OtomarmaraArama q={x.metin} oto maliyet={izin('maliyet')} /></div>}</td>
+                      <td className="text-right"><b className={x.kez >= 3 ? 'text-red-600' : x.kez >= 2 ? 'text-amber-600' : ''}>{x.kez}</b>{x.adet > x.kez && <div className="text-[11px] text-slate-500">{x.adet} adet</div>}</td>
+                      <td className="whitespace-nowrap text-xs">{tarihSaat(x.son)}</td>
+                      <td className="text-sm">{x.urun_id ? <><UrunLink id={x.urun_id}>{x.bizim_ad ?? 'kart'}</UrunLink><div className="text-[11px] text-amber-700">stok 0</div></> : <span className="text-red-600">kart yok</span>}</td>
+                      <td className="text-sm">{x.rakip_url ? <><a href={x.rakip_url} target="_blank" rel="noreferrer" className="hover:underline">{x.rakip_ad} <ExternalLink size={10} className="inline" /></a>
+                        <div className="text-[11px] text-slate-500">{[x.rakip_uretici, katAd(x.rakip_kategori), x.rakip_fiyat ? para(x.rakip_fiyat) : null, x.rakip_stokta === false ? 'rakipte tükendi' : x.rakip_stokta ? 'rakipte stokta' : null].filter(Boolean).join(' · ')}</div></>
+                        : <span className="text-xs text-slate-400">taranan sayfalarda yok</span>}</td>
+                      <td><button className="btn-ghost whitespace-nowrap py-1 text-xs" onClick={() => setOmAcik(omAcik === x.anahtar ? null : x.anahtar)}>{omAcik === x.anahtar ? 'Kapat' : "Otomarmara'da ara"}</button></td>
+                    </tr>))}</tbody>
+                </table>
+              </div>)}
+          </div>
+        )
         : !l.length ? <div className="card"><Bos metin="Pazar taraması henüz veri toplamadı; ilk sonuçlar birkaç dakika içinde gelir." /></div>
         : gor === 'cek' ? (
           <div className="card">
@@ -168,7 +200,7 @@ export function RafaCek() {
                   <tbody>{cek.slice(0, 500).map((x) => (
                     <tr key={x.url} className="align-top">
                       <td><a href={x.url} target="_blank" rel="noreferrer" className="font-medium hover:underline">{x.ad ?? x.url} <ExternalLink size={11} className="inline" /></a>
-                        <div className="text-xs text-slate-500">{x.uretici ?? ''}{x.araclar.length ? ` · ${x.araclar.map(aracAd).join(', ')}` : ''}</div>
+                        <div className="text-xs text-slate-500">{x.uretici ?? ''}{x.araclar.length ? ` · ${x.araclar.map(aracAd).join(', ')}` : ''}{x.soruldu ? <span className="ml-1 rozet bg-red-50 text-red-700">tezgâhta {x.soruldu} kez soruldu</span> : null}</div>
                         {omAcik === x.url && <div className="mt-2"><OtomarmaraArama q={x.kod ?? x.ad ?? ''} oto maliyet={izin('maliyet')} /></div>}</td>
                       <td><KodKopya x={x} /></td>
                       <td className="text-sm">{katAd(x.kategori)}</td>
