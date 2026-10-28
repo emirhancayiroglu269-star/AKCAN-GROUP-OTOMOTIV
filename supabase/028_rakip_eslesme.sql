@@ -1,0 +1,1 @@
+-- 028 — rakip_pazar3: eşleştirme düzeltmesi (aynı ürün = stok kodu + üretici markası; muadil = OEM kodu + kategori uyumu), tr_sade() — uygulandı

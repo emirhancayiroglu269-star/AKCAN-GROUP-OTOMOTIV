@@ -82,7 +82,7 @@ export interface TyOzellikDeger { attributeId: number; attributeValueId?: number
 export interface TyKategoriEsleme { bh_kategori: string; ty_kategori_id: number; ty_kategori_ad: string | null; ozellikler: TyOzellikDeger[]; desi: number | null }
 export interface TyMarkaEsleme { bh_marka: string; ty_marka_id: number; ty_marka_ad: string | null }
 export interface SorulanRafa { anahtar: string; metin: string; kod_norm: string; kez: number; adet: number; son: string; urun_id: ID | null; bizim_ad: string | null; bizim_stok: number | null; rakip_url: string | null; rakip_ad: string | null; rakip_uretici: string | null; rakip_fiyat: number | null; rakip_stokta: boolean | null; rakip_kategori: string | null }
-export interface RakipUrun { url: string; ad: string | null; uretici: string | null; kod: string | null; fiyat: number | null; stokta: boolean | null; kategori: string | null; puan: number; gorulme: number; araclar: string[]; urun_id: ID | null; bizim_ad: string | null; bizim_stok: number | null; bizim_fiyat: number | null; satin_aldi?: number | null; sepette?: number | null; inceledi?: number | null; soruldu?: number }
+export interface RakipUrun { url: string; ad: string | null; uretici: string | null; kod: string | null; fiyat: number | null; stokta: boolean | null; kategori: string | null; puan: number; gorulme: number; araclar: string[]; urun_id: ID | null; bizim_ad: string | null; bizim_stok: number | null; bizim_fiyat: number | null; satin_aldi?: number | null; sepette?: number | null; inceledi?: number | null; soruldu?: number; eslesme?: 'ayni' | 'muadil' | null }
 export interface TyOtoOzet { aday: number; duzenli: number; bugun: number; eslesmemis: { tur: 'marka' | 'kategori'; ad: string; adet: number }[]; atlanan: { urun_id: ID; ad: string; neden: string; zaman: string }[] }
 export interface TyYukleme { id: number; zaman: string; urun_id: ID | null; barkod: string; baslik: string | null; fiyat: number | null; stok: number | null; durum: string; hata: string | null }
 export interface TyVeri { urunler: TyUrun[]; siparisler: TySiparis[]; durum: TyDurum | null }
@@ -314,7 +314,7 @@ function supabaseBackend(sb: SupabaseClient): Backend {
       ok(await sb.from('rakip_not').upsert({ url, ...n, guncelleme: new Date().toISOString(), kullanici: k?.user?.email ?? null }));
     },
     async rakipPazar() {
-      const { data, error } = await sb.rpc('rakip_pazar2', { n: 3000 }); if (error) throw new Error(error.message);
+      const { data, error } = await sb.rpc('rakip_pazar3', { n: 3000 }); if (error) throw new Error(error.message);
       const { count: sayfa } = await sb.from('rakip_sayfa').select('url', { count: 'exact', head: true });
       const { count: taranan } = await sb.from('rakip_sayfa').select('url', { count: 'exact', head: true }).not('son_tarama', 'is', null);
       const { data: son } = await sb.from('rakip_sayfa').select('son_tarama').not('son_tarama', 'is', null).order('son_tarama', { ascending: false }).limit(1).maybeSingle();

@@ -246,7 +246,7 @@ export function RafaCek() {
                     const t = x.urun_id ? ty.get(x.urun_id) : undefined; const fark = x.fiyat && x.bizim_fiyat ? (x.bizim_fiyat / x.fiyat - 1) * 100 : null;
                     return (
                       <tr key={x.url}>
-                        <td><UrunLink id={x.urun_id!}>{x.bizim_ad}</UrunLink><div className="text-xs text-slate-500"><a href={x.url} target="_blank" rel="noreferrer" className="hover:underline">{x.ad} <ExternalLink size={10} className="inline" /></a></div></td>
+                        <td><UrunLink id={x.urun_id!}>{x.bizim_ad}</UrunLink> <span className={`rozet ${x.eslesme === 'ayni' ? 'bg-emerald-50 text-emerald-700' : 'bg-sky-50 text-sky-700'}`}>{x.eslesme === 'ayni' ? 'aynı ürün' : 'muadil'}</span><div className="text-xs text-slate-500"><a href={x.url} target="_blank" rel="noreferrer" className="hover:underline">{x.ad} <ExternalLink size={10} className="inline" /></a></div></td>
                         <td className="text-right">{sayi(x.bizim_stok ?? 0)}</td>
                         <td className="text-right">{x.bizim_fiyat ? para(x.bizim_fiyat) : '—'}</td>
                         <td className="text-right">{t?.satis_fiyati ? para(t.satis_fiyati) : <span className="text-slate-400">ilan yok</span>}</td>
@@ -257,7 +257,7 @@ export function RafaCek() {
               </div>)}
           </div>
         )}
-      <p className="mt-3 flex items-start gap-1.5 text-xs text-slate-500"><Info size={14} className="mt-0.5 shrink-0" />Ürün sayfasındaki "kişi satın aldı / sepetinde / inceledi" rozeti sitenin otomatik programlara kapattığı bir adresten geldiği için toplu çekilmez; parçayı açıp gördüğünüz sayıyı "Sitedeki rozet" kutularına yazarsanız kaydedilir ve liste önce bu sayılara göre sıralanır. Otoparçasan satış adedini sayfanın kendisinde yayınlamaz. Pazar puanı, parçanın araç markası × kategori sayfalarının ilk sayfasında kaç kez ve ne kadar üst sırada listelendiğidir (site "Önerilen" sıralamada çok satan ve stoklu ürünleri öne alır); yüksek puan = çok aranan, hızlı giden parça. Eşleşme üretici kodu ile yapılır (BizimHesap stok kodu ve etiketteki OEM/muadil kodlar); kodu farklı yazılmış ürünler "yok" görünebilir. Rafa almadan önce tedarikçi fiyatını Otomarmara düğmesiyle kontrol edin.</p>
+      <p className="mt-3 flex items-start gap-1.5 text-xs text-slate-500"><Info size={14} className="mt-0.5 shrink-0" />Ürün sayfasındaki "kişi satın aldı / sepetinde / inceledi" rozeti sitenin otomatik programlara kapattığı bir adresten geldiği için toplu çekilmez; parçayı açıp gördüğünüz sayıyı "Sitedeki rozet" kutularına yazarsanız kaydedilir ve liste önce bu sayılara göre sıralanır. Otoparçasan satış adedini sayfanın kendisinde yayınlamaz. Pazar puanı, parçanın araç markası × kategori sayfalarının ilk sayfasında kaç kez ve ne kadar üst sırada listelendiğidir (site "Önerilen" sıralamada çok satan ve stoklu ürünleri öne alır); yüksek puan = çok aranan, hızlı giden parça. Eşleşme: "aynı ürün" = üretici kodu ve markası bizdeki stok koduyla aynı; "muadil" = OEM/muadil kodu tutuyor ve kategori uyumlu (farklı kategorideki kod çakışmaları eşleştirilmez). Kodu farklı yazılmış ürünler "yok" görünebilir. Rafa almadan önce tedarikçi fiyatını Otomarmara düğmesiyle kontrol edin.</p>
     </div>
   );
 }
