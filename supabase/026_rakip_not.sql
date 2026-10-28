@@ -1,0 +1,1 @@
+-- 026 — rakip_not (elle girilen Otoparçasan rozeti: satın aldı / sepette / inceledi) + rakip_pazar2 — uygulandı: migration "rakip_not"
