@@ -15,6 +15,8 @@ const ONBELLEK_SAAT = 6;
 const OTURUM_DK = 20;
 const ARALIK_MS = 1500;
 const SONUC_SINIR = 30;
+let HAM = false; // keşif: hücrelerin ham HTML'i
+const DEPOLAR = ['OTOMARKET', 'MERKEZ', 'FSM', 'ATAŞEHİR', 'PENDİK', 'DEPO']; // arama tablosundaki depo sütunları (sırasıyla)
 
 const db = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!, { auth: { persistSession: false } });
 const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type' };
@@ -76,7 +78,12 @@ async function ara(q: string) {
   return [...d.querySelectorAll('tr')].map((r) => {
     const td = [...(r as Element).querySelectorAll('td')] as Element[]; const id = ((r as Element).innerHTML.match(/GetOems\((\d+)\)/) || [])[1];
     const t0 = td[0] ? metin(td[0]) : ''; const kod = kodBul(t0);
-    return { id, kod, marka: kod ? t0.replace(kod, '').trim().slice(0, 60) : '', ad: td[1] ? metin(td[1]).slice(0, 200) : '', ek: td.slice(2, 8).map((x) => metin(x).replace(/\s+/g, ' ').trim().slice(0, 80)) };
+    // depo stok rozetleri (yeşil = var, kırmızı = yok, mavi = tedarik edilebilir) ve fiyatlar (KDV dahil: taksit, tek çekim, nakit)
+    const depolar = DEPOLAR.map((ad, i) => { const h = td[4 + i]?.innerHTML ?? ''; return { ad, durum: /background-color:\s*green/i.test(h) ? 'var' : /background-color:\s*red/i.test(h) || /--failure/.test(h) ? 'yok' : /status-badge/.test(h) ? 'tedarik' : null }; });
+    const tl = (x?: Element) => { const m = (x ? metin(x) : '').match(/([\d.]+,\d{2})/); return m ? Number(m[1].replace(/\./g, '').replace(',', '.')) : null; };
+    return { id, kod, marka: kod ? t0.replace(kod, '').trim().slice(0, 60) : '', ad: td[1] ? metin(td[1]).slice(0, 200) : '', ek: [] as string[], depolar,
+      fiyat: { taksit: tl(td[11]), tekCekim: tl(td[12]), nakit: tl(td[13]) },
+      ham: HAM ? td.map((x) => x.innerHTML.replace(/\s+/g, ' ').slice(0, 260)) : undefined };
   }).filter((x) => x.id && x.kod).slice(0, SONUC_SINIR);
 }
 async function detay(id: string) {
@@ -94,29 +101,36 @@ Deno.serve(async (req) => {
   const jwt = (req.headers.get('Authorization') ?? '').replace(/^Bearer\s+/i, '');
   const { data: k } = await db.auth.getUser(jwt);
   if (!k?.user) return yanit({ ok: false, hata: 'Giriş gerekli' }, 401);
+  // fiyat (bizim alış fiyatımız) yalnız yöneticiye
+  let maliyet = false;
+  { const { count } = await db.from('kullanicilar').select('eposta', { count: 'exact', head: true });
+    if (!count) maliyet = true; else { const { data: ku } = await db.from('kullanicilar').select('rol,aktif').ilike('eposta', k.user.email ?? '-').maybeSingle(); if (!ku?.aktif) return yanit({ ok: false, hata: 'Yetki yok' }, 403); maliyet = ku.rol === 'yonetici'; } }
+  const gizle = (sonuc: Record<string, unknown>) => (maliyet || !Array.isArray(sonuc.sonuclar) ? sonuc : { ...sonuc, sonuclar: (sonuc.sonuclar as Record<string, unknown>[]).map((x) => ({ ...x, fiyat: null })) });
   if (!MUSTERI || !KULLANICI || !SIFRE) return yanit({ ok: false, hata: 'Otomarmara bilgileri sunucuda tanımlı değil' }, 500);
 
   const b = await req.json().catch(() => ({}));
   const q = String(b?.q ?? '').trim().slice(0, 60); const id = String(b?.id ?? '').replace(/\D/g, '').slice(0, 12);
   if (!id && norm(q).length < 3 && q.length < 3) return yanit({ ok: false, hata: 'En az 3 karakter yazın' }, 400);
-  const anahtar = id ? 'd:' + id : 'a:' + q.toLocaleUpperCase('tr').replace(/\s+/g, ' ');
+  const anahtar = id ? 'd:' + id : 'a2:' + q.toLocaleUpperCase('tr').replace(/\s+/g, ' ');
+  HAM = b?.ham === true;
   const { data: on } = await db.from('om_arama').select('sonuc, zaman').eq('anahtar', anahtar).maybeSingle();
-  if (on && Date.now() - new Date(on.zaman).getTime() < ONBELLEK_SAAT * 3600000) return yanit({ ok: true, onbellek: true, zaman: on.zaman, ...on.sonuc });
+  if (on && !HAM && Date.now() - new Date(on.zaman).getTime() < ONBELLEK_SAAT * 3600000) return yanit({ ok: true, onbellek: true, zaman: on.zaman, maliyet, ...gizle(on.sonuc as Record<string, unknown>) });
 
   const calis = async () => {
     if (id) return detay(id);
     let l = await ara(q);
     if (!l.length && terim(q) !== q) l = await ara(terim(q));
+    if (HAM) { const m = await istek('/musteri'); return { sonuclar: l, basliklar: [...m.matchAll(/<th[^>]*>([\s\S]*?)<\/th>/gi)].map((x) => x[1].replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()).slice(0, 60) }; }
     return { sonuclar: l };
   };
   try {
     await oturumHazirla();
     let sonuc: Record<string, unknown>;
     try { sonuc = await calis(); } catch (e) { if (!(e instanceof OturumYok)) throw e; await girisYap(); sonuc = await calis(); }
-    await db.from('om_arama').upsert({ anahtar, sonuc, zaman: new Date().toISOString() });
+    if (!HAM) await db.from('om_arama').upsert({ anahtar, sonuc, zaman: new Date().toISOString() });
     // eski önbellek kayıtlarını temizle
     await db.from('om_arama').delete().lt('zaman', new Date(Date.now() - 3 * 86400000).toISOString());
-    return yanit({ ok: true, onbellek: false, zaman: new Date().toISOString(), ...sonuc });
+    return yanit({ ok: true, onbellek: false, zaman: new Date().toISOString(), maliyet, ...gizle(sonuc) });
   } catch (e) {
     return yanit({ ok: false, hata: (e as Error).message.slice(0, 300) }, 502);
   }

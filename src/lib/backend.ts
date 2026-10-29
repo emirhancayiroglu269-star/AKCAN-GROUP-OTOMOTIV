@@ -16,7 +16,7 @@ const KEY = (import.meta.env?.VITE_SUPABASE_ANON_KEY as string | undefined) || S
 export const supabase: SupabaseClient | null = URL && KEY ? createClient(URL, KEY) : null;
 export const MODE: 'bulut' | 'demo' = supabase ? 'bulut' : 'demo';
 
-export interface OmAramaSonuc { id: string; kod: string; marka: string; ad: string; ek: string[] }
+export interface OmAramaSonuc { id: string; kod: string; marka: string; ad: string; ek: string[]; depolar?: { ad: string; durum: 'var' | 'yok' | 'tedarik' | null }[]; fiyat?: { taksit: number | null; tekCekim: number | null; nakit: number | null } | null }
 export interface NekoSonuc { id: number; kod: string; ad: string; uretici: string | null; stok: number | null; stokDurum: string | null; var: boolean; resim: string | null; liste: number | null; net: number | null; netKdv: number | null; iskonto: string | null; doviz: string | null }
 export interface NekoYanit { sonuclar: NekoSonuc[]; zaman: string; onbellek: boolean; maliyet: boolean }
 export interface NekoToplu { kod: string; adet?: number; ayni?: boolean; en?: NekoSonuc | null; stoktaSayisi?: number; hata?: string; yarim?: boolean }
