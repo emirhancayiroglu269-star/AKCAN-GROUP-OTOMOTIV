@@ -5,3 +5,6 @@
 -- istek hakkıyla öne çıkan, eşleşmesi olmayan ürünlerin sayfasından OEM kodlarını ("var oems") okur (rakip_oem_sirasi).
 -- migration "rakip_oem_eslesme": rakip_pazar_ozet2 (muadil = üretici kodu YA DA OEM kodlarından biri bizdeki Otomarmara çapraz
 -- kodlarında + kategori uyumu); rakip_pazar3 bunu okur, cron 11,41. Eski rakip_pazar_ozet artık kullanılmıyor (silinebilir).
+-- (güncelleme) migration "rakip_oem_eslesme_siki": rakip_pazar_ozet3 — OEM ile muadil için EN AZ 2 ortak kod şartı (sayfalardaki OEM
+-- listeleri çok geniş, tek ortak kod yanlış eşleşme veriyordu). rakip_pazar3 / rakip_oem_sirasi / cron artık ozet3'ü kullanır.
+-- rakip_pazar_ozet ve rakip_pazar_ozet2 kullanılmıyor; istenirse: drop materialized view rakip_pazar_ozet, rakip_pazar_ozet2;
