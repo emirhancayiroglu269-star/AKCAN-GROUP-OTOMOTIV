@@ -186,11 +186,14 @@ export function Durum({ d, baslik }: { d: 'var' | 'yok' | 'tedarik' | null | und
   const r = d === 'var' ? 'bg-emerald-600' : d === 'yok' ? 'bg-red-600' : 'bg-blue-600';
   return <span title={`${baslik}: ${d === 'var' ? 'stokta' : d === 'yok' ? 'yok' : 'tedarik edilebilir'}`} className={`inline-flex h-5 w-5 items-center justify-center rounded-full text-[11px] font-bold text-white ${r}`}>{d === 'var' ? '✓' : d === 'yok' ? '⊘' : '↻'}</span>;
 }
+/** Otomarmara tek işaret: herhangi bir depoda varsa ✓, yalnız tedarik edilebilirse ↻, hiçbirinde yoksa ⊘ */
+export const omDurum = (s?: OmAramaYanit['sonuclar'][number] | null): 'var' | 'yok' | 'tedarik' | null => !s ? null : s.depolar?.some((d) => d.durum === 'var') ? 'var' : s.depolar?.some((d) => d.durum === 'tedarik') ? 'tedarik' : 'yok';
 type TedSatir = { anahtar: string; kod: string; marka: string; ad: string; om?: OmAramaYanit['sonuclar'][number]; neko?: NekoSonuc };
 
 /** Otomarmara + Neko tek tabloda: her parça bir satır, Otomarmara depoları ve Neko stoğu yan yana (aynı kod iki tedarikçide de varsa tek satır) */
 export function TedarikciArama({ q, oto, maliyet }: { q: string; oto: boolean; maliyet: boolean }) {
   const { db } = useStore();
+  const depolar = aktifDepolar(db); const harita = useMemo(() => stokHaritasi(db), [db]);
   const [aranan, setAranan] = useState<string | null>(null);
   const [om, setOm] = useState<OmAramaYanit | null>(null); const [neko, setNeko] = useState<NekoYanit | null>(null);
   const [hata, setHata] = useState<{ om?: string; neko?: string }>({}); const [bekle, setBekle] = useState(0);
@@ -225,7 +228,7 @@ export function TedarikciArama({ q, oto, maliyet }: { q: string; oto: boolean; m
       {guncel && bekle === 0 && !satirlar.length && (om || neko) && <p className="mt-2 text-sm text-slate-500">İki tedarikçide de bulunamadı.</p>}
       {guncel && satirlar.length > 0 && <div className="mt-2 overflow-x-auto">
         <table className="tbl text-sm">
-          <thead><tr><th>Stok kodu</th><th>Ürün adı</th>{DEPO_KISA.map((d) => <th key={d} className="px-1 text-center text-[10px]">{d}</th>)}<th className="text-center text-[10px]">NEKO</th>{maliyet && <th className="text-right">Fiyat (KDV dahil)</th>}<th>Bizde</th></tr></thead>
+          <thead><tr><th>Stok kodu</th><th>Ürün adı</th><th className="text-center text-[10px]">OTOMARMARA</th><th className="text-center text-[10px]">NEKO</th>{depolar.map((d) => <th key={d.id} className="text-center text-[10px]">{depoKisa(d.ad).toLocaleUpperCase('tr')}</th>)}{maliyet && <th className="text-right">Fiyat (KDV dahil)</th>}</tr></thead>
           <tbody>{satirlar.slice(0, 30).map((x) => {
             const bizde = koddanBizdeki(db, x.om?.kod ?? x.kod).concat(x.om && x.neko ? koddanBizdeki(db, x.neko.kod) : []);
             const b0 = bizde.sort((a, c) => c.u.stok - a.u.stok)[0];
@@ -233,12 +236,13 @@ export function TedarikciArama({ q, oto, maliyet }: { q: string; oto: boolean; m
               <tr className="cursor-pointer align-top hover:bg-slate-50 dark:hover:bg-slate-800/40" onClick={() => setAcik(acik === x.anahtar ? null : x.anahtar)}>
                 <td className="whitespace-nowrap"><div className="text-[11px] text-slate-500">{x.marka}</div><b>{x.om?.kod ?? x.kod}</b>{x.om && x.neko && <div className="text-[10px] text-slate-400">Neko: {x.neko.kod}</div>}</td>
                 <td className="min-w-[12rem] text-xs">{x.ad}</td>
-                {DEPO_KISA.map((d, i) => <td key={d} className="px-1 text-center"><Durum d={x.om?.depolar?.[i]?.durum ?? null} baslik={`Otomarmara ${d}`} /></td>)}
-                <td className="text-center"><Durum d={x.neko ? (x.neko.var ? 'var' : x.neko.stokDurum === 'YOLDA' ? 'tedarik' : 'yok') : null} baslik="Neko" />{x.neko?.var && x.neko.stok ? <div className="text-[10px] text-emerald-700">{sayi(x.neko.stok)}</div> : null}</td>
-                {maliyet && <td className="whitespace-nowrap text-right text-xs">{x.om?.fiyat?.nakit ? <div>OM <b>{para(x.om.fiyat.nakit)}</b></div> : null}{x.neko?.netKdv ? <div>Neko <b>{para(x.neko.netKdv)}</b></div> : null}</td>}
-                <td className="text-xs">{b0 ? <button className={`rozet ${b0.u.stok > 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`} onClick={(e) => { e.stopPropagation(); detayAc({ tur: 'urun', id: b0.u.id }); }}>stok {sayi(b0.u.stok)}</button> : <span className="text-slate-400">yok</span>}</td>
+                <td className="text-center"><Durum d={omDurum(x.om)} baslik="Otomarmara" /></td>
+                <td className="text-center"><Durum d={x.neko ? (x.neko.var ? 'var' : x.neko.stokDurum === 'YOLDA' ? 'tedarik' : 'yok') : null} baslik="Neko" /></td>
+                {depolar.map((d) => { const n = b0 ? harita.get(b0.u.id)?.get(d.id) ?? 0 : null; return <td key={d.id} className="text-center">{n === null ? <span className="text-slate-300" title="Bizde kayıtlı değil">—</span>
+                  : <button title={`${d.ad}: ${b0!.u.kod ?? b0!.u.ad}`} onClick={(e) => { e.stopPropagation(); detayAc({ tur: 'urun', id: b0!.u.id }); }}><Durum d={n > 0 ? 'var' : 'yok'} baslik={d.ad} />{n > 0 ? <div className="text-[10px] text-emerald-700">{sayi(n)}</div> : null}</button>}</td>; })}
+                {maliyet && <td className="whitespace-nowrap text-right text-xs">{x.om?.fiyat?.nakit ? <div>Otomarmara <b>{para(x.om.fiyat.nakit)}</b></div> : null}{x.neko?.netKdv ? <div>Neko <b>{para(x.neko.netKdv)}</b></div> : null}</td>}
               </tr>
-              {acik === x.anahtar && <tr><td colSpan={DEPO_KISA.length + (maliyet ? 5 : 4)} className="bg-slate-50 dark:bg-slate-800/40">
+              {acik === x.anahtar && <tr><td colSpan={4 + depolar.length + (maliyet ? 1 : 0)} className="bg-slate-50 dark:bg-slate-800/40">
                 <div className="grid gap-2 md:grid-cols-2">
                   {x.om ? <OmSatir s={x.om} maliyet={maliyet} db={db} /> : <div className="text-xs text-slate-400">Otomarmara'da bu kod yok</div>}
                   {x.neko ? <NekoSatir s={x.neko} db={db} /> : <div className="text-xs text-slate-400">Neko'da bu kod yok</div>}
@@ -246,7 +250,7 @@ export function TedarikciArama({ q, oto, maliyet }: { q: string; oto: boolean; m
               </td></tr>}
             </Fragment>); })}</tbody>
         </table>
-        <p className="mt-1 text-[11px] text-slate-500">Yeşil ✓ stokta · kırmızı ⊘ yok · mavi ↻ tedarik edilebilir / yolda · — o tedarikçide bu kod yok. Ayrıntı (OEM, eşdeğer) için satıra tıklayın.</p>
+        <p className="mt-1 text-[11px] text-slate-500">Yeşil ✓ stokta · kırmızı ⊘ yok · mavi ↻ tedarik edilebilir / yolda · — o tedarikçide (ya da bizde) bu kod yok. Ayrıntı (Otomarmara depoları, OEM, eşdeğer) için satıra tıklayın.</p>
       </div>}
     </div>
   );

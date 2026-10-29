@@ -5,11 +5,12 @@ import { backend, type OmAramaSonuc, type NekoToplu, type RakipUrun, type Sorula
 import { alinacakHesap, gecerliHareketler, kritikAltinda, stokluMu, takipGunu, urunOzetleri, type Donem } from '../lib/analiz';
 import { PERAKENDE_RE } from '../lib/analiz2';
 import { aracAnalizi } from '../lib/analiz3';
-import { stoktakiMuadiller } from '../lib/muadil';
+import { depoKisa, stoktakiMuadiller } from '../lib/muadil';
+import { aktifDepolar, stokHaritasi } from '../lib/depo';
 import { gunu, para, sayi, tarih } from '../lib/format';
 import { UrunLink } from '../components/DetayKart';
 import { Bos, Kpi, SayfaBaslik } from '../components/ui';
-import { DEPO_KISA, Durum, TedarikciArama, tedKod } from './UrunAra';
+import { Durum, TedarikciArama, omDurum, tedKod } from './UrunAra';
 
 /** Haftalık alım kararı: kendi satışımız + tezgâhta sorulanlar + pazarda (Otoparçasan) çok satılanlar → tek, sıralı liste */
 type Kaynak = 'biten' | 'sorulan' | 'pazar';
@@ -36,7 +37,8 @@ async function kopyala(metin: string, mesaj: string) {
 }
 
 export default function BuHafta() {
-  const { db, izin } = useStore(); const maliyetGor = izin('maliyet');
+  const { db, izin } = useStore();
+  const depolar = aktifDepolar(db); const harita = useMemo(() => stokHaritasi(db), [db]); const maliyetGor = izin('maliyet');
   const [pazar, setPazar] = useState<{ urunler: RakipUrun[]; sayfa: number; taranan: number } | null>(null);
   const [sorulan, setSorulan] = useState<SorulanRafa[]>([]);
   const [yuk, setYuk] = useState(false);
@@ -168,20 +170,22 @@ export default function BuHafta() {
     durum();
     await Promise.all([nekoIs, omIs]);
     setNekoYuk(null);
-    toast(`Otomarmara: ${[...o.values()].filter((s) => s && s !== 'hata' && s.depolar?.some((d) => d.durum === 'var')).length} stokta · Neko: ${[...m.values()].filter((r) => r.en?.var).length} stokta`);
+    toast(`Otomarmara: ${[...o.values()].filter((s) => s && s !== 'hata' && omDurum(s) === 'var').length} stokta · Neko: ${[...m.values()].filter((r) => r.en?.var).length} stokta`);
   };
-  const nekoHucre = (kod: string) => {
+  const nekoHucre = (kod: string, urunId: string | null) => {
     const r = neko.get(kod); const s = om.get(kod);
     if (!r && s === undefined) return null;
+    const bizde = urunId ? depolar.map((d) => ({ d, n: harita.get(urunId)?.get(d.id) ?? 0 })) : [];
     const ne = r?.en;
     return <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] leading-tight">
-      <span className="flex items-center gap-0.5"><span className="mr-1 text-slate-500">Otomarmara</span>
+      <span className="flex items-center gap-1"><span className="text-slate-500">Otomarmara</span>
         {s === undefined ? <span className="text-slate-400">…</span> : s === 'hata' ? <span className="text-red-600">hata</span> : !s ? <span className="text-slate-400">aynı kod yok</span>
-          : DEPO_KISA.map((d, i) => <Durum key={d} d={s.depolar?.[i]?.durum ?? null} baslik={`Otomarmara ${d}`} />)}
+          : <Durum d={omDurum(s)} baslik="Otomarmara" />}
         {s && s !== 'hata' && s.fiyat?.nakit ? <b className="ml-1">{para(s.fiyat.nakit)}</b> : null}</span>
       <span className="flex items-center gap-1"><span className="text-slate-500">Neko</span>
         {!r ? <span className="text-slate-400">…</span> : r.hata ? <span className="text-red-600">hata</span> : !ne ? <span className="text-slate-400">aynı kod yok</span>
-          : <><Durum d={ne.var ? 'var' : ne.stokDurum === 'YOLDA' ? 'tedarik' : 'yok'} baslik="Neko" />{ne.var && ne.stok ? <span className="text-emerald-700">{sayi(ne.stok)}</span> : null}{ne.netKdv !== null && <b>{para(ne.netKdv)}</b>}</>}</span>
+          : <><Durum d={ne.var ? 'var' : ne.stokDurum === 'YOLDA' ? 'tedarik' : 'yok'} baslik="Neko" />{ne.netKdv !== null && <b>{para(ne.netKdv)}</b>}</>}</span>
+      {bizde.map(({ d, n }) => <span key={d.id} className="flex items-center gap-1"><span className="text-slate-500">{depoKisa(d.ad)}</span><Durum d={n > 0 ? 'var' : 'yok'} baslik={d.ad} />{n > 0 && <span className="text-emerald-700">{sayi(n)}</span>}</span>)}
     </div>;
   };
   const markaDegis = (m: string) => { const s = new Set(markalar); if (s.has(m)) s.delete(m); else s.add(m); setSecMarka([...s]); };
@@ -236,7 +240,7 @@ export default function BuHafta() {
                             <div className="text-xs text-slate-500">{[x.marka, x.araclar.length ? x.araclar.map(aracAd).join(', ') : null].filter(Boolean).join(' · ')}
                               {x.etiket.map((e) => <span key={e} className="ml-1 rozet bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">{e}</span>)}</div>
                             {omAcik === x.anahtar && <div className="mt-2"><TedarikciArama q={x.kod || x.ad} oto maliyet={maliyetGor} /></div>}</td>
-                          <td className="text-sm">{x.neden}{nekoHucre(x.kod)}</td>
+                          <td className="text-sm">{x.neden}{nekoHucre(x.kod, x.urunId)}</td>
                           <td className="text-right font-semibold">{x.adet} <span className="text-xs font-normal text-slate-500">{k === 'pazar' ? 'deneme' : 'adet'}</span></td>
                           <td className="text-right text-sm">{k === 'biten' ? (maliyetGor && x.alis ? para(x.alis) : '') : x.pazarFiyat ? para(x.pazarFiyat) : '—'}</td>
                           <td><button className="btn-ghost whitespace-nowrap py-1 text-xs" onClick={() => setOmAcik(omAcik === x.anahtar ? null : x.anahtar)}>{omAcik === x.anahtar ? 'Kapat' : "Tedarikçide ara"}</button></td>
