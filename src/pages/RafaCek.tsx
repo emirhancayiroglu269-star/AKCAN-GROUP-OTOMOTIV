@@ -130,7 +130,7 @@ export function RafaCek() {
         <Kpi etiket="Pazarda öne çıkan parça" deger={sayi(l.length)} alt="Taranan sayfalarda listelenen" />
         <Kpi etiket="Bizde olmayan" deger={sayi(bizdeYok.length)} alt={`${sayi(bizdeYok.filter((x) => x.urun_id).length)} tanesinin kartı var ama stok 0`} renk="red" />
         <Kpi etiket="Bizde stokta" deger={sayi(l.length - bizdeYok.length)} alt="Üretici kodu / OEM eşleşmesi" renk="green" />
-        <Kpi etiket="Pazarda pahalı olduğumuz" deger={sayi(bizde.filter((x) => x.fiyat && x.bizim_fiyat && x.bizim_fiyat > x.fiyat * 1.05).length)} alt="Dükkân fiyatımız %5'ten fazla yüksek" renk="amber" />
+        <Kpi etiket="Pazarda pahalı olduğumuz" deger={sayi(bizde.filter((x) => x.eslesme === 'ayni' && x.fiyat && x.bizim_fiyat && x.bizim_fiyat > x.fiyat * 1.05).length)} alt="Aynı marka ve kodda dükkân fiyatımız %5'ten fazla yüksek" renk="amber" />
       </div>
       <div className="mb-3 flex flex-wrap items-center gap-1.5">
         <span className="mr-1 text-sm font-medium text-slate-600 dark:text-slate-300">Araç markası:</span>
@@ -222,8 +222,10 @@ export function RafaCek() {
               <div className="max-h-[62vh] overflow-auto">
                 <table className="tbl">
                   <thead><tr><th>Ürün (bizde)</th><th className="text-right">Stok</th><th className="text-right">Dükkân fiyatı</th><th className="text-right">Trendyol fiyatımız</th><th className="text-right">Otoparçasan</th><th className="text-right">Fark</th></tr></thead>
-                  <tbody>{[...bizde].sort((a, b) => ((b.bizim_fiyat ?? 0) / (b.fiyat || Infinity)) - ((a.bizim_fiyat ?? 0) / (a.fiyat || Infinity))).slice(0, 500).map((x) => {
+                  <tbody>{[...bizde].sort((a, b) => Number(b.eslesme === 'ayni') - Number(a.eslesme === 'ayni') || ((b.bizim_fiyat ?? 0) / (b.fiyat || Infinity)) - ((a.bizim_fiyat ?? 0) / (a.fiyat || Infinity))).slice(0, 500).map((x) => {
                     const t = x.urun_id ? ty.get(x.urun_id) : undefined; const fark = x.fiyat && x.bizim_fiyat ? (x.bizim_fiyat / x.fiyat - 1) * 100 : null;
+                    // muadil = farklı marka (ör. markasız Tayvan malı ↔ Filtron): fiyatı kıyaslanmaz, yalnız bilgi
+                    const ayni = x.eslesme === 'ayni';
                     return (
                       <tr key={x.url}>
                         <td><UrunLink id={x.urun_id!}>{x.bizim_ad}</UrunLink> <span className={`rozet ${x.eslesme === 'ayni' ? 'bg-emerald-50 text-emerald-700' : 'bg-sky-50 text-sky-700'}`}>{x.eslesme === 'ayni' ? 'aynı ürün' : 'muadil'}</span><div className="text-xs text-slate-500"><a href={x.url} target="_blank" rel="noreferrer" className="hover:underline">{x.ad} <ExternalLink size={10} className="inline" /></a></div></td>
@@ -231,7 +233,7 @@ export function RafaCek() {
                         <td className="text-right">{x.bizim_fiyat ? para(x.bizim_fiyat) : '—'}</td>
                         <td className="text-right">{t?.satis_fiyati ? para(t.satis_fiyati) : <span className="text-slate-400">ilan yok</span>}</td>
                         <td className="text-right font-medium">{x.fiyat ? para(x.fiyat) : '—'}</td>
-                        <td className={`text-right font-semibold ${fark === null ? 'text-slate-300' : fark > 5 ? 'text-red-600' : fark < -5 ? 'text-emerald-700' : 'text-slate-600'}`}>{fark === null ? '—' : `${fark > 0 ? '+' : ''}%${fark.toFixed(0)}`}</td>
+                        <td className={`text-right font-semibold ${fark === null || !ayni ? 'text-slate-400' : fark > 5 ? 'text-red-600' : fark < -5 ? 'text-emerald-700' : 'text-slate-600'}`}>{fark === null ? '—' : `${fark > 0 ? '+' : ''}%${fark.toFixed(0)}`}{!ayni && <div className="text-[11px] font-normal">farklı marka{x.uretici ? ` (${x.uretici})` : ''}, kıyaslanmaz</div>}</td>
                       </tr>); })}</tbody>
                 </table>
               </div>)}
