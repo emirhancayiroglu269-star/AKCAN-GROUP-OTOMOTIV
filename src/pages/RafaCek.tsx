@@ -14,9 +14,11 @@ const csvIndir = (ad: string, satirlar: (string | number | null | undefined)[][]
   const el = document.createElement('a'); el.href = URL.createObjectURL(new Blob(['﻿' + icerik], { type: 'text/csv' })); el.download = ad; el.click();
 };
 const slugTr = (s: string) => s.toLocaleLowerCase('tr').replace(/ı/g, 'i').replace(/ğ/g, 'g').replace(/ü/g, 'u').replace(/ş/g, 's').replace(/ö/g, 'o').replace(/ç/g, 'c').replace(/ë/g, 'e').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+/** genel olarak hızlı giden aşınma/bakım parçaları */
+const HIZLI_KAT = /(filtre|balata|fren-disk|disk-ayna|amortisor|rotil|rot-basi|rot-mil|z-rot|salincak|triger|kayis|gergi|termostat|devirdaim|su-pompa|buji|bobin|takoz|koruk|rulman|aks-kafa|debriyaj|viraj|sensor|ampul|silecek|antifriz)/;
 const katAd = (s: string | null) => (s ?? '—').split('-').map((w) => w.charAt(0).toLocaleUpperCase('tr') + w.slice(1)).join(' ');
 const aracAd = (s: string) => s.charAt(0).toLocaleUpperCase('tr') + s.slice(1);
-type Gorunum = 'hizli' | 'sorulan' | 'cek' | 'kategori' | 'fiyat';
+type Gorunum = 'oneri' | 'hizli' | 'sorulan' | 'cek' | 'kategori' | 'fiyat';
 const kodYaz = (x: RakipUrun) => (x.kod ?? '').toUpperCase();
 /** Tezgâhta sorulan parça önce, sonra pazar puanı */
 const talepDeger = (x: RakipUrun) => (x.soruldu ?? 0) * 25;
@@ -55,7 +57,7 @@ export function RafaCek() {
   const [veri, setVeri] = useState<{ urunler: RakipUrun[]; sayfa: number; taranan: number; son: string | null } | null>(null);
   const [ty, setTy] = useState<Map<string, TyUrun>>(new Map());
   const [yuk, setYuk] = useState(false);
-  const [gor, setGor] = useState<Gorunum>('hizli');
+  const [gor, setGor] = useState<Gorunum>('oneri');
   const [acikKat, setAcikKat] = useState<string | null>(null);
   const [q, setQ] = useState(''); const [kat, setKat] = useState(''); const [arac, setArac] = useState('');
   const [sadeceStokta, setSadeceStokta] = useState(true);
@@ -97,6 +99,22 @@ export function RafaCek() {
     }
     return [...m.values()].filter((g) => g.eksikler.length).map((g) => ({ ...g, eksikler: g.eksikler.sort(talepSirala) })).sort((a, b) => b.eksikPuan - a.eksikPuan);
   };
+  // dükkânda kategori talebi (tüm araç markaları, son 7 ay fatura sayısı): pazardaki kategori adına (slug) göre
+  const katTalep = useMemo(() => {
+    const d: Donem = { bas: gunu(new Date(Date.now() - 209 * 864e5)), bit: gunu() };
+    const urun = new Map(db.urunler.map((u) => [u.id, u])); const m = new Map<string, Set<string>>();
+    for (const h of gecerliHareketler(db, d)) {
+      if (h.tur !== 'satis' || h.miktar <= 0) continue;
+      const u = urun.get(h.urun_id); if (!u || !stokluMu(u)) continue;
+      const k = slugTr(u.kategori!); const x = m.get(k) ?? new Set(); m.set(k, x); x.add(h.belge_guid ?? `${h.tarih}|${h.urun_id}`);
+    }
+    return new Map([...m.entries()].map(([k, v]) => [k, v.size]));
+  }, [db]);
+  const talepBul = (kat: string) => katTalep.get(kat) ?? [...katTalep.entries()].find(([k]) => kat.startsWith(k + '-') || k.startsWith(kat + '-'))?.[1] ?? 0;
+  /** rafa alınacak (hızlı gidebilecek): pazarda üstte listelenen ve bizde olmayan parçalar; kategori sırası = dükkândaki kategori talebi + hızlı giden aşınma parçası */
+  const oneri = useMemo(() => katHesapla(arac).map((g) => { const talep = talepBul(g.kat); const hizli = HIZLI_KAT.test(g.kat);
+    return { ...g, talep, hizli, skor: talep * 3 + (hizli ? 15 : 0) + g.eksikPuan / 10 }; }).filter((g) => g.talep > 0 || g.hizli).sort((a, b) => b.skor - a.skor),
+    [l, arac, q, sadeceStokta, katTalep]); // eslint-disable-line react-hooks/exhaustive-deps
   const katOzet = useMemo(() => katHesapla(arac), [l, arac, q, sadeceStokta]); // eslint-disable-line react-hooks/exhaustive-deps
   // araç markası özeti: her markada rafa alınacak parça sayısı ve toplam talep
   const markaOzet = useMemo(() => araclar.map((m) => { const kg = katHesapla(m); return { marka: m, kategoriler: kg, eksik: kg.reduce((t, g) => t + g.eksikler.length, 0), puan: kg.reduce((t, g) => t + g.eksikPuan, 0) }; })
@@ -159,13 +177,41 @@ export function RafaCek() {
         {markaOzet.map((m) => <button key={m.marka} onClick={() => setArac(m.marka)} className={`rounded-full px-3 py-1.5 text-sm ${arac === m.marka ? 'bg-marka-600 text-white' : 'bg-white text-slate-600 dark:bg-slate-900 dark:text-slate-300'}`}>{aracAd(m.marka)} <span className="opacity-60">{sayi(m.eksik)}</span></button>)}
       </div>
       <div className="mb-3 flex flex-wrap items-center gap-2">
-        <div className="flex flex-wrap gap-1 rounded-xl bg-slate-100 p-1 dark:bg-slate-800/60">{sb('hizli', 'Bizde hızlı gidenler (marka × kategori)')}{sb('sorulan', 'Tezgâhta sorulan', sorulanEksik.length)}{sb('kategori', 'Kategoriye göre (hızlı gidenler)', katOzet.length)}{sb('cek', 'Tüm eksik parçalar', cek.length)}{sb('fiyat', 'Fiyat karşılaştırma', bizde.length)}</div>
+        <div className="flex flex-wrap gap-1 rounded-xl bg-slate-100 p-1 dark:bg-slate-800/60">{sb('oneri', 'Rafa alınacaklar (hızlı gidebilecek)', oneri.reduce((t, g) => t + Math.min(8, g.eksikler.length), 0))}{sb('hizli', 'Bizde hızlı gidenler (marka × kategori)')}{sb('sorulan', 'Tezgâhta sorulan', sorulanEksik.length)}{sb('kategori', 'Kategoriye göre (hızlı gidenler)', katOzet.length)}{sb('cek', 'Tüm eksik parçalar', cek.length)}{sb('fiyat', 'Fiyat karşılaştırma', bizde.length)}</div>
         <div className="relative min-w-[12rem] flex-1"><Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input className="inp pl-9" placeholder="Parça, kod, üretici…" value={q} onChange={(e) => setQ(e.target.value)} /></div>
-        {gor !== 'kategori' && gor !== 'hizli' && <select className="inp w-48" value={kat} onChange={(e) => setKat(e.target.value)}><option value="">Tüm kategoriler</option>{kategoriler.map((k) => <option key={k} value={k}>{katAd(k)}</option>)}</select>}
+        {gor !== 'kategori' && gor !== 'hizli' && gor !== 'oneri' && <select className="inp w-48" value={kat} onChange={(e) => setKat(e.target.value)}><option value="">Tüm kategoriler</option>{kategoriler.map((k) => <option key={k} value={k}>{katAd(k)}</option>)}</select>}
         {gor !== 'fiyat' && gor !== 'hizli' && <label className="flex items-center gap-1.5 text-sm"><input type="checkbox" checked={sadeceStokta} onChange={(e) => setSadeceStokta(e.target.checked)} /> Yalnız rakipte stokta olanlar</label>}
       </div>
 
-      {gor === 'hizli' ? (() => {
+      {gor === 'oneri' && veri ? (
+        <div>
+          <div className="mb-3 rounded-lg bg-slate-50 p-3 text-sm dark:bg-slate-800/40">
+            <b>{arac ? aracAd(arac) : 'Tüm araç markaları'}</b> için bizde olmayan ama hızlı satılabilecek parçalar. Kategoriler, dükkânda o kategoriden ne kadar satış yaptığımıza (tüm markalarda) ve hızlı giden aşınma parçası olup olmadığına göre sıralı; her kategoride pazarda (Otoparçasan) en üstte listelenen, bizde olmayan ilk 8 parça. Üstten araç markası seçin.
+          </div>
+          {oneri.length === 0 ? <div className="card"><Bos metin="Bu filtrede öneri yok." /></div> : (
+            <div className="space-y-3">{oneri.map((g, i) => {
+              const ilk = g.eksikler.slice(0, 8); const kodlar = ilk.map(kodYaz).filter(Boolean); const anahtar = `${arac}|${g.kat}`;
+              return (
+                <div key={g.kat} className="card">
+                  <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 p-3 dark:border-slate-800">
+                    <span className="w-6 text-right text-sm text-slate-400">{i + 1}.</span>
+                    <div className="min-w-[12rem] flex-1"><div className="font-semibold">{katAd(g.kat)}</div>
+                      <div className="text-xs text-slate-500">{g.talep ? `Dükkânda bu kategoriden ${sayi(g.talep)} faturada satış (tüm markalar)` : 'Dükkânda bu kategoride satış yok'}{g.hizli ? ' · hızlı giden aşınma parçası' : ''} · pazarda bizde olmayan {sayi(g.eksikler.length)} parça</div></div>
+                    <button className="btn-ghost py-1 text-xs" disabled={!kodlar.length} onClick={() => kopyala(kodlar.join('\n'), `${kodlar.length} kod kopyalandı`)}><Copy size={13} /> İlk {kodlar.length} kodu kopyala</button>
+                    {g.eksikler.length > 8 && <button className="text-xs text-marka-600 hover:underline" onClick={() => { setGor('kategori'); setAcikKat(anahtar); }}>Tümü ({g.eksikler.length}) →</button>}
+                  </div>
+                  <table className="tbl"><tbody>{ilk.map((x) => (
+                    <tr key={x.url} className="align-top">
+                      <td className="w-40"><KodKopya x={x} /></td>
+                      <td><a href={x.url} target="_blank" rel="noreferrer" className="hover:underline">{x.ad ?? x.url} <ExternalLink size={10} className="inline" /></a>
+                        <div className="text-xs text-slate-500">{x.uretici ?? ''}{x.araclar.length ? ` · ${x.araclar.map(aracAd).join(', ')}` : ''}{x.soruldu ? <span className="ml-1 rozet bg-red-50 text-red-700">tezgâhta {x.soruldu} kez soruldu</span> : null}</div>
+                        {omAcik === x.url && <div className="mt-2"><OtomarmaraArama q={x.kod ?? x.ad ?? ''} oto maliyet={izin('maliyet')} /></div>}</td>
+                      <td className="w-28 text-right">{x.fiyat ? para(x.fiyat) : '—'}<div className="text-[11px] text-slate-500">rakip fiyatı</div></td>
+                      <td className="w-32"><button className="btn-ghost whitespace-nowrap py-1 text-xs" onClick={() => setOmAcik(omAcik === x.url ? null : x.url)}>{omAcik === x.url ? 'Kapat' : "Otomarmara'da ara"}</button></td>
+                    </tr>))}</tbody></table>
+                </div>); })}</div>)}
+        </div>)
+      : gor === 'hizli' ? (() => {
         const goster = arac ? bizimHizli.filter((x) => x.marka === arac) : bizimHizli;
         const katCache = new Map<string, ReturnType<typeof katHesapla>>();
         const pazarKat = (marka: string, kat: string) => { const sl = slugTr(kat); const l = katCache.get(marka) ?? katHesapla(marka); katCache.set(marka, l); return l.find((g) => g.kat === sl) ?? l.find((g) => g.kat.startsWith(sl + '-') || sl.startsWith(g.kat + '-')) ?? null; };
