@@ -122,18 +122,30 @@ async function siparisleriCek(gun = SIPARIS_GUN) {
 }
 
 // ---------- stok gönderimi ----------
+/** Veritabanı tek sorguda en fazla 1000 satır verir: 1000'erli sayfalarla hepsini okur */
+async function tumSatir<T>(sorgu: (bas: number, son: number) => PromiseLike<{ data: unknown[] | null; error: { message: string } | null }>): Promise<T[]> {
+  const out: T[] = [];
+  for (let i = 0; i < 200000; i += 1000) {
+    const { data, error } = await sorgu(i, i + 999); if (error) throw new Error(error.message);
+    out.push(...((data ?? []) as T[])); if (!data || data.length < 1000) break;
+  }
+  return out;
+}
 type Ayar = { stok_gonder?: boolean; guvenlik?: number };
 async function ayarOku(): Promise<Ayar> { const { data } = await db.from('ayarlar').select('trendyol').eq('id', 1).maybeSingle(); return ((data?.trendyol ?? {}) as Ayar); }
 async function stokGonder(kaynak: 'otomatik' | 'elle', ayar: Ayar) {
   const guvenlik = Math.max(0, Number(ayar.guvenlik) || 0);
-  const { data: ilan, error } = await db.from('ty_urun').select('barkod,baslik,stok,urun_id,satista').not('urun_id', 'is', null);
-  if (error) throw new Error(error.message);
+  const ilan = await tumSatir<Obj>((a, b) => db.from('ty_urun').select('barkod,baslik,stok,urun_id,satista').not('urun_id', 'is', null).order('barkod').range(a, b));
   const ids = [...new Set((ilan ?? []).map((x) => x.urun_id as string))]; const stok = new Map<string, number>();
   for (let i = 0; i < ids.length; i += 200) { const { data: u } = await db.from('urunler').select('id,stok,aktif').in('id', ids.slice(i, i + 200)); for (const x of u ?? []) stok.set(x.id as string, x.aktif ? Number(x.stok) || 0 : 0); }
+  // henüz kargolanmamış Trendyol siparişlerindeki adetler ayrılır: BizimHesap stoğu fatura kesilene kadar düşmez, aynı parça iki kez satılmasın
+  const ayrilan = new Map<string, number>();
+  const acik = await tumSatir<Obj>((a, b) => db.from('ty_siparis').select('satirlar,durum').in('durum', ['Created', 'Picking', 'Invoiced', 'ReadyToShip', 'UnPacked', 'Awaiting']).gt('tarih', new Date(Date.now() - 14 * 864e5).toISOString()).order('paket_id').range(a, b));
+  for (const p of acik) for (const l of ((p.satirlar ?? []) as Obj[])) { const bk = metin(l.barkod); if (bk) ayrilan.set(bk, (ayrilan.get(bk) ?? 0) + (Number(l.adet) || 1)); }
   const degisen = (ilan ?? []).flatMap((x) => {
     // satışa kapatılmış ilanın stoğu Trendyol'da güncellenemez (hata verir); atlanır
     if (!stok.has(x.urun_id as string) || x.satista === false) return [];
-    const yeni = Math.min(20000, Math.max(0, Math.floor(stok.get(x.urun_id as string)!) - guvenlik)); const eski = Number(x.stok);
+    const yeni = Math.min(20000, Math.max(0, Math.floor(stok.get(x.urun_id as string)!) - guvenlik - (ayrilan.get(x.barkod as string) ?? 0))); const eski = Number(x.stok);
     return yeni === eski ? [] : [{ barkod: x.barkod as string, baslik: x.baslik as string | null, eski: Number.isFinite(eski) ? eski : null, yeni }];
   });
   for (let i = 0; i < degisen.length; i += 1000) {
@@ -356,7 +368,7 @@ async function otoYukle(a: OtoAyar, adet?: number) {
   const { data: h } = await db.from('hareketler').select('urun_id,alis_fiyati,tarih').eq('tur', 'alis').in('urun_id', ids).order('tarih', { ascending: false }).limit(2000);
   for (const x of h ?? []) if (!sonAlis.has(x.urun_id as string) && Number(x.alis_fiyati) > 0) sonAlis.set(x.urun_id as string, Number(x.alis_fiyati));
   const { data: kd } = await db.from('urun_kodlari').select('urun_id,kod,tur').in('urun_id', ids).neq('tur', 'OTOMARMARA');
-  const { data: kom } = await db.from('ty_urun').select('kategori_id,komisyon').not('komisyon', 'is', null);
+  const kom = await tumSatir<Obj>((a, b) => db.from('ty_urun').select('kategori_id,komisyon').not('komisyon', 'is', null).order('barkod').range(a, b));
   const komKat = new Map((kom ?? []).map((x) => [Number(x.kategori_id), Number(x.komisyon)]));
   const kalemler: YukKalem[] = []; const atla: { urun_id: string; neden: string }[] = [];
   for (const u of l) {
@@ -402,8 +414,7 @@ async function otoYukle(a: OtoAyar, adet?: number) {
 // Güvenlik: yeni fiyat mevcut fiyatın 2,5 katından fazla ya da %40'ından azsa (alış/dükkân fiyatı hatalı olabilir) gönderilmez, listede gösterilir.
 // Aynı ilana 24 saatte 3'ten fazla fiyat gönderilmişse başka bir sistem (ör. BizimHesap) fiyatı geri çekiyor demektir: durdurulur.
 async function fiyatGonder(kaynak: 'otomatik' | 'elle', a: OtoAyar) {
-  const { data: ilan, error } = await db.from('ty_urun').select('barkod,baslik,stok,urun_id,satista,satis_fiyati,liste_fiyati,komisyon,kdv,desi').not('urun_id', 'is', null);
-  if (error) throw new Error(error.message);
+  const ilan = await tumSatir<Obj>((a, b) => db.from('ty_urun').select('barkod,baslik,stok,urun_id,satista,satis_fiyati,liste_fiyati,komisyon,kdv,desi').not('urun_id', 'is', null).order('barkod').range(a, b));
   const l = (ilan ?? []).filter((x) => x.satista !== false && Number(x.satis_fiyati) > 0);
   const ids = [...new Set(l.map((x) => x.urun_id as string))];
   const um = new Map<string, Obj>(); const sonAlis = new Map<string, number>();
@@ -414,7 +425,7 @@ async function fiyatGonder(kaynak: 'otomatik' | 'elle', a: OtoAyar) {
     for (const x of h ?? []) if (!sonAlis.has(x.urun_id as string) && Number(x.alis_fiyati) > 0) sonAlis.set(x.urun_id as string, Number(x.alis_fiyati));
   }
   const { data: ay } = await db.from('ayarlar').select('alis_kdv_haric').eq('id', 1).maybeSingle(); const kdvHaric = ay?.alis_kdv_haric !== false;
-  const { data: gecmis } = await db.from('ty_gonderim').select('barkod').eq('tur', 'fiyat').gt('zaman', new Date(Date.now() - 864e5).toISOString());
+  const gecmis = await tumSatir<Obj>((a, b) => db.from('ty_gonderim').select('barkod').eq('tur', 'fiyat').gt('zaman', new Date(Date.now() - 864e5).toISOString()).order('id').range(a, b));
   const sayac = new Map<string, number>(); for (const g of gecmis ?? []) sayac.set(g.barkod as string, (sayac.get(g.barkod as string) ?? 0) + 1);
   const gonder: { barkod: string; baslik: string | null; stok: number | null; eski: number; yeni: number; liste: number }[] = []; const supheli: Obj[] = [];
   for (const t of l) {
