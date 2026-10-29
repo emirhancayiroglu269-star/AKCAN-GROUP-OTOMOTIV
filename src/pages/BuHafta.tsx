@@ -162,11 +162,11 @@ export default function BuHafta() {
   const nekoHucre = (kod: string) => {
     const r = neko.get(kod); if (!r) return null;
     if (r.hata) return <span className="text-[11px] text-red-600">Neko: hata</span>;
-    if (!r.en) return <span className="text-[11px] text-slate-400">Neko'da yok</span>;
+    if (!r.en) return <span className="text-[11px] text-slate-400">{r.adet ? `Neko'da aynı kod yok · ${r.adet} benzer sonuç (Tedarikçide ara ile bakın)` : "Neko'da yok"}</span>;
     return <div className="text-[11px] leading-tight">
       <span className={r.en.var ? 'font-medium text-emerald-700' : 'text-red-600'}>Neko {r.en.var ? `stokta${r.en.stok ? ` (${sayi(r.en.stok)})` : ''}` : (r.en.stokDurum === 'YOLDA' ? 'yolda' : 'yok')}</span>
       {r.en.netKdv !== null && <b className="ml-1">{para(r.en.netKdv)}</b>}
-      <div className="text-slate-500">{r.ayni ? '' : 'karşılık: '}{r.en.kod}{r.ayni ? '' : ' (kontrol edin)'}</div>
+      <div className="text-slate-500">{r.en.kod}</div>
     </div>;
   };
   const markaDegis = (m: string) => { const s = new Set(markalar); if (s.has(m)) s.delete(m); else s.add(m); setSecMarka([...s]); };

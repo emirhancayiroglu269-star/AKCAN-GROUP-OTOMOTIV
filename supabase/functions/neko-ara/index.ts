@@ -130,8 +130,9 @@ Deno.serve(async (req) => {
         try {
           const r = await onbellekli(`a:${k.toLocaleUpperCase('tr').replace(/\s+/g, ' ')}`, () => dene(() => aramaYap(k)));
           const l = r.veri; const kn = norm(terim(k));
-          const ayni = l.filter((x) => norm(x.kod).includes(kn));
-          const aday = (ayni.length ? ayni : l).slice().sort((a, x) => Number(x.var) - Number(a.var) || (a.net ?? 1e12) - (x.net ?? 1e12));
+          // aynı ürün: Neko kodu baştaki üretici kısaltması ("BSC 1 987 302 804") atılınca bizim kodla birebir aynı
+          const ayni = l.filter((x) => norm(x.kod.replace(/^[A-Z0-9ÇĞİÖŞÜ]{2,4}\s+/i, '')) === kn || norm(x.kod) === kn);
+          const aday = ayni.slice().sort((a, x) => Number(x.var) - Number(a.var) || (a.net ?? 1e12) - (x.net ?? 1e12));
           sonuc.push({ kod: k, adet: l.length, ayni: ayni.length > 0, en: aday[0] ? gizle([aday[0]])[0] : null, stoktaSayisi: l.filter((x) => x.var).length });
         } catch (e) { sonuc.push({ kod: k, hata: (e as Error).message.slice(0, 120) }); }
       }
