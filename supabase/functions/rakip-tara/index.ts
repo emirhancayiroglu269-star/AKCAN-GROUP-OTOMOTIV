@@ -2,6 +2,7 @@
 // (robots.txt'in izin verdiği adresler; arama, sıralama ve sayfalama adreslerine girmez). Giriş yapmaz, hiçbir şey göndermez.
 // Sayfadaki ürün listesini (JSON-LD) kaydeder: ürün adı, üretici markası, üretici kodu, fiyat, stok durumu, listedeki sırası.
 // Siteyi yormamak için her turda az sayfa, aralarında bekleme; her sayfa haftada bir yenilenir.
+// Kategori sayfaları güncelse kalan istek hakkıyla öne çıkan (bizde eşleşmesi olmayan) ürünlerin kendi sayfasından OEM kodları okunur.
 // Çağıran: zamanlayıcı (x-zamanlayici başlığı = ty_gizli.anahtar) ya da siteye giriş yapmış kullanıcı.
 import { createClient } from 'npm:@supabase/supabase-js@2';
 
@@ -70,6 +71,30 @@ async function hazirla() {
   return eklenen;
 }
 
+/** Ürün sayfasındaki OEM kodları ("var oems = \"1109CJ|1109-CJ|...\"") */
+function oemCikar(html: string) {
+  const m = html.match(/var\s+oems\s*=\s*"([^"]*)"/);
+  if (!m) return [];
+  return [...new Set(m[1].split('|').map((x) => x.toUpperCase().replace(/[^A-Z0-9]/g, '')).filter((x) => x.length >= 4 && x.length <= 30))].slice(0, 200);
+}
+
+async function oemTara(adet: number, basla: number) {
+  if (adet <= 0) return 0;
+  // en çok öne çıkan, bizde eşleşmesi olmayan, OEM'i hiç okunmamış (ya da 30 günden eski) ürünler
+  const { data } = await db.rpc('rakip_oem_sirasi', { n: adet });
+  let okunan = 0;
+  for (const r of (data ?? []) as { url: string }[]) {
+    if (Date.now() - basla > 100_000) break;
+    try {
+      const { durum, metin } = await sayfaAl(r.url);
+      await db.from('rakip_urun').update({ oem: durum === 200 ? oemCikar(metin) : null, oem_tarama: new Date().toISOString() }).eq('url', r.url);
+      okunan++;
+    } catch { await db.from('rakip_urun').update({ oem_tarama: new Date().toISOString() }).eq('url', r.url); }
+    await bekle(BEKLEME_MS);
+  }
+  return okunan;
+}
+
 async function tur() {
   const sinir = new Date(Date.now() - YENILEME_GUN * 864e5).toISOString();
   // her araç markası sırayla taransın: her turda rastgele markalardan, o markanın hızlı giden kategorileri önce, en eski (hiç taranmamış önce) sayfası
@@ -99,7 +124,8 @@ async function tur() {
     }
     await bekle(BEKLEME_MS);
   }
-  return { okunan, urun };
+  const oem = await oemTara(TUR_SAYFA - sayfalar.length, basla);
+  return { okunan, urun, oem };
 }
 
 Deno.serve(async (req) => {

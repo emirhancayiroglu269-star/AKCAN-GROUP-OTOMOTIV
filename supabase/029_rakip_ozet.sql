@@ -1,3 +1,7 @@
 -- 029 — rakip_pazar_ozet: pazar listesi (eşleştirme + puan) önceden hesaplanan materialized view; saatte bir (xx:41) cron ile
 -- "refresh materialized view concurrently" — uygulandı: migration "rakip_pazar_ozet_mv". rakip_pazar3 artık bu görünümden okur
 -- (51 bin ürünle canlı hesap 8 sn zaman aşımına düşüyordu). Site 1000 satırlık sınır yüzünden 3 parça halinde çeker.
+-- (güncelleme) migration "rakip_urun_oem": rakip_urun.oem text[] + oem_tarama; rakip-tara kategori sayfaları güncelken kalan
+-- istek hakkıyla öne çıkan, eşleşmesi olmayan ürünlerin sayfasından OEM kodlarını ("var oems") okur (rakip_oem_sirasi).
+-- migration "rakip_oem_eslesme": rakip_pazar_ozet2 (muadil = üretici kodu YA DA OEM kodlarından biri bizdeki Otomarmara çapraz
+-- kodlarında + kategori uyumu); rakip_pazar3 bunu okur, cron 11,41. Eski rakip_pazar_ozet artık kullanılmıyor (silinebilir).
