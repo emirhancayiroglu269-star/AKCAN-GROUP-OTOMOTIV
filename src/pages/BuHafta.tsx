@@ -49,10 +49,10 @@ export default function BuHafta() {
   const [neko, setNeko] = useState<Map<string, NekoToplu>>(new Map());
   const [nekoYuk, setNekoYuk] = useState<string | null>(null);
   const [om, setOm] = useState<Map<string, OmAramaSonuc | null | 'hata'>>(new Map());
-  const oku = async () => {
+  const oku = async (zorla = false) => {
     setYuk(true);
     try {
-      const [p, s] = await Promise.all([backend.rakipPazar().catch(() => null), backend.sorulanRafa(90).catch(() => [] as SorulanRafa[])]);
+      const [p, s] = await Promise.all([backend.rakipPazar(zorla).catch(() => null), backend.sorulanRafa(90).catch(() => [] as SorulanRafa[])]);
       setPazar(p ? { urunler: p.urunler, sayfa: p.sayfa, taranan: p.taranan } : { urunler: [], sayfa: 0, taranan: 0 }); setSorulan(s);
     } catch (e) { toast(`Okunamadı: ${(e as Error).message}`, 'hata'); } finally { setYuk(false); }
   };
@@ -193,7 +193,7 @@ export default function BuHafta() {
   return (
     <div>
       <SayfaBaslik baslik="Bu Hafta Alınacaklar" alt="Kendi satışımız + tezgâhta sorulanlar + pazarda çok satılanlar → tek sipariş listesi, en önemlisi en üstte">
-        <button className="btn-ghost" onClick={oku} disabled={yuk}><RefreshCw size={16} className={yuk ? 'animate-spin' : ''} /> Yenile</button>
+        <button className="btn-ghost" onClick={() => oku(true)} disabled={yuk}><RefreshCw size={16} className={yuk ? 'animate-spin' : ''} /> Yenile</button>
         <button className="btn-ghost" disabled={!hepsi.length} onClick={() => { const k = hepsi.map((x) => x.kod).filter(Boolean); kopyala(k.join('\n'), `${k.length} kod kopyalandı`); }}><Copy size={16} /> Kodları kopyala</button>
         <button className="btn-ghost" disabled={!hepsi.length} onClick={() => kopyala(listeMetni(hepsi), 'Liste kopyalandı (WhatsApp\'a yapıştırabilirsiniz)')}><MessageSquare size={16} /> Liste metni</button>
         <button className="btn-ghost" disabled={!hepsi.length || !!nekoYuk} onClick={nekoGetir}>{nekoYuk ? <Loader2 size={16} className="animate-spin" /> : <Truck size={16} />} {nekoYuk ? `Tedarikçiler ${nekoYuk}` : 'Otomarmara + Neko stok'}</button>

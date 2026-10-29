@@ -1,0 +1,9 @@
+-- 032 — 29.10.2026 sistem kontrolü (uygulandı: migration "sistem_iyilestirme_1029", "rakip_ozet_tablo")
+-- * bh_eksikleri_pasifle: dizi içinde arama yerine hash anti-join (BizimHesap eşitlemesindeki ara sıra zaman aşımı)
+-- * ty_siparis_saat_tg: Trendyol sipariş saatleri 3 saat ileri geliyordu, kayıtta düzeltilir (mevcut kayıtlar da düzeltildi)
+-- * cron-kayit-temizlik (her gece 03:23): cron.job_run_details 3 günden eski kayıtlar silinir
+-- * silineni_kaydet / rakip_pazar / rakip_pazar2 dışarıdan çağrılamaz; tr_sade, degisim_isaretle, om_degisim_isaretle search_path sabit
+-- * dizinler: ty_yukleme(barkod), ty_yukleme(urun_id), sorulan(urun_id)
+-- * rakip_ozet tablosu + rakip_ozet_yenile() (cron 11,41): pazar özeti artık tablo; muadil için çok kelimeli kategoride ilk kelime de uymalı
+-- Kullanılmayan eski görünümler (≈60 MB), SQL Editor'da çalıştırılabilir:
+--   drop materialized view if exists public.rakip_pazar_ozet, public.rakip_pazar_ozet2, public.rakip_pazar_ozet3;

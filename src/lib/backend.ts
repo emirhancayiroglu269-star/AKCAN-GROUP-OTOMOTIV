@@ -75,7 +75,7 @@ export interface Backend {
   tyOtoOzet(): Promise<TyOtoOzet>;
   sorulanRafa(gun: number): Promise<SorulanRafa[]>;
   rakipNotKaydet(url: string, n: { satin_aldi: number | null; sepette: number | null; inceledi: number | null }): Promise<void>;
-  rakipPazar(): Promise<{ urunler: RakipUrun[]; sayfa: number; taranan: number; son: string | null }>;
+  rakipPazar(zorla?: boolean): Promise<{ urunler: RakipUrun[]; sayfa: number; taranan: number; son: string | null }>;
   urunGorselleri(ids: ID[]): Promise<Map<ID, string[]>>;
 }
 export interface TyUrun { barkod: string; stok_kodu: string | null; baslik: string | null; marka: string | null; kategori: string | null; satis_fiyati: number | null; liste_fiyati: number | null; stok: number | null; kdv: number | null; satista: boolean | null; urun_id: ID | null; guncelleme: string; kategori_id?: number | null; komisyon?: number | null; desi?: number | null }
@@ -322,7 +322,11 @@ function supabaseBackend(sb: SupabaseClient): Backend {
       const { data: k } = await sb.auth.getUser();
       ok(await sb.from('rakip_not').upsert({ url, ...n, guncelleme: new Date().toISOString(), kullanici: k?.user?.email ?? null }));
     },
-    async rakipPazar() {
+    async rakipPazar(zorla = false) {
+      // pazar listesi sunucuda yarım saatte bir yenilenir: tarayıcıda 30 dk saklanır (veri çıkışı kotası için)
+      const AN = 'rakip_pazar_v3';
+      if (!zorla) { try { const o = JSON.parse(localStorage.getItem(AN) ?? 'null'); if (o && Date.now() - o.t < 30 * 60000) return o.v; } catch { /* yok */ } }
+      const v = await (async () => {
       // sunucu tek seferde en fazla 1000 satır verir: 3 parça halinde
       const parcalar = await Promise.all([0, 1, 2].map((i) => sb.rpc('rakip_pazar3', { n: 3000 }).range(i * 1000, i * 1000 + 999)));
       const hata = parcalar.find((p) => p.error); if (hata?.error) throw new Error(hata.error.message);
@@ -332,6 +336,9 @@ function supabaseBackend(sb: SupabaseClient): Backend {
       const { data: son } = await sb.from('rakip_sayfa').select('son_tarama').not('son_tarama', 'is', null).order('son_tarama', { ascending: false }).limit(1).maybeSingle();
       const n = (v: unknown) => (v === null || v === undefined ? null : Number(v));
       return { urunler: ((data ?? []) as RakipUrun[]).map((x) => ({ ...x, fiyat: n(x.fiyat), puan: Number(x.puan), bizim_stok: n(x.bizim_stok), bizim_fiyat: n(x.bizim_fiyat) })), sayfa: sayfa ?? 0, taranan: taranan ?? 0, son: (son?.son_tarama as string) ?? null };
+      })();
+      try { localStorage.setItem(AN, JSON.stringify({ t: Date.now(), v })); } catch { /* yer yok */ }
+      return v;
     },
     async urunGorselleri(ids) {
       const m = new Map<ID, string[]>();

@@ -62,10 +62,10 @@ export function RafaCek() {
   const [q, setQ] = useState(''); const [kat, setKat] = useState(''); const [arac, setArac] = useState('');
   const [sadeceStokta, setSadeceStokta] = useState(true);
   const [omAcik, setOmAcik] = useState<string | null>(null);
-  const oku = async () => {
+  const oku = async (zorla = false) => {
     setYuk(true);
     try {
-      const [p, so] = await Promise.all([backend.rakipPazar(), backend.sorulanRafa(180).catch(() => [] as SorulanRafa[])]);
+      const [p, so] = await Promise.all([backend.rakipPazar(zorla), backend.sorulanRafa(180).catch(() => [] as SorulanRafa[])]);
       // tezgâhta sorulan kodlar pazar listesinde öne çıksın
       const kez = new Map(so.map((x) => [x.kod_norm, x.kez]));
       const norm = (k: string | null) => (k ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '');
@@ -160,7 +160,7 @@ export function RafaCek() {
   return (
     <div>
       <SayfaBaslik baslik="Rafa Çekilecekler (pazar)" alt="Otoparçasan'da araç markası ve kategori sayfalarında öne çıkan parçalar · bizde olmayanlar rafa çekilecek, olanlar fiyat karşılaştırması">
-        <button className="btn-ghost" onClick={oku} disabled={yuk}><RefreshCw size={16} className={yuk ? 'animate-spin' : ''} /> Yenile</button>
+        <button className="btn-ghost" onClick={() => oku(true)} disabled={yuk}><RefreshCw size={16} className={yuk ? 'animate-spin' : ''} /> Yenile</button>
         <button className="btn-ghost" disabled={!cek.length} onClick={() => { const k = cek.map(kodYaz).filter(Boolean); kopyala(k.join('\n'), `${k.length} kod kopyalandı`); }}><Copy size={16} /> Eksik kodları kopyala</button>
         <button className="btn-ghost" disabled={!cek.length} onClick={() => csvIndir(`rafa-cek-${gunu()}.csv`, [['Parça', 'Üretici', 'Stok kodu', 'Kategori', 'Araçlar', 'Pazar puanı', 'Kaç listede', 'Otoparçasan fiyatı', 'Bizde'], ...cek.map((x) => [x.ad, x.uretici, kodYaz(x), katAd(x.kategori), x.araclar.map(aracAd).join(' '), x.puan, x.gorulme, x.fiyat, x.urun_id ? 'kart var, stok yok' : 'yok'])])}><Download size={16} /> CSV</button>
       </SayfaBaslik>
