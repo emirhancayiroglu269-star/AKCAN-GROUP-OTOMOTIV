@@ -1,0 +1,3 @@
+-- 029 — rakip_pazar_ozet: pazar listesi (eşleştirme + puan) önceden hesaplanan materialized view; saatte bir (xx:41) cron ile
+-- "refresh materialized view concurrently" — uygulandı: migration "rakip_pazar_ozet_mv". rakip_pazar3 artık bu görünümden okur
+-- (51 bin ürünle canlı hesap 8 sn zaman aşımına düşüyordu). Site 1000 satırlık sınır yüzünden 3 parça halinde çeker.

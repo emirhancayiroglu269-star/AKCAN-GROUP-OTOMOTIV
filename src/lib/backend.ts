@@ -314,7 +314,10 @@ function supabaseBackend(sb: SupabaseClient): Backend {
       ok(await sb.from('rakip_not').upsert({ url, ...n, guncelleme: new Date().toISOString(), kullanici: k?.user?.email ?? null }));
     },
     async rakipPazar() {
-      const { data, error } = await sb.rpc('rakip_pazar3', { n: 3000 }); if (error) throw new Error(error.message);
+      // sunucu tek seferde en fazla 1000 satır verir: 3 parça halinde
+      const parcalar = await Promise.all([0, 1, 2].map((i) => sb.rpc('rakip_pazar3', { n: 3000 }).range(i * 1000, i * 1000 + 999)));
+      const hata = parcalar.find((p) => p.error); if (hata?.error) throw new Error(hata.error.message);
+      const data = parcalar.flatMap((p) => (p.data ?? []) as RakipUrun[]);
       const { count: sayfa } = await sb.from('rakip_sayfa').select('url', { count: 'exact', head: true });
       const { count: taranan } = await sb.from('rakip_sayfa').select('url', { count: 'exact', head: true }).not('son_tarama', 'is', null);
       const { data: son } = await sb.from('rakip_sayfa').select('son_tarama').not('son_tarama', 'is', null).order('son_tarama', { ascending: false }).limit(1).maybeSingle();
