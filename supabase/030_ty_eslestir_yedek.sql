@@ -1,0 +1,3 @@
+-- 030 — ty_eslestir_say(): BizimHesap'ta barkod/stok kodu sonradan değişince Trendyol ilanı eşleşmesi kopmasın —
+-- sıra: barkod → yükleme geçmişi (ty_yukleme.barkod → urun_id) → stok kodu → noktasız/tiresiz stok kodu. Uygulandı: migration "ty_eslestir_yedek".
+-- Örnek: UFI-5313000 ilanı; BH'de kod "UFI-53.130.00", barkod "2472627528041" yapılınca eşleşme kopmuş, stok gönderilmiyordu.
