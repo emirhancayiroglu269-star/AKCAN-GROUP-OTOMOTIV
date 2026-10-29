@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Copy, Download, ExternalLink, Info, MessageSquare, RefreshCw } from 'lucide-react';
+import { Copy, Download, ExternalLink, Info, Loader2, MessageSquare, RefreshCw, Truck } from 'lucide-react';
 import { useStore, toast } from '../lib/store';
-import { backend, type RakipUrun, type SorulanRafa } from '../lib/backend';
+import { backend, type NekoToplu, type RakipUrun, type SorulanRafa } from '../lib/backend';
 import { alinacakHesap, gecerliHareketler, kritikAltinda, stokluMu, takipGunu, urunOzetleri, type Donem } from '../lib/analiz';
 import { PERAKENDE_RE } from '../lib/analiz2';
 import { aracAnalizi } from '../lib/analiz3';
@@ -9,7 +9,7 @@ import { stoktakiMuadiller } from '../lib/muadil';
 import { gunu, para, sayi, tarih } from '../lib/format';
 import { UrunLink } from '../components/DetayKart';
 import { Bos, Kpi, SayfaBaslik } from '../components/ui';
-import { OtomarmaraArama } from './UrunAra';
+import { NekoArama, OtomarmaraArama } from './UrunAra';
 
 /** Haftalık alım kararı: kendi satışımız + tezgâhta sorulanlar + pazarda (Otoparçasan) çok satılanlar → tek, sıralı liste */
 type Kaynak = 'biten' | 'sorulan' | 'pazar';
@@ -44,6 +44,8 @@ export default function BuHafta() {
   const [secMarka, setSecMarka] = useState<string[] | null>(null);
   const [kapali, setKapali] = useState<Set<Kaynak>>(new Set());
   const [omAcik, setOmAcik] = useState<string | null>(null);
+  const [neko, setNeko] = useState<Map<string, NekoToplu>>(new Map());
+  const [nekoYuk, setNekoYuk] = useState<string | null>(null);
   const oku = async () => {
     setYuk(true);
     try {
@@ -143,6 +145,30 @@ export default function BuHafta() {
       ...hepsi.map((x) => sat([KAYNAK[x.kaynak].ad, x.kod, x.ad, x.marka, x.neden, x.adet, x.araclar.map(aracAd).join(' '), x.pazarFiyat, ...(maliyetGor ? [x.alis] : [])]))].join('\n');
     const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['﻿' + icerik], { type: 'text/csv' })); a.download = `bu-hafta-alinacaklar-${gunu()}.csv`; a.click();
   };
+  // Neko B4B'de listedeki kodların stok ve (yöneticiye) fiyatı: 25'erli parçalar halinde, sırayla
+  const nekoGetir = async () => {
+    const kodlar = [...new Set(hepsi.map((x) => x.kod).filter((k) => k && !neko.has(k)))];
+    if (!kodlar.length) { toast('Listedeki kodlar zaten getirildi'); return; }
+    const m = new Map(neko);
+    try {
+      for (let i = 0; i < kodlar.length; i += 25) {
+        setNekoYuk(`${Math.min(i + 25, kodlar.length)} / ${kodlar.length}`);
+        for (const r of await backend.nekoToplu(kodlar.slice(i, i + 25))) if (!r.yarim) m.set(r.kod, r);
+        setNeko(new Map(m));
+      }
+      toast(`Neko: ${[...m.values()].filter((r) => r.en?.var).length} kod stokta bulundu`);
+    } catch (e) { toast(`Neko: ${(e as Error).message}`, 'hata'); } finally { setNekoYuk(null); }
+  };
+  const nekoHucre = (kod: string) => {
+    const r = neko.get(kod); if (!r) return null;
+    if (r.hata) return <span className="text-[11px] text-red-600">Neko: hata</span>;
+    if (!r.en) return <span className="text-[11px] text-slate-400">Neko'da yok</span>;
+    return <div className="text-[11px] leading-tight">
+      <span className={r.en.var ? 'font-medium text-emerald-700' : 'text-red-600'}>Neko {r.en.var ? `stokta${r.en.stok ? ` (${sayi(r.en.stok)})` : ''}` : (r.en.stokDurum === 'YOLDA' ? 'yolda' : 'yok')}</span>
+      {r.en.netKdv !== null && <b className="ml-1">{para(r.en.netKdv)}</b>}
+      <div className="text-slate-500">{r.ayni ? '' : 'karşılık: '}{r.en.kod}{r.ayni ? '' : ' (kontrol edin)'}</div>
+    </div>;
+  };
   const markaDegis = (m: string) => { const s = new Set(markalar); if (s.has(m)) s.delete(m); else s.add(m); setSecMarka([...s]); };
 
   return (
@@ -151,6 +177,7 @@ export default function BuHafta() {
         <button className="btn-ghost" onClick={oku} disabled={yuk}><RefreshCw size={16} className={yuk ? 'animate-spin' : ''} /> Yenile</button>
         <button className="btn-ghost" disabled={!hepsi.length} onClick={() => { const k = hepsi.map((x) => x.kod).filter(Boolean); kopyala(k.join('\n'), `${k.length} kod kopyalandı`); }}><Copy size={16} /> Kodları kopyala</button>
         <button className="btn-ghost" disabled={!hepsi.length} onClick={() => kopyala(listeMetni(hepsi), 'Liste kopyalandı (WhatsApp\'a yapıştırabilirsiniz)')}><MessageSquare size={16} /> Liste metni</button>
+        <button className="btn-ghost" disabled={!hepsi.length || !!nekoYuk} onClick={nekoGetir}>{nekoYuk ? <Loader2 size={16} className="animate-spin" /> : <Truck size={16} />} {nekoYuk ? `Neko ${nekoYuk}` : "Neko'da stok/fiyat"}</button>
         <button className="btn-ghost" disabled={!hepsi.length} onClick={csv}><Download size={16} /> CSV</button>
       </SayfaBaslik>
 
@@ -193,11 +220,11 @@ export default function BuHafta() {
                           <td>{x.urunId ? <UrunLink id={x.urunId}>{x.ad}</UrunLink> : x.pazarUrl ? <a href={x.pazarUrl} target="_blank" rel="noreferrer" className="hover:underline">{x.ad} <ExternalLink size={10} className="inline" /></a> : x.ad}
                             <div className="text-xs text-slate-500">{[x.marka, x.araclar.length ? x.araclar.map(aracAd).join(', ') : null].filter(Boolean).join(' · ')}
                               {x.etiket.map((e) => <span key={e} className="ml-1 rozet bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">{e}</span>)}</div>
-                            {omAcik === x.anahtar && <div className="mt-2"><OtomarmaraArama q={x.kod || x.ad} oto maliyet={maliyetGor} /></div>}</td>
-                          <td className="text-sm">{x.neden}</td>
+                            {omAcik === x.anahtar && <div className="mt-2"><OtomarmaraArama q={x.kod || x.ad} oto maliyet={maliyetGor} /><div className="mt-2" /><NekoArama q={x.kod || x.ad} oto /></div>}</td>
+                          <td className="text-sm">{x.neden}{nekoHucre(x.kod)}</td>
                           <td className="text-right font-semibold">{x.adet} <span className="text-xs font-normal text-slate-500">{k === 'pazar' ? 'deneme' : 'adet'}</span></td>
                           <td className="text-right text-sm">{k === 'biten' ? (maliyetGor && x.alis ? para(x.alis) : '') : x.pazarFiyat ? para(x.pazarFiyat) : '—'}</td>
-                          <td><button className="btn-ghost whitespace-nowrap py-1 text-xs" onClick={() => setOmAcik(omAcik === x.anahtar ? null : x.anahtar)}>{omAcik === x.anahtar ? 'Kapat' : "Otomarmara'da ara"}</button></td>
+                          <td><button className="btn-ghost whitespace-nowrap py-1 text-xs" onClick={() => setOmAcik(omAcik === x.anahtar ? null : x.anahtar)}>{omAcik === x.anahtar ? 'Kapat' : "Tedarikçide ara"}</button></td>
                         </tr>))}</tbody>
                     </table>
                   </div>))}

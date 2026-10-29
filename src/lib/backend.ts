@@ -17,6 +17,9 @@ export const supabase: SupabaseClient | null = URL && KEY ? createClient(URL, KE
 export const MODE: 'bulut' | 'demo' = supabase ? 'bulut' : 'demo';
 
 export interface OmAramaSonuc { id: string; kod: string; marka: string; ad: string; ek: string[] }
+export interface NekoSonuc { id: number; kod: string; ad: string; uretici: string | null; stok: number | null; stokDurum: string | null; var: boolean; resim: string | null; liste: number | null; net: number | null; netKdv: number | null; iskonto: string | null; doviz: string | null }
+export interface NekoYanit { sonuclar: NekoSonuc[]; zaman: string; onbellek: boolean; maliyet: boolean }
+export interface NekoToplu { kod: string; adet?: number; ayni?: boolean; en?: NekoSonuc | null; stoktaSayisi?: number; hata?: string; yarim?: boolean }
 export interface OmAramaYanit { sonuclar: OmAramaSonuc[]; zaman: string; onbellek: boolean }
 export interface OmDetayYanit { oemler: string[]; esdegerler: { kod: string; ad?: string | null }[]; zaman: string; onbellek: boolean }
 export interface EsitlemeSonucu { ok: boolean; hata?: string; urun?: number; depo?: number; degisen?: number; stokSatiri?: number; cari?: number }
@@ -41,6 +44,9 @@ export interface Backend {
   omVeri(): Promise<OtomarmaraVeri[]>;
   /** Otomarmara'da canlı arama (yalnız okuma; sunucu fonksiyonu üzerinden, önbellekli) */
   omAra(q: string): Promise<OmAramaYanit>;
+  nekoAra(q: string): Promise<NekoYanit>;
+  nekoEsdeger(id: number): Promise<NekoYanit>;
+  nekoToplu(kodlar: string[]): Promise<NekoToplu[]>;
   /** Otomarmara'daki bir ürünün OEM ve eşdeğer listesi */
   omDetay(id: string): Promise<OmDetayYanit>;
   /** Hafif kontrol: verinin değişip değişmediğini anlamak için tek satır okur */
@@ -131,8 +137,8 @@ function hareketleriBirlestir(stok: Hareket[], rapor: RaporSatiri[], d: BhDurum 
   return [...s, ...r].sort((a, b) => b.tarih.localeCompare(a.tarih));
 }
 
-async function omCagir(sb: SupabaseClient, body: object) {
-  const { data, error } = await sb.functions.invoke('otomarmara-ara', { body });
+async function omCagir(sb: SupabaseClient, body: object, fn = 'otomarmara-ara') {
+  const { data, error } = await sb.functions.invoke(fn, { body });
   if (error) {
     let mesaj = error.message;
     try { const j = await (error as { context?: Response }).context?.json(); if (j?.hata) mesaj = j.hata; } catch { /* yok */ }
@@ -263,6 +269,9 @@ function supabaseBackend(sb: SupabaseClient): Backend {
       return { veri, kodlar };
     },
     async omAra(q) { return omCagir(sb, { q }) as Promise<OmAramaYanit>; },
+    async nekoAra(q) { return omCagir(sb, { q }, 'neko-ara') as Promise<NekoYanit>; },
+    async nekoEsdeger(id) { return omCagir(sb, { islem: 'esdeger', id }, 'neko-ara') as Promise<NekoYanit>; },
+    async nekoToplu(kodlar) { return ((await omCagir(sb, { islem: 'toplu', kodlar }, 'neko-ara')) as { sonuclar: NekoToplu[] }).sonuclar; },
     async sayimOku(depoId) {
       const r: SayimSatir[] = [];
       for (let i = 0; i < 100000; i += 1000) { const d = ok(await sb.from('sayim').select('depo_id,urun_id,sayilan,sistem,kullanici,zaman').eq('depo_id', depoId).order('urun_id').range(i, i + 999)) as SayimSatir[]; r.push(...d.map((x) => ({ ...x, sayilan: Number(x.sayilan), sistem: x.sistem === null ? null : Number(x.sistem) }))); if (d.length < 1000) break; }
@@ -547,6 +556,9 @@ function demoBackend(): Backend {
     async sayimKaydet(r) { demoSayim = [...demoSayim.filter((x) => !(x.depo_id === r.depo_id && x.urun_id === r.urun_id)), { ...r, zaman: new Date().toISOString() }]; },
     async sayimSil(depoId, urunId) { demoSayim = demoSayim.filter((x) => !(x.depo_id === depoId && (!urunId || x.urun_id === urunId))); },
     async omAra() { throw new Error('Demo modunda Otomarmara araması yok'); },
+    async nekoAra() { throw new Error('Demo modunda Neko araması yok'); },
+    async nekoEsdeger() { throw new Error('Demo modunda Neko araması yok'); },
+    async nekoToplu() { throw new Error('Demo modunda Neko araması yok'); },
     async omDetay() { throw new Error('Demo modunda Otomarmara araması yok'); },
     async omVeri() { return []; },
     async omDegisen() { return { veri: [], kodlar: [] }; },

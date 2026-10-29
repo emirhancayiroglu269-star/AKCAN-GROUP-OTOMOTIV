@@ -1,0 +1,4 @@
+-- 031 — Neko B4B canlı arama (neko-ara fonksiyonu): neko_arama (6 saat önbellek), neko_oturum (sunucunun Neko oturum anahtarı) — yalnız sunucu erişir.
+-- Uygulandı: migration "neko_arama". Gizli değerler (Edge Functions → Secrets, kullanıcı girdi): NEKO_KULLANICI_KODU, NEKO_KULLANICI, NEKO_SIFRE.
+-- Giriş: b4b.neko.com.tr/b4b/Login/LoginControl → authToken; arama: b4bservice.neko.com.tr/b4b/search?Searchtext=*kod* (Bearer).
+-- Fiyat alanları (alış) yalnız yönetici rolüne döner. Yalnız okur; sepete ekleme/sipariş yok.

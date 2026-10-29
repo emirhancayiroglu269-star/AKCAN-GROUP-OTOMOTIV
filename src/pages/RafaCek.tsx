@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { ChevronDown, ChevronRight, Copy, Download, ExternalLink, Info, RefreshCw, Search } from 'lucide-react';
 import { useStore, toast } from '../lib/store';
 import { backend, type RakipUrun, type SorulanRafa, type TyUrun } from '../lib/backend';
-import { OtomarmaraArama } from './UrunAra';
+import { NekoArama, OtomarmaraArama } from './UrunAra';
 import { ara, gunu, para, sayi, tarihSaat } from '../lib/format';
 import { UrunLink } from '../components/DetayKart';
 import { Bos, Kpi, SayfaBaslik } from '../components/ui';
@@ -145,12 +145,12 @@ export function RafaCek() {
                           <tr key={x.url} className="align-top">
                             <td><a href={x.url} target="_blank" rel="noreferrer" className="hover:underline">{x.ad ?? x.url} <ExternalLink size={11} className="inline" /></a>
                               <div className="text-xs text-slate-500">{x.uretici ?? ''}{x.araclar.length ? ` · ${x.araclar.map(aracAd).join(', ')}` : ''}{x.soruldu ? <span className="ml-1 rozet bg-red-50 text-red-700">tezgâhta {x.soruldu} kez soruldu</span> : null}</div>
-                              {omAcik === x.url && <div className="mt-2"><OtomarmaraArama q={x.kod ?? x.ad ?? ''} oto maliyet={izin('maliyet')} /></div>}</td>
+                              {omAcik === x.url && <div className="mt-2"><OtomarmaraArama q={x.kod ?? x.ad ?? ''} oto maliyet={izin('maliyet')} /><div className="mt-2" /><NekoArama q={x.kod ?? x.ad ?? ''} oto /></div>}</td>
                             <td><KodKopya x={x} /></td>
                             <td className="text-right font-semibold">{x.puan.toFixed(1)}<div className="text-[11px] font-normal text-slate-500">{x.gorulme} listede</div></td>
                             <td className="text-right">{x.fiyat ? para(x.fiyat) : '—'}<div className={`text-[11px] ${x.stokta === false ? 'text-red-600' : 'text-emerald-700'}`}>{x.stokta === false ? 'tükendi' : x.stokta ? 'stokta' : ''}</div></td>
                             <td className="text-sm">{x.urun_id ? <><UrunLink id={x.urun_id}>{x.bizim_ad ?? 'kart'}</UrunLink><div className="text-[11px] text-amber-700">stok 0</div></> : <span className="text-red-600">yok</span>}</td>
-                            <td><button className="btn-ghost whitespace-nowrap py-1 text-xs" onClick={() => setOmAcik(omAcik === x.url ? null : x.url)}>{omAcik === x.url ? 'Kapat' : "Otomarmara'da ara"}</button></td>
+                            <td><button className="btn-ghost whitespace-nowrap py-1 text-xs" onClick={() => setOmAcik(omAcik === x.url ? null : x.url)}>{omAcik === x.url ? 'Kapat' : "Tedarikçide ara"}</button></td>
                           </tr>))}</tbody>
                       </table>
                     </div>)}
@@ -205,9 +205,9 @@ export function RafaCek() {
                       <td className="w-40"><KodKopya x={x} /></td>
                       <td><a href={x.url} target="_blank" rel="noreferrer" className="hover:underline">{x.ad ?? x.url} <ExternalLink size={10} className="inline" /></a>
                         <div className="text-xs text-slate-500">{x.uretici ?? ''}{x.araclar.length ? ` · ${x.araclar.map(aracAd).join(', ')}` : ''}{x.soruldu ? <span className="ml-1 rozet bg-red-50 text-red-700">tezgâhta {x.soruldu} kez soruldu</span> : null}</div>
-                        {omAcik === x.url && <div className="mt-2"><OtomarmaraArama q={x.kod ?? x.ad ?? ''} oto maliyet={izin('maliyet')} /></div>}</td>
+                        {omAcik === x.url && <div className="mt-2"><OtomarmaraArama q={x.kod ?? x.ad ?? ''} oto maliyet={izin('maliyet')} /><div className="mt-2" /><NekoArama q={x.kod ?? x.ad ?? ''} oto /></div>}</td>
                       <td className="w-28 text-right">{x.fiyat ? para(x.fiyat) : '—'}<div className="text-[11px] text-slate-500">rakip fiyatı</div></td>
-                      <td className="w-32"><button className="btn-ghost whitespace-nowrap py-1 text-xs" onClick={() => setOmAcik(omAcik === x.url ? null : x.url)}>{omAcik === x.url ? 'Kapat' : "Otomarmara'da ara"}</button></td>
+                      <td className="w-32"><button className="btn-ghost whitespace-nowrap py-1 text-xs" onClick={() => setOmAcik(omAcik === x.url ? null : x.url)}>{omAcik === x.url ? 'Kapat' : "Tedarikçide ara"}</button></td>
                     </tr>))}</tbody></table>
                 </div>); })}</div>)}
         </div>)
@@ -259,14 +259,14 @@ export function RafaCek() {
                   <tbody>{sorulanEksik.map((x) => (
                     <tr key={x.anahtar} className="align-top">
                       <td><button className="inline-flex items-center gap-1 rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 font-mono text-sm hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800" title="Kopyala" onClick={() => kopyala(x.metin.trim(), `${x.metin.trim()} kopyalandı`)}>{x.metin} <Copy size={11} /></button>
-                        {omAcik === x.anahtar && <div className="mt-2"><OtomarmaraArama q={x.metin} oto maliyet={izin('maliyet')} /></div>}</td>
+                        {omAcik === x.anahtar && <div className="mt-2"><OtomarmaraArama q={x.metin} oto maliyet={izin('maliyet')} /><div className="mt-2" /><NekoArama q={x.metin} oto /></div>}</td>
                       <td className="text-right"><b className={x.kez >= 3 ? 'text-red-600' : x.kez >= 2 ? 'text-amber-600' : ''}>{x.kez}</b>{x.adet > x.kez && <div className="text-[11px] text-slate-500">{x.adet} adet</div>}</td>
                       <td className="whitespace-nowrap text-xs">{tarihSaat(x.son)}</td>
                       <td className="text-sm">{x.urun_id ? <><UrunLink id={x.urun_id}>{x.bizim_ad ?? 'kart'}</UrunLink><div className="text-[11px] text-amber-700">stok 0</div></> : <span className="text-red-600">kart yok</span>}</td>
                       <td className="text-sm">{x.rakip_url ? <><a href={x.rakip_url} target="_blank" rel="noreferrer" className="hover:underline">{x.rakip_ad} <ExternalLink size={10} className="inline" /></a>
                         <div className="text-[11px] text-slate-500">{[x.rakip_uretici, katAd(x.rakip_kategori), x.rakip_fiyat ? para(x.rakip_fiyat) : null, x.rakip_stokta === false ? 'rakipte tükendi' : x.rakip_stokta ? 'rakipte stokta' : null].filter(Boolean).join(' · ')}</div></>
                         : <span className="text-xs text-slate-400">taranan sayfalarda yok</span>}</td>
-                      <td><button className="btn-ghost whitespace-nowrap py-1 text-xs" onClick={() => setOmAcik(omAcik === x.anahtar ? null : x.anahtar)}>{omAcik === x.anahtar ? 'Kapat' : "Otomarmara'da ara"}</button></td>
+                      <td><button className="btn-ghost whitespace-nowrap py-1 text-xs" onClick={() => setOmAcik(omAcik === x.anahtar ? null : x.anahtar)}>{omAcik === x.anahtar ? 'Kapat' : "Tedarikçide ara"}</button></td>
                     </tr>))}</tbody>
                 </table>
               </div>)}
@@ -283,13 +283,13 @@ export function RafaCek() {
                     <tr key={x.url} className="align-top">
                       <td><a href={x.url} target="_blank" rel="noreferrer" className="font-medium hover:underline">{x.ad ?? x.url} <ExternalLink size={11} className="inline" /></a>
                         <div className="text-xs text-slate-500">{x.uretici ?? ''}{x.araclar.length ? ` · ${x.araclar.map(aracAd).join(', ')}` : ''}{x.soruldu ? <span className="ml-1 rozet bg-red-50 text-red-700">tezgâhta {x.soruldu} kez soruldu</span> : null}</div>
-                        {omAcik === x.url && <div className="mt-2"><OtomarmaraArama q={x.kod ?? x.ad ?? ''} oto maliyet={izin('maliyet')} /></div>}</td>
+                        {omAcik === x.url && <div className="mt-2"><OtomarmaraArama q={x.kod ?? x.ad ?? ''} oto maliyet={izin('maliyet')} /><div className="mt-2" /><NekoArama q={x.kod ?? x.ad ?? ''} oto /></div>}</td>
                       <td><KodKopya x={x} /></td>
                       <td className="text-sm">{katAd(x.kategori)}</td>
                       <td className="text-right font-semibold">{x.puan.toFixed(1)}<div className="text-[11px] font-normal text-slate-500">{x.gorulme} listede</div></td>
                       <td className="text-right">{x.fiyat ? para(x.fiyat) : '—'}<div className={`text-[11px] ${x.stokta === false ? 'text-red-600' : 'text-emerald-700'}`}>{x.stokta === false ? 'tükendi' : 'stokta'}</div></td>
                       <td className="text-sm">{x.urun_id ? <><UrunLink id={x.urun_id}>{x.bizim_ad ?? 'kart'}</UrunLink><div className="text-[11px] text-amber-700">stok 0</div></> : <span className="text-red-600">yok</span>}</td>
-                      <td><button className="btn-ghost whitespace-nowrap py-1 text-xs" onClick={() => setOmAcik(omAcik === x.url ? null : x.url)}>{omAcik === x.url ? 'Kapat' : "Otomarmara'da ara"}</button></td>
+                      <td><button className="btn-ghost whitespace-nowrap py-1 text-xs" onClick={() => setOmAcik(omAcik === x.url ? null : x.url)}>{omAcik === x.url ? 'Kapat' : "Tedarikçide ara"}</button></td>
                     </tr>))}</tbody>
                 </table>
               </div>)}

@@ -4,7 +4,7 @@ import { useStore, toast } from '../lib/store';
 import { birlikteSatilanlar } from '../lib/analiz5';
 import { yazdir } from '../components/Yazdir';
 import { parse, tarih } from '../lib/format';
-import { backend, type OmAramaYanit, type OmDetayYanit } from '../lib/backend';
+import { backend, type NekoSonuc, type NekoYanit, type OmAramaYanit, type OmDetayYanit } from '../lib/backend';
 import { para, sayi, tarihSaat } from '../lib/format';
 import { aktifDepolar, stokHaritasi } from '../lib/depo';
 import { birimKar } from '../lib/analiz';
@@ -92,6 +92,7 @@ export default function UrunAra() {
       </div>}
 
       {q && mode === 'bulut' && <OtomarmaraArama q={q} oto={kodGibi && tum.length === 0} maliyet={maliyet} />}
+      {q && mode === 'bulut' && <NekoArama q={q} oto={kodGibi && tum.length === 0} />}
       {teklif.length > 0 && <TeklifPanel teklif={teklif} setTeklif={setTeklif} firma={db.ayarlar.firma_adi} />}
     </div>
   );
@@ -174,6 +175,68 @@ export function OtomarmaraArama({ q, oto, maliyet }: { q: string; oto: boolean; 
       {hata && guncel && <p className="mt-2 text-sm text-red-600">{hata}</p>}
       {guncel && y && y.sonuclar.length === 0 && <p className="mt-2 text-sm text-slate-500">Otomarmara'da da bulunamadı.</p>}
       {guncel && y && y.sonuclar.length > 0 && <div className="mt-2 space-y-1.5">{y.sonuclar.map((s) => <OmSatir key={s.id} s={s} maliyet={maliyet} db={db} />)}</div>}
+    </div>
+  );
+}
+
+/** Neko B4B'de canlı arama: stok durumu herkese, fiyat (alış) yalnız yöneticiye (sunucu gizler) */
+export function NekoArama({ q, oto }: { q: string; oto: boolean }) {
+  const { db } = useStore();
+  const [aranan, setAranan] = useState<string | null>(null);
+  const [y, setY] = useState<NekoYanit | null>(null); const [hata, setHata] = useState<string | null>(null); const [bekle, setBekle] = useState(false);
+  const calistir = async (s: string) => {
+    setAranan(s); setBekle(true); setHata(null); setY(null);
+    try { setY(await backend.nekoAra(s)); } catch (e) { setHata((e as Error).message); } finally { setBekle(false); }
+  };
+  useEffect(() => { if (!oto || q.trim().length < 4 || aranan === q) return; const t = setTimeout(() => calistir(q), 1200); return () => clearTimeout(t); }, [oto, q]); // eslint-disable-line react-hooks/exhaustive-deps
+  const guncel = aranan === q;
+  const sirali = y ? [...y.sonuclar].sort((a, b) => Number(b.var) - Number(a.var)) : [];
+  return (
+    <div className="card border-red-200 p-3 dark:border-red-500/30">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-sm font-semibold">Neko'da ara</span>
+        {guncel && y && <span className="text-xs text-slate-500">{y.sonuclar.length} sonuç ({y.sonuclar.filter((x) => x.var).length} stokta) · {y.onbellek ? `önbellekten (${tarihSaat(y.zaman)})` : 'şimdi'}</span>}
+        <button className="btn-ghost ml-auto px-3 py-1.5 text-sm" disabled={bekle || (guncel && !!y)} onClick={() => calistir(q)}>
+          {bekle ? <Loader2 size={14} className="animate-spin" /> : <Search size={14} />} {bekle ? 'Aranıyor…' : `“${q.slice(0, 24)}” ara`}
+        </button>
+      </div>
+      {!guncel && !bekle && <p className="mt-1 text-xs text-slate-500">Kodu Neko B4B'de arar (yalnız okur, sepete eklemez). Sonuçlar 6 saat saklanır.</p>}
+      {hata && guncel && <p className="mt-2 text-sm text-red-600">{hata}</p>}
+      {guncel && y && y.sonuclar.length === 0 && <p className="mt-2 text-sm text-slate-500">Neko'da bulunamadı.</p>}
+      {guncel && y && sirali.length > 0 && <div className="mt-2 space-y-1.5">{sirali.slice(0, 15).map((s) => <NekoSatir key={s.id} s={s} db={db} />)}</div>}
+    </div>
+  );
+}
+
+function NekoSatir({ s, db }: { s: NekoSonuc; db: ReturnType<typeof useStore>['db'] }) {
+  const bizde = useMemo(() => koddanBizdeki(db, s.kod), [db, s.kod]);
+  const [e, setE] = useState<NekoSonuc[] | null>(null); const [bekle, setBekle] = useState(false); const [hata, setHata] = useState<string | null>(null);
+  const esdeger = async () => { if (e) { setE(null); return; } setBekle(true); setHata(null); try { setE((await backend.nekoEsdeger(s.id)).sonuclar); } catch (x) { setHata((x as Error).message); } finally { setBekle(false); } };
+  return (
+    <div className="rounded-lg border border-slate-200 p-2.5 text-sm dark:border-slate-700">
+      <div className="flex items-start gap-2">
+        {s.resim && <img src={s.resim} alt="" className="h-10 w-10 shrink-0 rounded object-contain" loading="lazy" />}
+        <div className="min-w-0 flex-1">
+          <div className="font-medium">{s.kod} <span className="font-normal text-slate-500">{s.uretici}</span></div>
+          <div className="text-xs text-slate-600 dark:text-slate-300">{s.ad}</div>
+          <div className="mt-0.5 flex flex-wrap gap-x-3 text-[11px]">
+            <span className={s.var ? 'font-medium text-emerald-700' : 'text-red-600'}>{s.var ? `Neko'da stokta${s.stok ? ` (${sayi(s.stok)})` : ''}` : 'Neko\'da yok'}</span>
+            {s.net !== null && <span className="text-slate-600 dark:text-slate-300">Net {para(s.net)} + KDV = <b>{para(s.netKdv ?? 0)}</b></span>}
+            {s.liste !== null && <span className="text-slate-400">liste {para(s.liste)}{s.iskonto ? ` · isk. ${s.iskonto}` : ''}</span>}
+          </div>
+        </div>
+        <button className="btn-ghost shrink-0 px-2 py-1 text-xs" onClick={esdeger} disabled={bekle}>{bekle ? <Loader2 size={12} className="animate-spin" /> : <ExternalLink size={12} />} {e ? 'Kapat' : 'Eşdeğerler'}</button>
+      </div>
+      {bizde.length > 0 ? <div className="mt-1.5 flex flex-wrap gap-1.5">{bizde.slice(0, 6).map((b) => (
+        <button key={b.u.id} className={`rozet ${b.u.stok > 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`} onClick={() => detayAc({ tur: 'urun', id: b.u.id })}>
+          Bizde: {b.u.kod || b.u.ad.slice(0, 20)} · {ESLESME_AD[b.tur]} · stok {sayi(b.u.stok)}</button>))}</div>
+        : <div className="mt-1 text-[11px] text-slate-400">Bizde kayıtlı değil</div>}
+      {hata && <p className="mt-1 text-xs text-red-600">{hata}</p>}
+      {e && <div className="mt-2 border-t border-slate-100 pt-2 text-xs dark:border-slate-800">
+        <span className="text-slate-500">Neko'daki eşdeğerler ({e.length}, stokta {e.filter((x) => x.var).length}):</span>
+        <div className="mt-1 space-y-0.5">{[...e].sort((a, b) => Number(b.var) - Number(a.var)).slice(0, 25).map((x) => (
+          <div key={x.id} className="flex flex-wrap gap-x-2"><b>{x.kod}</b><span className="text-slate-500">{x.uretici}</span><span className={x.var ? 'text-emerald-700' : 'text-slate-400'}>{x.var ? 'stokta' : 'yok'}</span>{x.netKdv !== null && <span>{para(x.netKdv)}</span>}</div>))}</div>
+      </div>}
     </div>
   );
 }
