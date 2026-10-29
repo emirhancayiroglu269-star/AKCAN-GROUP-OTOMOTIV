@@ -436,7 +436,10 @@ async function fiyatGonder(kaynak: 'otomatik' | 'elle', a: OtoAyar) {
     const hedef = satisFiyati(maliyet, kdv, a, kom, Number(u.satis_fiyati) || 0, sayi(t.desi) ?? 1); const eski = Number(t.satis_fiyati);
     if (!hedef || Math.abs(hedef - eski) < Math.max(1, eski * 0.01)) continue;
     if (hedef > eski * 2.5 || hedef < eski * 0.4) { supheli.push({ barkod: t.barkod, baslik: t.baslik, eski, hedef, neden: 'Yeni fiyat mevcut fiyattan çok farklı — alış ve dükkân fiyatını kontrol edin' }); continue; }
-    if ((sayac.get(t.barkod as string) ?? 0) >= 3) { supheli.push({ barkod: t.barkod, baslik: t.baslik, eski, hedef, neden: 'Fiyat 24 saatte 3 kez gönderildi ama geri düşüyor — başka bir sistem (BizimHesap E-Ticaret?) fiyatı değiştiriyor olabilir' }); continue; }
+    // zararına satılan ilan (alış fiyatı yükselmiş): 24 saat sınırına bakılmaz, hemen düzeltilir
+    const tabanF = hedefFiyat(maliyet, kdv, { ...a, kargo: kargoTL(a, sayi(t.desi) ?? 1), hedef_marj: Math.max(0, Number(a.taban_marj ?? 5)) }, kom);
+    const zarar = !!tabanF && eski < tabanF && hedef > eski;
+    if ((sayac.get(t.barkod as string) ?? 0) >= 3 && !zarar) { supheli.push({ barkod: t.barkod, baslik: t.baslik, eski, hedef, neden: 'Fiyat 24 saatte 3 kez gönderildi ama geri düşüyor — başka bir sistem (BizimHesap E-Ticaret?) fiyatı değiştiriyor olabilir' }); continue; }
     gonder.push({ barkod: t.barkod as string, baslik: t.baslik as string | null, stok: sayi(t.stok), eski, yeni: hedef, liste: Math.max(hedef, hedef < eski ? eski : 0, Number(t.liste_fiyati) || 0) });
   }
   for (let i = 0; i < gonder.length; i += 1000) {
