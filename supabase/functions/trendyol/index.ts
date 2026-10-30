@@ -143,9 +143,11 @@ async function stokGonder(kaynak: 'otomatik' | 'elle', ayar: Ayar) {
   const acik = await tumSatir<Obj>((a, b) => db.from('ty_siparis').select('satirlar,durum').in('durum', ['Created', 'Picking', 'Invoiced', 'ReadyToShip', 'UnPacked', 'Awaiting']).gt('tarih', new Date(Date.now() - 14 * 864e5).toISOString()).order('paket_id').range(a, b));
   for (const p of acik) for (const l of ((p.satirlar ?? []) as Obj[])) { const bk = metin(l.barkod); if (bk) ayrilan.set(bk, (ayrilan.get(bk) ?? 0) + (Number(l.adet) || 1)); }
   const degisen = (ilan ?? []).flatMap((x) => {
-    // satışa kapatılmış ilanın stoğu Trendyol'da güncellenemez (hata verir); atlanır
-    if (!stok.has(x.urun_id as string) || x.satista === false) return [];
+    if (!stok.has(x.urun_id as string)) return [];
     const yeni = Math.min(20000, Math.max(0, Math.floor(stok.get(x.urun_id as string)!) - guvenlik - (ayrilan.get(x.barkod as string) ?? 0))); const eski = Number(x.stok);
+    // Trendyol stoğu 0'a düşen ilanı kendiliğinden "satışta değil" yapar: stok geri gelince yine gönderilir (yoksa ilan 0'da kalır).
+    // Stoğu olduğu hâlde satışa kapalı ilan (elle kapatılmış) atlanır.
+    if (x.satista === false && !(Number(x.stok) === 0 && yeni > 0)) return [];
     return yeni === eski ? [] : [{ barkod: x.barkod as string, baslik: x.baslik as string | null, eski: Number.isFinite(eski) ? eski : null, yeni }];
   });
   for (let i = 0; i < degisen.length; i += 1000) {
