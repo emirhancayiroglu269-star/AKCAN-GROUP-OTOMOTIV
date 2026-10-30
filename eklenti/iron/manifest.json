@@ -1,0 +1,15 @@
+{
+  "manifest_version": 3,
+  "name": "Akcan — Iron fiyat okuyucu",
+  "version": "1.0.0",
+  "description": "Iron Otomotiv B2B'de sizin yaptığınız aramaların sonuçlarını okuyup Akcan BizimHesap Analiz'e (tedarikçi maliyeti) kaydeder. Yalnız okur; sepete eklemez, sipariş vermez.",
+  "permissions": ["storage"],
+  "host_permissions": ["https://qmafuyuocmcobrstnmbx.supabase.co/*"],
+  "background": { "service_worker": "arka.js" },
+  "action": { "default_popup": "popup.html", "default_title": "Akcan — Iron fiyat okuyucu", "default_icon": { "16": "ikon16.png", "48": "ikon48.png", "128": "ikon128.png" } },
+  "icons": { "16": "ikon16.png", "48": "ikon48.png", "128": "ikon128.png" },
+  "content_scripts": [
+    { "matches": ["https://b2b.ironotomotiv.com/*"], "js": ["sayfa.js"], "world": "MAIN", "run_at": "document_start" },
+    { "matches": ["https://b2b.ironotomotiv.com/*"], "js": ["icerik.js"], "run_at": "document_start" }
+  ]
+}

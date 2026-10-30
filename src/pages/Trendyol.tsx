@@ -120,7 +120,7 @@ function Siparisler({ veri, v }: { veri: TyVeri; v: TyVarsayim }) {
 
 /* ───────── İlanlar & fiyat ───────── */
 type IlanFiltre = 'hepsi' | 'zarar' | 'hedefAlti' | 'tedZam' | 'stokFark' | 'eslesmeyen' | 'kapali';
-const TED_AD: Record<string, string> = { otomarmara: 'Otomarmara', neko: 'Neko' };
+const TED_AD: Record<string, string> = { otomarmara: 'Otomarmara', neko: 'Neko', iron: 'Iron' };
 function Ilanlar({ veri, v }: { veri: TyVeri; v: TyVarsayim }) {
   const { db, izin } = useStore();
   const [f, setF] = useState<IlanFiltre>('hepsi'); const [q, setQ] = useState('');
@@ -150,6 +150,7 @@ function Ilanlar({ veri, v }: { veri: TyVeri; v: TyVarsayim }) {
         <Kpi etiket={`Hedef marj (%${v.hedef_marj}) altında`} deger={sayi(say('hedefAlti'))} renk="amber" />
         <Kpi etiket="Stok farkı" deger={sayi(say('stokFark'))} alt="Trendyol stoğu ≠ iki deponun toplamı" renk="blue" />
       </div>
+      {izin('maliyet') && <IronEklenti ironSay={[...ted.values()].filter((x) => x.hepsi.some((h) => h.tedarikci === 'iron')).length} />}
       <FiyatGuncelleme hedefAlti={satirlar.filter((x) => x.u && x.hedef && x.t.satis_fiyati && x.t.satista !== false && Math.abs(x.hedef - x.t.satis_fiyati) >= Math.max(1, x.t.satis_fiyati * 0.01)).length} />
       <div className="mb-3 flex flex-wrap items-center gap-1.5">
         {fBtn('hepsi', 'Tümü')}{fBtn('zarar', 'Zararına')}{fBtn('hedefAlti', 'Hedef altı')}{ted.size > 0 && fBtn('tedZam', 'Tedarikçide zamlı')}{fBtn('stokFark', 'Stok farkı')}{fBtn('eslesmeyen', 'Bizde eşleşmeyen')}{fBtn('kapali', 'Satışta değil')}
@@ -177,7 +178,37 @@ function Ilanlar({ veri, v }: { veri: TyVeri; v: TyVarsayim }) {
             </table>
           </div>)}
       </div>
-      <p className="mt-3 flex items-start gap-1.5 text-xs text-slate-500"><Info size={14} className="mt-0.5 shrink-0" />Önerilen fiyat = alış + komisyon + kargo + hizmet bedeli + stopaj + hedef kâr (%{v.hedef_marj}); dükkân fiyatının %{v.tavan_yuzde} üstünü geçmez, ama kâr %{v.taban_marj}'in altına inmez. Alış = kart alışı, son alış faturası ve tedarikçideki güncel fiyat (Otomarmara / Neko, her gece tam kod eşleşmesiyle kontrol edilir) içinden en yükseği; tedarikçi fiyatı kartı %50'den fazla aşarsa (paket/adet farkı ya da ürünü başka yerden daha ucuza alıyor olabilirsiniz) otomatik kullanılmaz, turuncu gösterilir. "Tedarikçide zamlı" listesi kart alışı eskimiş ürünleri gösterir: kartı BizimHesap'ta düzeltin. Komisyon, o ürünün geçmiş Trendyol siparişlerinden alınır; siparişi yoksa varsayılan %{v.komisyon} kullanılır. Bizim stok = iki deponun toplamı. Otomatik fiyat güncelleme açıksa Trendyol fiyatı önerilen fiyata çekilir (gerekirse düşürülür).</p>
+      <p className="mt-3 flex items-start gap-1.5 text-xs text-slate-500"><Info size={14} className="mt-0.5 shrink-0" />Önerilen fiyat = alış + komisyon + kargo + hizmet bedeli + stopaj + hedef kâr (%{v.hedef_marj}); dükkân fiyatının %{v.tavan_yuzde} üstünü geçmez, ama kâr %{v.taban_marj}'in altına inmez. Alış = kart alışı, son alış faturası ve tedarikçideki güncel fiyat (Otomarmara / Neko her gece tam kod eşleşmesiyle kontrol edilir; Iron fiyatları eklentiden gelir) içinden en yükseği; tedarikçi fiyatı kartı %50'den fazla aşarsa (paket/adet farkı ya da ürünü başka yerden daha ucuza alıyor olabilirsiniz) otomatik kullanılmaz, turuncu gösterilir. "Tedarikçide zamlı" listesi kart alışı eskimiş ürünleri gösterir: kartı BizimHesap'ta düzeltin. Komisyon, o ürünün geçmiş Trendyol siparişlerinden alınır; siparişi yoksa varsayılan %{v.komisyon} kullanılır. Bizim stok = iki deponun toplamı. Otomatik fiyat güncelleme açıksa Trendyol fiyatı önerilen fiyata çekilir (gerekirse düşürülür).</p>
+    </div>
+  );
+}
+
+/** Iron Otomotiv tarayıcı eklentisi: kurulum, anahtar */
+function IronEklenti({ ironSay }: { ironSay: number }) {
+  const [ac, setAc] = useState(false); const [anahtar, setAnahtar] = useState<string | null>(null);
+  useEffect(() => { if (ac && anahtar === null) backend.eklentiAnahtar().then((a) => setAnahtar(a ?? ''), () => setAnahtar('')); }, [ac, anahtar]);
+  const kopyala = () => { if (anahtar) navigator.clipboard.writeText(anahtar).then(() => toast('Anahtar kopyalandı'), () => toast('Kopyalanamadı', 'hata')); };
+  return (
+    <div className="card mb-4 p-3 text-sm">
+      <button className="flex w-full items-center gap-2 text-left" onClick={() => setAc(!ac)}>
+        <PlugZap size={16} className="text-marka-600" /><b>Iron eklentisi</b>
+        <span className="text-xs text-slate-500">{ironSay ? `${ironSay} ilanın ürününde Iron fiyatı var` : 'Iron fiyatı henüz yok'} · Iron'da arama yaptıkça fiyatlar buraya gelir</span>
+        <span className="ml-auto text-xs text-slate-400">{ac ? '▲' : '▼'}</span>
+      </button>
+      {ac && <div className="mt-2 space-y-2 text-slate-600 dark:text-slate-300">
+        <p>Iron'un sitesi sunucudan otomatik okunmaya izin vermiyor. Bu Chrome eklentisi, siz Iron'da arama yaptığınızda sitenin getirdiği sonuçları okur; bizdeki ürünle stok kodu birebir aynı olanların net alış fiyatı (KDV hariç) Trendyol maliyet hesabına ve "Tedarikçide zamlı" listesine girer. Sepete eklemez, sipariş vermez.</p>
+        <ol className="list-decimal space-y-0.5 pl-5">
+          <li><a className="font-medium text-marka-700 hover:underline" href={`${import.meta.env.BASE_URL}iron-eklenti.zip`} download>Eklentiyi indirin</a> ve zip'i bir klasöre çıkarın (masaüstündeki PROJE1\eklenti\iron klasöründe de var).</li>
+          <li>Chrome'da adres çubuğuna <code>chrome://extensions</code> yazın, sağ üstten <b>Geliştirici modu</b>'nu açın.</li>
+          <li><b>Paketlenmemiş öğe yükle</b> deyip klasörü seçin.</li>
+          <li>Eklenti simgesine tıklayın, aşağıdaki anahtarı yapıştırıp <b>Kaydet ve dene</b>'ye basın.</li>
+          <li>Iron'da arama yapın: sağ altta "Akcan: … ürün okundu" yazısı çıkar.</li>
+        </ol>
+        <div className="flex flex-wrap items-center gap-2"><span>Anahtar:</span>
+          <code className="rounded bg-slate-100 px-2 py-1 text-xs dark:bg-slate-800">{anahtar === null ? 'yükleniyor…' : anahtar ? `${anahtar.slice(0, 6)}••••••••${anahtar.slice(-4)}` : 'okunamadı'}</code>
+          <button className="btn-ghost" disabled={!anahtar} onClick={kopyala}>Kopyala</button></div>
+        <p className="text-xs text-slate-500">Anahtarı kimseyle paylaşmayın; bu anahtarla fiyat kaydı gönderilebilir.</p>
+      </div>}
     </div>
   );
 }

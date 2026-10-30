@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="tr"><head><meta charset="utf-8"><title>Akcan — Iron</title>
+<style>
+  body{font:13px/1.4 system-ui,sans-serif;margin:0;padding:12px;width:290px;color:#0f172a}
+  h1{font-size:14px;margin:0 0 6px} p{margin:6px 0;color:#475569}
+  input{width:100%;box-sizing:border-box;padding:6px;border:1px solid #cbd5e1;border-radius:6px;font:12px monospace}
+  button{margin-top:6px;padding:6px 10px;border:0;border-radius:6px;background:#1d4ed8;color:#fff;cursor:pointer}
+  .ok{color:#047857}.hata{color:#b91c1c} .kutu{background:#f1f5f9;border-radius:6px;padding:8px;margin-top:8px}
+</style></head>
+<body>
+  <h1>Iron fiyat okuyucu</h1>
+  <p>Iron'da arama yaptıkça sonuçlar okunur; bizdeki ürünlerle aynı stok koduna sahip olanların net alış fiyatı Trendyol maliyet hesabına girer. Sepete eklemez, sipariş vermez.</p>
+  <label>Eklenti anahtarı <small>(sitede Trendyol › İlanlar & fiyat › Iron eklentisi)</small></label>
+  <input id="anahtar" type="password" autocomplete="off" placeholder="anahtarı yapıştırın">
+  <button id="kaydet">Kaydet ve dene</button> <span id="durum"></span>
+  <div class="kutu" id="say">Bugün henüz okuma yok.</div>
+  <script src="popup.js"></script>
+</body></html>

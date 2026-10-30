@@ -24,10 +24,10 @@ export function maliyet(db: DB, u: Urun, son = sonAlislar(db), ted?: Map<string,
   return t && (kart <= 0 || t.fiyat <= kart * 1.5) ? Math.max(kart, t.fiyat) : kart;
 }
 
-/** Ürün başına tedarikçideki en uygun güncel alış (stokta olanların en ucuzu; hiçbirinde stok yoksa bulunanların en ucuzu; 3 günden eski kayıt yok sayılır) */
+/** Ürün başına tedarikçideki en uygun güncel alış (stokta olanların en ucuzu; hiçbirinde stok yoksa bulunanların en ucuzu; 7 günden eski kayıt yok sayılır) */
 export interface TedEn { fiyat: number; stokta: boolean; tedarikci: string; kod: string | null; hepsi: { tedarikci: string; fiyat: number; stokta: boolean }[] }
 export function tedarikciEnIyi(l: { urun_id: string; tedarikci: string; kod: string | null; fiyat: number; stok_var: boolean | null; zaman: string }[]) {
-  const m = new Map<string, TedEn>(); const sinir = Date.now() - 3 * 864e5;
+  const m = new Map<string, TedEn>(); const sinir = Date.now() - 7 * 864e5;
   for (const x of l) {
     const f = Number(x.fiyat); if (!(f > 0) || new Date(x.zaman).getTime() < sinir) continue;
     const st = x.stok_var === true; const e = m.get(x.urun_id); const s = { tedarikci: x.tedarikci, fiyat: f, stokta: st };

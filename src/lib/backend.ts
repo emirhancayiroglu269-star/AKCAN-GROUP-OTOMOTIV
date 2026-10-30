@@ -71,6 +71,8 @@ export interface Backend {
   tyFiyatSupheli(): Promise<TyFiyatSupheli[]>;
   /** Tedarikçi (Otomarmara / Neko) güncel alış fiyatları — yalnız yönetici okuyabilir */
   tedarikciMaliyet(): Promise<TedarikciMaliyet[]>;
+  /** Tarayıcı eklentisinin (Iron) kayıt anahtarı — yalnız yönetici */
+  eklentiAnahtar(): Promise<string | null>;
   /** Trendyol sunucu fonksiyonunda serbest işlem (kategori/marka arama, özellikler, eşleşme kaydı, ürün yükleme) */
   tyIslem<T = Record<string, unknown>>(govde: Record<string, unknown>): Promise<T>;
   tyEslemeOku(): Promise<{ kategori: TyKategoriEsleme[]; marka: TyMarkaEsleme[]; yukleme: TyYukleme[] }>;
@@ -303,6 +305,7 @@ function supabaseBackend(sb: SupabaseClient): Backend {
       return { urunler: urunler.map((x) => ({ ...x, satis_fiyati: n(x.satis_fiyati), liste_fiyati: n(x.liste_fiyati), stok: n(x.stok), kdv: n(x.kdv), komisyon: n(x.komisyon) })), siparisler: siparisler.map((x) => ({ ...x, toplam: n(x.toplam), indirim: n(x.indirim) })), durum };
     },
     async tyGonderimOku(tur = 'stok') { return (ok(await sb.from('ty_gonderim').select('id,zaman,barkod,baslik,eski,yeni,durum,hata,kaynak,fiyat_eski,fiyat_yeni').eq('tur', tur).order('id', { ascending: false }).limit(100)) as TyGonderim[]).map((x) => ({ ...x, eski: x.eski === null ? null : Number(x.eski), yeni: Number(x.yeni), fiyat_eski: x.fiyat_eski == null ? null : Number(x.fiyat_eski), fiyat_yeni: x.fiyat_yeni == null ? null : Number(x.fiyat_yeni) })); },
+    async eklentiAnahtar() { const d = ok(await sb.from('eklenti_anahtar').select('anahtar').eq('id', 1).maybeSingle()) as { anahtar: string } | null; return d?.anahtar ?? null; },
     async tedarikciMaliyet() {
       const out: TedarikciMaliyet[] = [];
       for (let i = 0; i < 20000; i += 1000) { const d = ok(await sb.from('tedarikci_maliyet').select('urun_id,tedarikci,kod,fiyat,stok_var,zaman').not('fiyat', 'is', null).order('urun_id').order('tedarikci').range(i, i + 999)) as TedarikciMaliyet[]; out.push(...d); if (d.length < 1000) break; }
@@ -559,6 +562,7 @@ function demoBackend(): Backend {
     async tyGonderimOku() { return []; },
     async tyFiyatSupheli() { return []; },
     async tedarikciMaliyet() { return []; },
+    async eklentiAnahtar() { return null; },
     async tyIslem() { throw new Error('Demo modunda Trendyol yok'); },
     async tyEslemeOku() { return { kategori: [], marka: [], yukleme: [] }; },
     async tyOtoOzet() { return { aday: 0, duzenli: 0, bugun: 0, eslesmemis: [], atlanan: [] }; },

@@ -293,11 +293,12 @@ function hedefFiyat(alisNet: number, kdv: number, a: OtoAyar, komisyon: number) 
 }
 /**
  * Tedarikçideki güncel alış (KDV hariç; tedarikci-maliyet işi her gece Otomarmara ve Neko'dan tam kod eşleşmesiyle toplar).
- * Stokta olan tedarikçilerin en ucuzu, hiçbirinde stok yoksa bulunanların en ucuzu. 3 günden eski kayıt kullanılmaz.
+ * Iron fiyatları tarayıcı eklentisinden gelir (kullanıcı Iron'da arama yaptıkça).
+ * Stokta olan tedarikçilerin en ucuzu, hiçbirinde stok yoksa bulunanların en ucuzu. 7 günden eski kayıt kullanılmaz.
  */
 async function tedarikciMaliyet(ids: string[]) {
   const m = new Map<string, { fiyat: number; stokta: boolean }>();
-  const sinir = new Date(Date.now() - 3 * 864e5).toISOString();
+  const sinir = new Date(Date.now() - 7 * 864e5).toISOString();
   for (let i = 0; i < ids.length; i += 200) {
     const { data } = await db.from('tedarikci_maliyet').select('urun_id,fiyat,stok_var').in('urun_id', ids.slice(i, i + 200)).not('fiyat', 'is', null).gt('zaman', sinir);
     for (const x of data ?? []) {

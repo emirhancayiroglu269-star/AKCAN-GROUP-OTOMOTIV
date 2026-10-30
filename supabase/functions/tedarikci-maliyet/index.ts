@@ -149,7 +149,7 @@ async function hepsi<T>(f: (a: number, b: number) => PromiseLike<{ data: unknown
 }
 async function siradakiler(): Promise<string[]> {
   const ilan = await hepsi<{ urun_id: string }>((a, b) => db.from('ty_urun').select('urun_id').not('urun_id', 'is', null).order('barkod').range(a, b));
-  const kayit = await hepsi<{ urun_id: string; zaman: string }>((a, b) => db.from('tedarikci_maliyet').select('urun_id,zaman').order('urun_id').range(a, b));
+  const kayit = await hepsi<{ urun_id: string; zaman: string }>((a, b) => db.from('tedarikci_maliyet').select('urun_id,zaman').in('tedarikci', ['otomarmara', 'neko']).order('urun_id').range(a, b));
   const son = new Map<string, number>();
   for (const k of kayit) { const z = new Date(k.zaman).getTime(); son.set(k.urun_id, Math.min(son.get(k.urun_id) ?? Infinity, z)); }
   const sinir = Date.now() - YENILE_SAAT * 3600000;
