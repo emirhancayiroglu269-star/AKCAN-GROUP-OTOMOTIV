@@ -70,8 +70,18 @@ async function bhSatisListe() {
   const kdvHaric = ay?.alis_kdv_haric !== false; const hedef = Math.min(80, Math.max(1, Number(ay?.hedef_marj ?? 15) || 15));
   const urunler: Obj[] = [];
   for (let i = 0; i < 50000; i += 1000) {
-    const { data, error } = await db.from('urunler').select('id,kod,ad,kategori,alis_fiyati,satis_fiyati,kdv,stok').eq('aktif', true).gt('stok', 0).gt('alis_fiyati', 0).gt('satis_fiyati', 0).order('id').range(i, i + 999);
+    const { data, error } = await db.from('urunler').select('id,kod,ad,kategori,alis_fiyati,satis_fiyati,kdv,stok').eq('aktif', true).gt('alis_fiyati', 0).gt('satis_fiyati', 0).order('id').range(i, i + 999);
     if (error) throw new Error(error.message); urunler.push(...(data ?? [])); if (!data || data.length < 1000) break;
+  }
+  // sitedeki uyarıyla aynı kapsam: stokta olan ya da stoğu bitmiş ama son 90 günde satılmış ürünler
+  const satilan = new Set<string>(); const s90 = new Date(Date.now() - 90 * 864e5).toISOString();
+  for (const [tablo, filtre] of [['rapor_satirlari', true], ['hareketler', false]] as const) {
+    for (let i = 0; i < 100000; i += 1000) {
+      let q = db.from(tablo).select('urun_id').eq('tur', 'satis').gt('tarih', s90).not('urun_id', 'is', null);
+      if (filtre) q = q.or('gecersiz.is.null,gecersiz.eq.false');
+      const { data, error } = await q.order('id').range(i, i + 999);
+      if (error) break; for (const x of data ?? []) satilan.add(x.urun_id as string); if (!data || data.length < 1000) break;
+    }
   }
   const tedEn = new Map<string, { fiyat: number; stokta: boolean; tedarikci: string }>();
   for (let i = 0; i < 50000; i += 1000) {
@@ -88,7 +98,8 @@ async function bhSatisListe() {
     else if (!sonAlis.has(id)) sonAlis.set(id, x); }
   const out: Obj[] = [];
   for (const u of urunler) {
-    const id = u.id as string; if (!u.kod || !u.kategori || sonSatis.has(id) || HIZMET_RE.test(String(u.ad ?? '').toLocaleLowerCase('tr'))) continue;
+    const id = u.id as string; if (!(Number(u.stok) > 0) && !satilan.has(id)) continue;
+    if (!u.kod || !u.kategori || sonSatis.has(id) || HIZMET_RE.test(String(u.ad ?? '').toLocaleLowerCase('tr'))) continue;
     const kdv = Number(u.kdv) || 20; const alis = Number(u.alis_fiyati); const kart = kdvHaric ? alis : alis / (1 + kdv / 100);
     const t = tedEn.get(id); const tedKullan = !!t && t.fiyat > kart * 1.03 && t.fiyat <= kart * 1.5; const maliyet = tedKullan ? t!.fiyat : kart;
     const satis = Number(u.satis_fiyati); const net = satis / (1 + kdv / 100);
