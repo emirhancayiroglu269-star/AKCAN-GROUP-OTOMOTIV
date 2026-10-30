@@ -60,7 +60,7 @@ async function bhListe() {
 }
 
 /**
- * Zararına satılan ürünler: BizimHesap satış fiyatı (KDV hariç) kart alışının altında. Öneri = %hedef marj (ayarlar, varsayılan 15) için KDV dahil fiyat, 5 TL'ye yuvarlanır.
+ * Zararına satılan ürünler: BizimHesap satış fiyatı (KDV hariç) kart alışının altında. Öneri = %hedef marj (ayarlar, varsayılan 15) için KDV dahil fiyat, 50 TL'ye yukarı yuvarlanır.
  * Son 48 saatte alışı eklentiyle %50'den fazla yükseltilmiş ve geri alınmamış ürünler "bekle" işaretlenir (önce alış kontrol edilmeli).
  */
 const HIZMET_RE = /işçilik|iscilik|hizmet|revizyon|prim\b|primi|montaj|tamir|torna|kaporta|ücret|rektefiye|değişim|degisim/;
@@ -83,7 +83,7 @@ async function bhSatisListe() {
     const kdv = Number(u.kdv) || 20; const alis = Number(u.alis_fiyati); const maliyet = kdvHaric ? alis : alis / (1 + kdv / 100);
     const satis = Number(u.satis_fiyati); const net = satis / (1 + kdv / 100);
     if (net >= maliyet) continue;
-    const oneri = Math.ceil((maliyet / (1 - hedef / 100)) * (1 + kdv / 100) / 5) * 5;
+    const oneri = Math.ceil((maliyet / (1 - hedef / 100)) * (1 + kdv / 100) / 50) * 50;
     const l = sonAlis.get(id); const bekle = !!l && l.tedarikci !== 'geri_al' && Number(l.yeni) > Number(l.eski) * 1.5 && Math.abs(alis - Number(l.yeni)) <= Math.max(0.05, Number(l.yeni) * 0.01);
     out.push({ urun_id: id, kod: u.kod, ad: u.ad, alis: Math.round(maliyet * 100) / 100, kart_ham: satis, yeni: oneri, marj: Math.round(((net - maliyet) / net) * 1000) / 10, bekle, hedef });
   }

@@ -209,11 +209,11 @@ export function tedarikciAnalizi(db: DB, d: Donem) {
 }
 
 // ======================= FİYAT ÖNERİSİ =======================
-/** Hedef marja göre önerilen KDV dahil satış fiyatı (5 TL'ye yuvarlanır) */
+/** Hedef marja göre önerilen KDV dahil satış fiyatı (50 TL'ye yukarı yuvarlanır) */
 export function onerilenFiyat(u: Urun, alisNetDeger: number, hedefMarj: number) {
   if (!(alisNetDeger > 0)) return null;
   const net = alisNetDeger / (1 - Math.min(hedefMarj, 90) / 100);
-  return Math.ceil((net * (1 + u.kdv / 100)) / 5) * 5;
+  return Math.ceil((net * (1 + u.kdv / 100)) / 50) * 50;
 }
 export const kdvHaricSatis = (u: Urun) => netSatis(u.satis_fiyati, u.kdv);
 

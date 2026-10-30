@@ -130,7 +130,7 @@ export default function KategoriFiyat() {
 
       <div className="mt-4 flex items-start gap-2 rounded-xl bg-slate-100 p-3 text-xs text-slate-600 dark:bg-slate-800 dark:text-slate-300">
         <Info size={15} className="mt-0.5 shrink-0" />
-        <span><b>Önerilen marj nasıl bulunur?</b> Son 6 ayda o kategoride yapılan satışların dörtte biri hangi marjla ve üstünde yapıldıysa o marj önerilir (müşterinin kabul ettiği kanıtlanmış seviye). Çok satılan kategorilerde (yağ, filtre gibi fiyatı karşılaştırılan ürünler) ortalamanın en fazla 5 puan üstü önerilir. Satışı olmayan kategorilerde kartlardaki fiyatların ortanca marjı kullanılır. Öneri %15–60 arasında tutulur. Maliyet olarak kart alışı ile son fatura alışından yüksek olanı alınır. Fiyatlar 5 TL'ye yuvarlanır. Program BizimHesap'a yazmaz; CSV listesindeki fiyatları BizimHesap'a siz girersiniz.</span>
+        <span><b>Önerilen marj nasıl bulunur?</b> Son 6 ayda o kategoride yapılan satışların dörtte biri hangi marjla ve üstünde yapıldıysa o marj önerilir (müşterinin kabul ettiği kanıtlanmış seviye). Çok satılan kategorilerde (yağ, filtre gibi fiyatı karşılaştırılan ürünler) ortalamanın en fazla 5 puan üstü önerilir. Satışı olmayan kategorilerde kartlardaki fiyatların ortanca marjı kullanılır. Öneri %15–60 arasında tutulur. Maliyet olarak kart alışı ile son fatura alışından yüksek olanı alınır. Fiyatlar KDV dahil 50 TL'ye yukarı yuvarlanır. Program BizimHesap'a yazmaz; CSV listesindeki fiyatları BizimHesap'a siz girersiniz.</span>
       </div>
     </div>
   );

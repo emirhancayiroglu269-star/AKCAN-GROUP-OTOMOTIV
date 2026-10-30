@@ -76,7 +76,7 @@ export default function FiyatMarj() {
         </div>
       </div>
       <div className="mt-3 flex items-start gap-2 rounded-xl bg-slate-100 p-3 text-xs text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-        <Info size={15} className="mt-0.5 shrink-0" /><span>Güncel maliyet = BizimHesap alış fiyatı ile son alış faturasındaki fiyatın büyüğü (KDV hariç). Bu sekmede genel hedef geçerlidir; "Kategori bazında" sekmesindeki marjlar yalnız öneridir. Önerilen satış = maliyet ÷ (1 − hedef marj), KDV eklenip 5 TL'ye yuvarlanır. İşçilik/hizmet kalemleri listelenmez. Fiyatları BizimHesap'ta güncelleyin; birkaç dakika içinde buraya yansır.</span>
+        <Info size={15} className="mt-0.5 shrink-0" /><span>Güncel maliyet = BizimHesap alış fiyatı ile son alış faturasındaki fiyatın büyüğü (KDV hariç). Bu sekmede genel hedef geçerlidir; "Kategori bazında" sekmesindeki marjlar yalnız öneridir. Önerilen satış = maliyet ÷ (1 − hedef marj), KDV eklenip 50 TL'ye yukarı yuvarlanır. İşçilik/hizmet kalemleri listelenmez. Fiyatları BizimHesap'ta güncelleyin; birkaç dakika içinde buraya yansır.</span>
       </div>
     </div>
   );
