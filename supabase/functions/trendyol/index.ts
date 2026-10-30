@@ -292,6 +292,24 @@ function hedefFiyat(alisNet: number, kdv: number, a: OtoAyar, komisyon: number) 
   return Math.ceil((alisNet + (kargo + hizmet) / 1.2) / pay) - 0.1;
 }
 /**
+ * Tedarikçideki güncel alış (KDV hariç; tedarikci-maliyet işi her gece Otomarmara ve Neko'dan tam kod eşleşmesiyle toplar).
+ * Stokta olan tedarikçilerin en ucuzu, hiçbirinde stok yoksa bulunanların en ucuzu. 3 günden eski kayıt kullanılmaz.
+ */
+async function tedarikciMaliyet(ids: string[]) {
+  const m = new Map<string, { fiyat: number; stokta: boolean }>();
+  const sinir = new Date(Date.now() - 3 * 864e5).toISOString();
+  for (let i = 0; i < ids.length; i += 200) {
+    const { data } = await db.from('tedarikci_maliyet').select('urun_id,fiyat,stok_var').in('urun_id', ids.slice(i, i + 200)).not('fiyat', 'is', null).gt('zaman', sinir);
+    for (const x of data ?? []) {
+      const f = Number(x.fiyat); if (!(f > 0)) continue; const id = x.urun_id as string; const st = x.stok_var === true; const e = m.get(id);
+      if (!e || (st && !e.stokta) || (st === e.stokta && f < e.fiyat)) m.set(id, { fiyat: f, stokta: st });
+    }
+  }
+  return m;
+}
+/** Maliyet = kart alışı / son fatura / tedarikçi güncel fiyatı — hangisi yüksekse. Tedarikçi fiyatı kartı %50'den fazla aşıyorsa (paket/adet farkı ya da ürünü başka yerden daha ucuza alıyor olabilirsiniz) kullanılmaz, sitede kontrol listesinde gösterilir. */
+const maliyetSec = (kart: number, ted?: { fiyat: number }) => (ted && (kart <= 0 || ted.fiyat <= kart * 1.5) ? Math.max(kart, ted.fiyat) : kart);
+/**
  * Trendyol satış fiyatı (rekabetçi): kâr hedefli fiyat, dükkân fiyatının %tavan üstünü geçmez;
  * ama asla taban marjın (varsayılan %5) altına inmez — zararına satış olmaz.
  */
@@ -367,6 +385,7 @@ async function otoYukle(a: OtoAyar, adet?: number) {
   const sonAlis = new Map<string, number>();
   const { data: h } = await db.from('hareketler').select('urun_id,alis_fiyati,tarih').eq('tur', 'alis').in('urun_id', ids).order('tarih', { ascending: false }).limit(2000);
   for (const x of h ?? []) if (!sonAlis.has(x.urun_id as string) && Number(x.alis_fiyati) > 0) sonAlis.set(x.urun_id as string, Number(x.alis_fiyati));
+  const tedM = await tedarikciMaliyet(ids);
   const { data: kd } = await db.from('urun_kodlari').select('urun_id,kod,tur').in('urun_id', ids).neq('tur', 'OTOMARMARA');
   const kom = await tumSatir<Obj>((a, b) => db.from('ty_urun').select('kategori_id,komisyon').not('komisyon', 'is', null).order('barkod').range(a, b));
   const komKat = new Map((kom ?? []).map((x) => [Number(x.kategori_id), Number(x.komisyon)]));
@@ -385,7 +404,7 @@ async function otoYukle(a: OtoAyar, adet?: number) {
       const eksik = ozs.filter((o) => o.zorunlu && !verilen.has(o.id)).map((o) => o.ad);
       if (eksik.length) { atla.push({ urun_id: id, neden: `Seçilemeyen zorunlu özellik: ${eksik.join(', ')}` }); continue; }
       const alis = Number(u.alis_fiyati) || 0; const net = kdvHaric ? alis : alis / (1 + kdv / 100);
-      const maliyet = Math.max(net, sonAlis.get(id) ?? 0);
+      const maliyet = maliyetSec(Math.max(net, sonAlis.get(id) ?? 0), tedM.get(id));
       const komisyon = komKat.get(kat) ?? Number(a.komisyon ?? 20);
       const fiyat = satisFiyati(maliyet, kdv, a, komisyon, Number(u.satis_fiyati) || 0, Number(u.desi) || 1);
       if (!fiyat) { atla.push({ urun_id: id, neden: 'Fiyat hesaplanamadı' }); continue; }
@@ -424,6 +443,7 @@ async function fiyatGonder(kaynak: 'otomatik' | 'elle', a: OtoAyar) {
     const { data: h } = await db.from('hareketler').select('urun_id,alis_fiyati,tarih').eq('tur', 'alis').in('urun_id', parca).order('tarih', { ascending: false }).limit(5000);
     for (const x of h ?? []) if (!sonAlis.has(x.urun_id as string) && Number(x.alis_fiyati) > 0) sonAlis.set(x.urun_id as string, Number(x.alis_fiyati));
   }
+  const tedM = await tedarikciMaliyet(ids);
   const { data: ay } = await db.from('ayarlar').select('alis_kdv_haric').eq('id', 1).maybeSingle(); const kdvHaric = ay?.alis_kdv_haric !== false;
   const gecmis = await tumSatir<Obj>((a, b) => db.from('ty_gonderim').select('barkod').eq('tur', 'fiyat').gt('zaman', new Date(Date.now() - 864e5).toISOString()).order('id').range(a, b));
   const sayac = new Map<string, number>(); for (const g of gecmis ?? []) sayac.set(g.barkod as string, (sayac.get(g.barkod as string) ?? 0) + 1);
@@ -431,7 +451,7 @@ async function fiyatGonder(kaynak: 'otomatik' | 'elle', a: OtoAyar) {
   for (const t of l) {
     const u = um.get(t.urun_id as string); if (!u || !u.aktif) continue;
     const kdv = Number(u.kdv) || Number(t.kdv) || 20; const alis = Number(u.alis_fiyati) || 0;
-    const maliyet = Math.max(kdvHaric ? alis : alis / (1 + kdv / 100), sonAlis.get(u.id as string) ?? 0);
+    const maliyet = maliyetSec(Math.max(kdvHaric ? alis : alis / (1 + kdv / 100), sonAlis.get(u.id as string) ?? 0), tedM.get(u.id as string));
     const kom = Number(t.komisyon) > 0 && Number(t.komisyon) <= 60 ? Number(t.komisyon) : Number(a.komisyon ?? 20);
     const hedef = satisFiyati(maliyet, kdv, a, kom, Number(u.satis_fiyati) || 0, sayi(t.desi) ?? 1); const eski = Number(t.satis_fiyati);
     if (!hedef || Math.abs(hedef - eski) < Math.max(1, eski * 0.01)) continue;

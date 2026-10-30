@@ -69,6 +69,8 @@ export interface Backend {
   tyCalistir(islem: 'test' | 'esitle' | 'stok_gonder'): Promise<Record<string, unknown>>;
   tyGonderimOku(tur?: 'stok' | 'fiyat'): Promise<TyGonderim[]>;
   tyFiyatSupheli(): Promise<TyFiyatSupheli[]>;
+  /** Tedarikçi (Otomarmara / Neko) güncel alış fiyatları — yalnız yönetici okuyabilir */
+  tedarikciMaliyet(): Promise<TedarikciMaliyet[]>;
   /** Trendyol sunucu fonksiyonunda serbest işlem (kategori/marka arama, özellikler, eşleşme kaydı, ürün yükleme) */
   tyIslem<T = Record<string, unknown>>(govde: Record<string, unknown>): Promise<T>;
   tyEslemeOku(): Promise<{ kategori: TyKategoriEsleme[]; marka: TyMarkaEsleme[]; yukleme: TyYukleme[] }>;
@@ -84,6 +86,7 @@ export interface TySiparis { paket_id: string; siparis_no: string | null; tarih:
 export interface TyDurum { son_urun: string | null; son_siparis: string | null; son_hata: string | null; urun_sayisi: number | null; siparis_sayisi: number | null }
 export interface TyGonderim { id: number; zaman: string; barkod: string; baslik: string | null; eski: number | null; yeni: number; durum: string; hata: string | null; kaynak: string | null; fiyat_eski?: number | null; fiyat_yeni?: number | null }
 export interface TyFiyatSupheli { barkod: string; baslik: string | null; eski: number; hedef: number; neden: string }
+export interface TedarikciMaliyet { urun_id: string; tedarikci: 'otomarmara' | 'neko'; kod: string | null; fiyat: number; stok_var: boolean | null; zaman: string }
 export interface TyOzellikDeger { attributeId: number; attributeValueId?: number | null; customAttributeValue?: string | null; ad?: string; deger?: string }
 export interface TyKategoriEsleme { bh_kategori: string; ty_kategori_id: number; ty_kategori_ad: string | null; ozellikler: TyOzellikDeger[]; desi: number | null }
 export interface TyMarkaEsleme { bh_marka: string; ty_marka_id: number; ty_marka_ad: string | null }
@@ -300,6 +303,11 @@ function supabaseBackend(sb: SupabaseClient): Backend {
       return { urunler: urunler.map((x) => ({ ...x, satis_fiyati: n(x.satis_fiyati), liste_fiyati: n(x.liste_fiyati), stok: n(x.stok), kdv: n(x.kdv), komisyon: n(x.komisyon) })), siparisler: siparisler.map((x) => ({ ...x, toplam: n(x.toplam), indirim: n(x.indirim) })), durum };
     },
     async tyGonderimOku(tur = 'stok') { return (ok(await sb.from('ty_gonderim').select('id,zaman,barkod,baslik,eski,yeni,durum,hata,kaynak,fiyat_eski,fiyat_yeni').eq('tur', tur).order('id', { ascending: false }).limit(100)) as TyGonderim[]).map((x) => ({ ...x, eski: x.eski === null ? null : Number(x.eski), yeni: Number(x.yeni), fiyat_eski: x.fiyat_eski == null ? null : Number(x.fiyat_eski), fiyat_yeni: x.fiyat_yeni == null ? null : Number(x.fiyat_yeni) })); },
+    async tedarikciMaliyet() {
+      const out: TedarikciMaliyet[] = [];
+      for (let i = 0; i < 20000; i += 1000) { const d = ok(await sb.from('tedarikci_maliyet').select('urun_id,tedarikci,kod,fiyat,stok_var,zaman').not('fiyat', 'is', null).order('urun_id').order('tedarikci').range(i, i + 999)) as TedarikciMaliyet[]; out.push(...d); if (d.length < 1000) break; }
+      return out;
+    },
     async tyFiyatSupheli() { const d = ok(await sb.from('ty_onbellek').select('veri').eq('anahtar', 'fiyat_supheli').maybeSingle()) as { veri: TyFiyatSupheli[] } | null; return d?.veri ?? []; },
     async tyIslem(govde) {
       const { data, error } = await sb.functions.invoke('trendyol', { body: govde });
@@ -550,6 +558,7 @@ function demoBackend(): Backend {
     async tyCalistir() { throw new Error('Demo modunda Trendyol yok'); },
     async tyGonderimOku() { return []; },
     async tyFiyatSupheli() { return []; },
+    async tedarikciMaliyet() { return []; },
     async tyIslem() { throw new Error('Demo modunda Trendyol yok'); },
     async tyEslemeOku() { return { kategori: [], marka: [], yukleme: [] }; },
     async tyOtoOzet() { return { aday: 0, duzenli: 0, bugun: 0, eslesmemis: [], atlanan: [] }; },

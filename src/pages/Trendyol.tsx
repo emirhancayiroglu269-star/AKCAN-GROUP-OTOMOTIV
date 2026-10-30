@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, CheckCircle2, Download, Info, PlugZap, RefreshCw, TrendingUp } from 'lucide-react';
 import { useStore, toast } from '../lib/store';
 import { backend, type TyFiyatSupheli, type TyGonderim, type TySiparis, type TyVeri } from '../lib/backend';
-import { IPTAL_RE, TY_VARSAYILAN, komisyonOranlari, maliyet, satirKomisyon, desiliV, tyOneriFiyat, tyKar, tyOneriler, type TyVarsayim } from '../lib/trendyol';
+import { IPTAL_RE, TY_VARSAYILAN, komisyonOranlari, maliyet, tedarikciEnIyi, type TedEn, satirKomisyon, desiliV, tyOneriFiyat, tyKar, tyOneriler, type TyVarsayim } from '../lib/trendyol';
 import { sonAlislar } from '../lib/analiz2';
 import { ara, gunu, para, parse, sayi, tarihSaat } from '../lib/format';
 import { UrunLink } from '../components/DetayKart';
@@ -119,21 +119,25 @@ function Siparisler({ veri, v }: { veri: TyVeri; v: TyVarsayim }) {
 }
 
 /* ───────── İlanlar & fiyat ───────── */
-type IlanFiltre = 'hepsi' | 'zarar' | 'hedefAlti' | 'stokFark' | 'eslesmeyen' | 'kapali';
+type IlanFiltre = 'hepsi' | 'zarar' | 'hedefAlti' | 'tedZam' | 'stokFark' | 'eslesmeyen' | 'kapali';
+const TED_AD: Record<string, string> = { otomarmara: 'Otomarmara', neko: 'Neko' };
 function Ilanlar({ veri, v }: { veri: TyVeri; v: TyVarsayim }) {
-  const { db } = useStore();
+  const { db, izin } = useStore();
   const [f, setF] = useState<IlanFiltre>('hepsi'); const [q, setQ] = useState('');
+  const [ted, setTed] = useState<Map<string, TedEn>>(new Map());
+  useEffect(() => { if (izin('maliyet')) backend.tedarikciMaliyet().then((l) => setTed(tedarikciEnIyi(l)), () => setTed(new Map())); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const urun = useMemo(() => new Map(db.urunler.map((u) => [u.id, u])), [db.urunler]);
   const kom = useMemo(() => komisyonOranlari(veri.siparisler), [veri.siparisler]);
   const son = useMemo(() => sonAlislar(db), [db]);
   const satirlar = useMemo(() => veri.urunler.map((t) => {
-    const u = t.urun_id ? urun.get(t.urun_id) : undefined; const k = kom.get(t.barkod) ?? (t.komisyon && t.komisyon <= 60 ? t.komisyon : v.komisyon); const a = u ? maliyet(db, u, son) : 0; const kdv = t.kdv ?? u?.kdv ?? 20;
+    const u = t.urun_id ? urun.get(t.urun_id) : undefined; const k = kom.get(t.barkod) ?? (t.komisyon && t.komisyon <= 60 ? t.komisyon : v.komisyon); const kart = u ? maliyet(db, u, son) : 0; const a = u ? maliyet(db, u, son, ted) : 0; const td = u ? ted.get(u.id) : undefined; const kdv = t.kdv ?? u?.kdv ?? 20;
     const vd = desiliV(v, t.desi == null ? 1 : Number(t.desi));
     const simdi = t.satis_fiyati && a > 0 ? tyKar(t.satis_fiyati, a, kdv, vd, k) : null; const hedef = a > 0 ? tyOneriFiyat(a, kdv, vd, k, u?.satis_fiyati ?? 0) : null;
     const stokFark = u && t.stok !== null ? Math.max(0, u.stok) - t.stok : null;
-    return { t, u, k, a, simdi, hedef, stokFark, gercekKom: kom.has(t.barkod) };
-  }), [veri, urun, kom, son, db, v.komisyon, v.kargo, v.hizmet, v.stopaj, v.hedef_marj, v.taban_marj, v.tavan_yuzde]); // eslint-disable-line react-hooks/exhaustive-deps
+    return { t, u, k, a, kart, td, tedZam: !!td && kart > 0 && td.fiyat > kart * 1.03, tedSupheli: !!td && kart > 0 && td.fiyat > kart * 1.5, simdi, hedef, stokFark, gercekKom: kom.has(t.barkod) };
+  }), [veri, urun, kom, son, db, ted, v.komisyon, v.kargo, v.hizmet, v.stopaj, v.hedef_marj, v.taban_marj, v.tavan_yuzde]); // eslint-disable-line react-hooks/exhaustive-deps
   const uygun = (x: (typeof satirlar)[number], k: IlanFiltre) => k === 'hepsi' ? true : k === 'zarar' ? !!x.simdi && x.simdi.kar < 0 : k === 'hedefAlti' ? !!x.simdi && x.simdi.kar >= 0 && x.simdi.marj < v.hedef_marj - 0.5
+    : k === 'tedZam' ? x.tedZam
     : k === 'stokFark' ? x.stokFark !== null && x.stokFark !== 0 : k === 'eslesmeyen' ? !x.u : x.t.satista === false;
   const say = (k: IlanFiltre) => satirlar.filter((x) => uygun(x, k)).length;
   const liste = satirlar.filter((x) => uygun(x, f) && ara(q, x.t.baslik, x.t.barkod, x.t.stok_kodu, x.t.marka)).sort((a, b) => (a.simdi?.marj ?? 999) - (b.simdi?.marj ?? 999));
@@ -148,9 +152,9 @@ function Ilanlar({ veri, v }: { veri: TyVeri; v: TyVarsayim }) {
       </div>
       <FiyatGuncelleme hedefAlti={satirlar.filter((x) => x.u && x.hedef && x.t.satis_fiyati && x.t.satista !== false && Math.abs(x.hedef - x.t.satis_fiyati) >= Math.max(1, x.t.satis_fiyati * 0.01)).length} />
       <div className="mb-3 flex flex-wrap items-center gap-1.5">
-        {fBtn('hepsi', 'Tümü')}{fBtn('zarar', 'Zararına')}{fBtn('hedefAlti', 'Hedef altı')}{fBtn('stokFark', 'Stok farkı')}{fBtn('eslesmeyen', 'Bizde eşleşmeyen')}{fBtn('kapali', 'Satışta değil')}
+        {fBtn('hepsi', 'Tümü')}{fBtn('zarar', 'Zararına')}{fBtn('hedefAlti', 'Hedef altı')}{ted.size > 0 && fBtn('tedZam', 'Tedarikçide zamlı')}{fBtn('stokFark', 'Stok farkı')}{fBtn('eslesmeyen', 'Bizde eşleşmeyen')}{fBtn('kapali', 'Satışta değil')}
         <input className="inp ml-auto max-w-xs" placeholder="Ürün, barkod, stok kodu…" value={q} onChange={(e) => setQ(e.target.value)} />
-        <button className="btn-ghost" disabled={!liste.length} onClick={() => csvIndir(`trendyol-ilan-${gunu()}.csv`, [['Barkod', 'Stok kodu', 'Ürün', 'Trendyol fiyatı', 'Önerilen fiyat', 'Şu anki kâr', 'Marj %', 'Komisyon %', 'Trendyol stok', 'Bizim stok'], ...liste.map((x) => [x.t.barkod, x.t.stok_kodu, x.t.baslik, x.t.satis_fiyati, x.hedef?.toFixed(2), x.simdi?.kar.toFixed(2), x.simdi?.marj.toFixed(1), x.k, x.t.stok, x.u?.stok])])}><Download size={16} /> CSV</button>
+        <button className="btn-ghost" disabled={!liste.length} onClick={() => csvIndir(`trendyol-ilan-${gunu()}.csv`, [['Barkod', 'Stok kodu', 'Ürün', 'Kart alış', 'Tedarikçi', 'Tedarikçi alış', 'Trendyol fiyatı', 'Önerilen fiyat', 'Şu anki kâr', 'Marj %', 'Komisyon %', 'Trendyol stok', 'Bizim stok'], ...liste.map((x) => [x.t.barkod, x.t.stok_kodu, x.t.baslik, x.kart ? x.kart.toFixed(2) : '', x.td ? TED_AD[x.td.tedarikci] : '', x.td?.fiyat.toFixed(2), x.t.satis_fiyati, x.hedef?.toFixed(2), x.simdi?.kar.toFixed(2), x.simdi?.marj.toFixed(1), x.k, x.t.stok, x.u?.stok])])}><Download size={16} /> CSV</button>
       </div>
       <div className="card">
         {liste.length === 0 ? <Bos metin="Bu filtrede ilan yok." /> : (
@@ -163,7 +167,9 @@ function Ilanlar({ veri, v }: { veri: TyVeri; v: TyVarsayim }) {
                     <div className="text-xs text-slate-500">{[x.t.barkod, x.t.marka].filter(Boolean).join(' · ')} · komisyon %{x.k}{x.gercekKom ? '' : ' (varsayılan)'}
                       {!x.u && <span className="ml-1 rozet bg-amber-50 text-amber-800">bizde eşleşmedi</span>}{x.t.satista === false && <span className="ml-1 rozet bg-slate-100 text-slate-600">satışta değil</span>}</div></td>
                   <td className="text-right">{sayi(x.t.stok ?? 0)} / {x.u ? <span className={x.stokFark ? 'font-semibold text-sky-700' : ''}>{sayi(Math.max(0, x.u.stok))}</span> : '—'}</td>
-                  <td className="text-right text-slate-500">{x.a > 0 ? para(x.a) : '—'}</td>
+                  <td className="text-right text-slate-500">{x.a > 0 ? para(x.a) : '—'}
+                    {x.td && <div className={`text-[11px] ${x.tedSupheli ? 'text-amber-600' : x.tedZam ? 'text-red-600' : 'text-slate-400'}`} title={x.td.hepsi.map((h) => `${TED_AD[h.tedarikci] ?? h.tedarikci}: ${para(h.fiyat)}${h.stokta ? '' : ' (stokta yok)'}`).join('\n')}>
+                      {TED_AD[x.td.tedarikci] ?? x.td.tedarikci} {para(x.td.fiyat)}{x.tedSupheli ? ' — kullanılmadı, kontrol' : x.tedZam ? ` · kart ${para(x.kart)}` : ''}</div>}</td>
                   <td className="text-right font-medium">{x.t.satis_fiyati ? para(x.t.satis_fiyati) : '—'}</td>
                   <td className={`text-right font-semibold ${!x.simdi ? 'text-slate-300' : x.simdi.kar < 0 ? 'text-red-600' : x.simdi.marj < v.hedef_marj - 0.5 ? 'text-amber-600' : 'text-emerald-700'}`}>{x.simdi ? <>{para(x.simdi.kar)}<div className="text-[11px] font-normal">%{x.simdi.marj.toFixed(0)}</div></> : '—'}</td>
                   <td className="text-right font-semibold">{x.hedef ? <>{para(x.hedef)}{x.t.satis_fiyati ? <div className={`text-[11px] font-normal ${x.hedef > x.t.satis_fiyati ? 'text-red-600' : 'text-slate-400'}`}>{x.hedef > x.t.satis_fiyati ? '+' : ''}{para(x.hedef - x.t.satis_fiyati)}</div> : null}</> : '—'}</td>
@@ -171,7 +177,7 @@ function Ilanlar({ veri, v }: { veri: TyVeri; v: TyVarsayim }) {
             </table>
           </div>)}
       </div>
-      <p className="mt-3 flex items-start gap-1.5 text-xs text-slate-500"><Info size={14} className="mt-0.5 shrink-0" />Önerilen fiyat = alış + komisyon + kargo + hizmet bedeli + stopaj + hedef kâr (%{v.hedef_marj}); dükkân fiyatının %{v.tavan_yuzde} üstünü geçmez, ama kâr %{v.taban_marj}'in altına inmez. Komisyon, o ürünün geçmiş Trendyol siparişlerinden alınır; siparişi yoksa varsayılan %{v.komisyon} kullanılır. Bizim stok = iki deponun toplamı. Otomatik fiyat güncelleme açıksa Trendyol fiyatı önerilen fiyata çekilir (gerekirse düşürülür).</p>
+      <p className="mt-3 flex items-start gap-1.5 text-xs text-slate-500"><Info size={14} className="mt-0.5 shrink-0" />Önerilen fiyat = alış + komisyon + kargo + hizmet bedeli + stopaj + hedef kâr (%{v.hedef_marj}); dükkân fiyatının %{v.tavan_yuzde} üstünü geçmez, ama kâr %{v.taban_marj}'in altına inmez. Alış = kart alışı, son alış faturası ve tedarikçideki güncel fiyat (Otomarmara / Neko, her gece tam kod eşleşmesiyle kontrol edilir) içinden en yükseği; tedarikçi fiyatı kartı %50'den fazla aşarsa (paket/adet farkı ya da ürünü başka yerden daha ucuza alıyor olabilirsiniz) otomatik kullanılmaz, turuncu gösterilir. "Tedarikçide zamlı" listesi kart alışı eskimiş ürünleri gösterir: kartı BizimHesap'ta düzeltin. Komisyon, o ürünün geçmiş Trendyol siparişlerinden alınır; siparişi yoksa varsayılan %{v.komisyon} kullanılır. Bizim stok = iki deponun toplamı. Otomatik fiyat güncelleme açıksa Trendyol fiyatı önerilen fiyata çekilir (gerekirse düşürülür).</p>
     </div>
   );
 }

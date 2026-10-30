@@ -17,8 +17,25 @@ export function desiliV(v: TyVarsayim, desi: number | null | undefined): TyVarsa
 export const TY_VARSAYILAN: TyVarsayim = { komisyon: 20, kargo: 100, hizmet: 0, stopaj: 1, hedef_marj: 15, taban_marj: 5, tavan_yuzde: 10 };
 
 /** Satıcının ürün başına güncel maliyeti (KDV hariç): BizimHesap alışı ile son fatura alışının büyüğü */
-export function maliyet(db: DB, u: Urun, son = sonAlislar(db)) {
-  return Math.max(u.alis_fiyati > 0 ? netAlis(u.alis_fiyati, u.kdv, db.ayarlar) : 0, son.get(u.id)?.fiyat ?? 0);
+export function maliyet(db: DB, u: Urun, son = sonAlislar(db), ted?: Map<string, TedEn>) {
+  const kart = Math.max(u.alis_fiyati > 0 ? netAlis(u.alis_fiyati, u.kdv, db.ayarlar) : 0, son.get(u.id)?.fiyat ?? 0);
+  const t = ted?.get(u.id);
+  // sunucudaki fiyat hesabıyla aynı kural: tedarikçi fiyatı kartı %50'den fazla aşıyorsa kullanılmaz (kontrol listesinde gösterilir)
+  return t && (kart <= 0 || t.fiyat <= kart * 1.5) ? Math.max(kart, t.fiyat) : kart;
+}
+
+/** Ürün başına tedarikçideki en uygun güncel alış (stokta olanların en ucuzu; hiçbirinde stok yoksa bulunanların en ucuzu; 3 günden eski kayıt yok sayılır) */
+export interface TedEn { fiyat: number; stokta: boolean; tedarikci: string; kod: string | null; hepsi: { tedarikci: string; fiyat: number; stokta: boolean }[] }
+export function tedarikciEnIyi(l: { urun_id: string; tedarikci: string; kod: string | null; fiyat: number; stok_var: boolean | null; zaman: string }[]) {
+  const m = new Map<string, TedEn>(); const sinir = Date.now() - 3 * 864e5;
+  for (const x of l) {
+    const f = Number(x.fiyat); if (!(f > 0) || new Date(x.zaman).getTime() < sinir) continue;
+    const st = x.stok_var === true; const e = m.get(x.urun_id); const s = { tedarikci: x.tedarikci, fiyat: f, stokta: st };
+    if (!e) { m.set(x.urun_id, { fiyat: f, stokta: st, tedarikci: x.tedarikci, kod: x.kod, hepsi: [s] }); continue; }
+    e.hepsi.push(s);
+    if ((st && !e.stokta) || (st === e.stokta && f < e.fiyat)) Object.assign(e, { fiyat: f, stokta: st, tedarikci: x.tedarikci, kod: x.kod });
+  }
+  return m;
 }
 
 /**
