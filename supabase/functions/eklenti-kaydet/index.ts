@@ -60,7 +60,7 @@ async function bhListe() {
 }
 
 /**
- * Zararına satılan ürünler: BizimHesap satış fiyatı (KDV hariç) güncel maliyetin altında. Güncel maliyet = kart alışı ya da tedarikçideki güncel fiyat
+ * Hedef marjın altında satılan ürünler (zarar = satış fiyatı KDV hariç güncel maliyetin altında). Güncel maliyet = kart alışı ya da tedarikçideki güncel fiyat
  * (sitedeki fiyat uyarısıyla aynı kural: stokta olan en ucuz tedarikçi, yoksa en ucuz; kartı %3–%50 aşıyorsa kullanılır). Öneri = %hedef marj (ayarlar, varsayılan 15) için KDV dahil fiyat, 50 TL'ye yukarı yuvarlanır.
  * Son 48 saatte alışı eklentiyle %50'den fazla yükseltilmiş ve geri alınmamış ürünler "bekle" işaretlenir (önce alış kontrol edilmeli).
  */
@@ -92,10 +92,11 @@ async function bhSatisListe() {
     const kdv = Number(u.kdv) || 20; const alis = Number(u.alis_fiyati); const kart = kdvHaric ? alis : alis / (1 + kdv / 100);
     const t = tedEn.get(id); const tedKullan = !!t && t.fiyat > kart * 1.03 && t.fiyat <= kart * 1.5; const maliyet = tedKullan ? t!.fiyat : kart;
     const satis = Number(u.satis_fiyati); const net = satis / (1 + kdv / 100);
-    if (net >= maliyet) continue;
+    const marj = ((net - maliyet) / net) * 100;
+    if (marj >= hedef - 0.5) continue; // hedef marjın altında kalanlar (zararına olanlar dahil)
     const oneri = Math.ceil((maliyet / (1 - hedef / 100)) * (1 + kdv / 100) / 50) * 50;
     const l = sonAlis.get(id); const bekle = !!l && l.tedarikci !== 'geri_al' && Number(l.yeni) > Number(l.eski) * 1.5 && Math.abs(alis - Number(l.yeni)) <= Math.max(0.05, Number(l.yeni) * 0.01);
-    out.push({ urun_id: id, kod: u.kod, ad: u.ad, alis: Math.round(maliyet * 100) / 100, kart: Math.round(kart * 100) / 100, kaynak: tedKullan ? t!.tedarikci : null, kart_ham: satis, yeni: oneri, marj: Math.round(((net - maliyet) / net) * 1000) / 10, bekle, hedef });
+    out.push({ urun_id: id, kod: u.kod, ad: u.ad, alis: Math.round(maliyet * 100) / 100, kart: Math.round(kart * 100) / 100, kaynak: tedKullan ? t!.tedarikci : null, kart_ham: satis, yeni: oneri, marj: Math.round(marj * 10) / 10, zarar: net < maliyet, bekle, hedef });
   }
   return out.sort((a, x) => Number(a.bekle) - Number(x.bekle) || Number(a.marj) - Number(x.marj));
 }
