@@ -3,7 +3,8 @@
 // Sunucu tedarikçi sitesine hiç bağlanmaz. Yetki: eklenti_anahtar tablosundaki anahtar (sitede Trendyol > İlanlar sayfasında yöneticiye gösterilir).
 // Kayıt: tedarikci_katalog (gelen tüm ürünler) + tedarikci_maliyet (stok kodu bizdeki ürünle birebir aynı olanlar → Trendyol maliyet hesabı).
 // bh_liste: BizimHesap kart alışı tedarikçideki güncel fiyatın gerisinde kalan ürünler (eklenti BizimHesap'ın kendi
-// "Toplu Ürün Güncelleme" Excel'i ile kullanıcının onayıyla yükler); bh_yazildi: yüklenenlerin kaydı (bh_alis_log).
+// "Toplu Ürün Güncelleme" Excel'i ile kullanıcının onayıyla yükler); bh_satis_liste: zararına satılanlar (satış fiyatı önerisi);
+// bh_son: son yüklenen alışlar (geri almak için); bh_yazildi: yüklenenlerin kaydı (bh_alis_log, alan = alis | satis).
 import { createClient } from 'npm:@supabase/supabase-js@2';
 
 const db = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!, { auth: { persistSession: false } });
@@ -58,6 +59,37 @@ async function bhListe() {
   return out.sort((a, x) => Number(a.kontrol) - Number(x.kontrol) || String(a.kod).localeCompare(String(x.kod)));
 }
 
+/**
+ * Zararına satılan ürünler: BizimHesap satış fiyatı (KDV hariç) kart alışının altında. Öneri = %hedef marj (ayarlar, varsayılan 15) için KDV dahil fiyat, 5 TL'ye yuvarlanır.
+ * Son 48 saatte alışı eklentiyle %50'den fazla yükseltilmiş ve geri alınmamış ürünler "bekle" işaretlenir (önce alış kontrol edilmeli).
+ */
+const HIZMET_RE = /işçilik|iscilik|hizmet|revizyon|prim\b|primi|montaj|tamir|torna|kaporta|ücret|rektefiye|değişim|degisim/;
+async function bhSatisListe() {
+  const { data: ay } = await db.from('ayarlar').select('alis_kdv_haric,hedef_marj').eq('id', 1).maybeSingle();
+  const kdvHaric = ay?.alis_kdv_haric !== false; const hedef = Math.min(80, Math.max(1, Number(ay?.hedef_marj ?? 15) || 15));
+  const urunler: Obj[] = [];
+  for (let i = 0; i < 50000; i += 1000) {
+    const { data, error } = await db.from('urunler').select('id,kod,ad,kategori,alis_fiyati,satis_fiyati,kdv,stok').eq('aktif', true).gt('stok', 0).gt('alis_fiyati', 0).gt('satis_fiyati', 0).order('id').range(i, i + 999);
+    if (error) throw new Error(error.message); urunler.push(...(data ?? [])); if (!data || data.length < 1000) break;
+  }
+  const { data: log } = await db.from('bh_alis_log').select('urun_id,eski,yeni,alan,zaman,tedarikci').gt('zaman', new Date(Date.now() - 48 * 3600000).toISOString()).order('zaman', { ascending: false }).limit(5000);
+  const sonAlis = new Map<string, Obj>(); const sonSatis = new Set<string>();
+  for (const x of log ?? []) { const id = x.urun_id as string; if (!id) continue;
+    if (x.alan === 'satis') { if (Date.now() - new Date(x.zaman as string).getTime() < 2 * 3600000) sonSatis.add(id); }
+    else if (!sonAlis.has(id)) sonAlis.set(id, x); }
+  const out: Obj[] = [];
+  for (const u of urunler) {
+    const id = u.id as string; if (!u.kod || !u.kategori || sonSatis.has(id) || HIZMET_RE.test(String(u.ad ?? '').toLocaleLowerCase('tr'))) continue;
+    const kdv = Number(u.kdv) || 20; const alis = Number(u.alis_fiyati); const maliyet = kdvHaric ? alis : alis / (1 + kdv / 100);
+    const satis = Number(u.satis_fiyati); const net = satis / (1 + kdv / 100);
+    if (net >= maliyet) continue;
+    const oneri = Math.ceil((maliyet / (1 - hedef / 100)) * (1 + kdv / 100) / 5) * 5;
+    const l = sonAlis.get(id); const bekle = !!l && l.tedarikci !== 'geri_al' && Number(l.yeni) > Number(l.eski) * 1.5 && Math.abs(alis - Number(l.yeni)) <= Math.max(0.05, Number(l.yeni) * 0.01);
+    out.push({ urun_id: id, kod: u.kod, ad: u.ad, alis: Math.round(maliyet * 100) / 100, kart_ham: satis, yeni: oneri, marj: Math.round(((net - maliyet) / net) * 1000) / 10, bekle, hedef });
+  }
+  return out.sort((a, x) => Number(a.bekle) - Number(x.bekle) || Number(a.marj) - Number(x.marj));
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
   const yanit = (b: Obj, status = 200) => new Response(JSON.stringify(b), { status, headers: { ...cors, 'Content-Type': 'application/json' } });
@@ -65,9 +97,10 @@ Deno.serve(async (req) => {
   const { data: a } = await db.from('eklenti_anahtar').select('anahtar').eq('id', 1).maybeSingle();
   if (!a?.anahtar || typeof b.anahtar !== 'string' || b.anahtar.trim() !== a.anahtar) return yanit({ ok: false, hata: 'Eklenti anahtarı yanlış' }, 401);
   if (b.islem === 'bh_liste') return yanit({ ok: true, liste: await bhListe() });
+  if (b.islem === 'bh_satis_liste') return yanit({ ok: true, liste: await bhSatisListe() });
   if (b.islem === 'bh_son') {
     // son 48 saatte eklentiyle yüklenen ve BizimHesap kartında hâlâ o değerde duran alış fiyatları (geri almak için)
-    const { data: l } = await db.from('bh_alis_log').select('urun_id,kod,ad,eski,yeni,tedarikci,zaman').gt('zaman', new Date(Date.now() - 48 * 3600000).toISOString()).neq('tedarikci', 'geri_al').order('zaman', { ascending: false }).limit(2000);
+    const { data: l } = await db.from('bh_alis_log').select('urun_id,kod,ad,eski,yeni,tedarikci,zaman').gt('zaman', new Date(Date.now() - 48 * 3600000).toISOString()).neq('tedarikci', 'geri_al').eq('alan', 'alis').order('zaman', { ascending: false }).limit(2000);
     const ids = [...new Set((l ?? []).map((x) => x.urun_id as string).filter(Boolean))]; const mevcut = new Map<string, number>();
     for (let i = 0; i < ids.length; i += 200) { const { data } = await db.from('urunler').select('id,alis_fiyati').in('id', ids.slice(i, i + 200)); for (const u of data ?? []) mevcut.set(u.id as string, Number(u.alis_fiyati)); }
     const gor = new Set<string>(); const out: Obj[] = [];
@@ -77,7 +110,7 @@ Deno.serve(async (req) => {
     return yanit({ ok: true, liste: out.sort((a, x) => Number(x.supheli) - Number(a.supheli) || (Number(x.yeni) / Math.max(0.01, Number(x.eski))) - (Number(a.yeni) / Math.max(0.01, Number(a.eski)))) });
   }
   if (b.islem === 'bh_yazildi') {
-    const l = (Array.isArray(b.kalemler) ? b.kalemler as Obj[] : []).slice(0, 2000).map((x) => ({ urun_id: typeof x.urun_id === 'string' ? x.urun_id : null, kod: String(x.kod ?? '').slice(0, 80), ad: x.ad ? String(x.ad).slice(0, 250) : null, eski: sayi(x.eski), yeni: sayi(x.yeni), tedarikci: x.tedarikci ? String(x.tedarikci).slice(0, 20) : null }));
+    const l = (Array.isArray(b.kalemler) ? b.kalemler as Obj[] : []).slice(0, 2000).map((x) => ({ urun_id: typeof x.urun_id === 'string' ? x.urun_id : null, kod: String(x.kod ?? '').slice(0, 80), ad: x.ad ? String(x.ad).slice(0, 250) : null, eski: sayi(x.eski), yeni: sayi(x.yeni), tedarikci: x.tedarikci ? String(x.tedarikci).slice(0, 20) : null, alan: x.alan === 'satis' ? 'satis' : 'alis' }));
     if (l.length) { const { error } = await db.from('bh_alis_log').insert(l); if (error) return yanit({ ok: false, hata: error.message }, 500); }
     return yanit({ ok: true, kaydedilen: l.length });
   }

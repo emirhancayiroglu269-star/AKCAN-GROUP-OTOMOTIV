@@ -58,7 +58,7 @@
   const kodNorm = (s) => String(s ?? '').toUpperCase().replace(/[^A-Z0-9ÇĞİÖŞÜ]/g, '');
 
   /** BizimHesap Excel'ini indirir, seçili ürünlerin alış fiyatını değiştirir; yeni dosyayı ve rapor döndürür */
-  async function excelHazirla(secili) {
+  async function excelHazirla(secili, alan = 'alis') {
     const r = await fetch('ngnpricedownload', { credentials: 'include' });
     if (!r.ok) throw new Error('BizimHesap ürün listesi indirilemedi (' + r.status + ')');
     const girdiler = zipOku(await r.arrayBuffer());
@@ -72,8 +72,10 @@
     const satirlar = [...sayfa.matchAll(/<(?:\w+:)?row[^>]*\sr="(\d+)"[^>]*>([\s\S]*?)<\/(?:\w+:)?row>/g)];
     const satirOku = (ic) => { const o = {}; for (const m of ic.matchAll(/<(?:\w+:)?c\s[^>]*?(?:\/>|>[\s\S]*?<\/(?:\w+:)?c>)/g)) { const col = (m[0].match(/\sr="([A-Z]+)\d+"/) || [])[1]; if (col) o[col] = hucre(m[0]); } return o; };
     const bas = satirOku(satirlar[0]?.[2] ?? ''); const sut = {}; for (const [k, v] of Object.entries(bas)) sut[v.trim()] = k;
-    const S = { kod: sut['Ürün Kodu'], alis: sut['Alış Fiyatı'], kdv: sut['Alış KDV %'], kdvDahil: sut['Alış KDV Dahil mi?'], doviz: sut['Alış Döviz'], iskonto: sut['Alış İskontosu(%)'], ad: sut['Ürün/Hizmet Adı'] };
-    if (!S.kod || !S.alis) throw new Error('Excel başlıkları tanınmadı (Ürün Kodu / Alış Fiyatı yok) — BizimHesap dosya biçimini değiştirmiş olabilir');
+    // alan = 'alis' → Alış Fiyatı sütunu, 'satis' → Satış Fiyatı sütunu (S.alis değişkeni o an değiştirilen fiyat sütunudur)
+    const sat = alan === 'satis';
+    const S = { kod: sut['Ürün Kodu'], alis: sut[sat ? 'Satış Fiyatı' : 'Alış Fiyatı'], kdv: sut[sat ? 'Satış KDV %' : 'Alış KDV %'], kdvDahil: sut[sat ? 'Satış KDV Dahil mi?' : 'Alış KDV Dahil mi?'], doviz: sut[sat ? 'Satış Döviz' : 'Alış Döviz'], iskonto: sat ? null : sut['Alış İskontosu(%)'], ad: sut['Ürün/Hizmet Adı'] };
+    if (!S.kod || !S.alis) throw new Error('Excel başlıkları tanınmadı (Ürün Kodu / fiyat sütunu yok) — BizimHesap dosya biçimini değiştirmiş olabilir');
     const kodSatir = new Map(); const tekrar = new Set();
     for (const [, no, ic] of satirlar.slice(1)) { const o = satirOku(ic); const k = kodNorm(o[S.kod]); if (!k) continue; if (kodSatir.has(k)) tekrar.add(k); kodSatir.set(k, { no, o }); }
     const degis = new Map(); const yazilan = []; const atlanan = [];
@@ -81,12 +83,12 @@
       const k = kodNorm(x.kod); const s = kodSatir.get(k);
       if (!s) { atlanan.push([x, 'BizimHesap listesinde yok (pasif olabilir)']); continue; }
       if (tekrar.has(k)) { atlanan.push([x, 'Bu stok kodu BizimHesap\'ta birden fazla üründe var']); continue; }
-      const doviz = (s.o[S.doviz] || 'TL').trim().toUpperCase(); if (doviz && doviz !== 'TL' && doviz !== 'TRY') { atlanan.push([x, 'Alış dövizi ' + doviz]); continue; }
-      const isk = Number(String(s.o[S.iskonto] ?? '0').replace(',', '.')) || 0; if (isk) { atlanan.push([x, 'Kartta alış iskontosu var (%' + isk + ')']); continue; }
+      const doviz = (s.o[S.doviz] || 'TL').trim().toUpperCase(); if (doviz && doviz !== 'TL' && doviz !== 'TRY') { atlanan.push([x, (sat ? 'Satış' : 'Alış') + ' dövizi ' + doviz]); continue; }
+      const isk = S.iskonto ? Number(String(s.o[S.iskonto] ?? '0').replace(',', '.')) || 0 : 0; if (isk) { atlanan.push([x, 'Kartta alış iskontosu var (%' + isk + ')']); continue; }
       const mevcut = Number(String(s.o[S.alis] ?? '').replace(',', '.')) || 0;
-      if (Math.abs(mevcut - Number(x.kart_ham || 0)) > Math.max(0.05, mevcut * 0.01)) { atlanan.push([x, `BizimHesap'taki alış (${tl(mevcut)}) Akcan'daki kayıttan farklı — önce eşitlemenin bitmesini bekleyin`]); continue; }
+      if (Math.abs(mevcut - Number(x.kart_ham || 0)) > Math.max(0.05, mevcut * 0.01)) { atlanan.push([x, `BizimHesap'taki ${sat ? 'satış' : 'alış'} fiyatı (${tl(mevcut)}) Akcan'daki kayıttan farklı — önce eşitlemenin bitmesini bekleyin`]); continue; }
       const dahil = String(s.o[S.kdvDahil] || 'H').trim().toUpperCase() === 'E'; const kdv = Number(s.o[S.kdv]) || 20;
-      const yeni = x.ham ? Math.round(x.yeni * 100) / 100 : Math.round((dahil ? x.yeni * (1 + kdv / 100) : x.yeni) * 100) / 100;
+      const yeni = x.ham ? Math.round(x.yeni * 100) / 100 : sat ? Math.round((dahil ? x.yeni : x.yeni / (1 + kdv / 100)) * 100) / 100 : Math.round((dahil ? x.yeni * (1 + kdv / 100) : x.yeni) * 100) / 100;
       degis.set(s.no, yeni); yazilan.push({ ...x, eskiHam: mevcut, yeniHam: yeni });
     }
     if (!degis.size) return { blob: null, yazilan, atlanan };
@@ -114,7 +116,7 @@
   }
   async function panel() {
     const kutu = document.createElement('div'); kutu.style.cssText = stil + ';right:14px;top:70px;width:560px;max-height:80vh;display:flex;flex-direction:column;border:2px solid #1d4ed8';
-    kutu.innerHTML = '<div style="padding:10px 12px;border-bottom:1px solid #e2e8f0"><b>Akcan — BizimHesap alış fiyatları</b> <button data-k="yenile" style="float:right">Yenile</button><button data-k="gerial" style="float:right;margin-right:6px">Son yüklenenler / geri al</button><div data-k="ust" style="color:#475569;margin-top:4px">Yükleniyor…</div></div><div data-k="govde" style="overflow:auto;flex:1"></div><div data-k="alt" style="padding:10px 12px;border-top:1px solid #e2e8f0"></div>';
+    kutu.innerHTML = '<div style="padding:10px 12px;border-bottom:1px solid #e2e8f0"><b>Akcan — BizimHesap alış fiyatları</b> <button data-k="yenile" style="float:right">Yenile</button><button data-k="gerial" style="float:right;margin-right:6px">Son yüklenenler / geri al</button><button data-k="satis" style="float:right;margin-right:6px">Zararına satılanlar</button><div data-k="ust" style="color:#475569;margin-top:4px">Yükleniyor…</div></div><div data-k="govde" style="overflow:auto;flex:1"></div><div data-k="alt" style="padding:10px 12px;border-top:1px solid #e2e8f0"></div>';
     document.body.appendChild(kutu);
     const $ = (k) => kutu.querySelector(`[data-k="${k}"]`);
     const ciz = async (zorla) => {
@@ -176,6 +178,36 @@
         } catch (e) { $('gdurum').textContent = 'Olmadı: ' + (e?.message || e); $('geriyukle').disabled = false; onay = false; }
       };
     };
+    const satisCiz = async () => {
+      $('ust').textContent = 'Yükleniyor…'; $('govde').innerHTML = ''; $('alt').innerHTML = '';
+      const r = await sor({ tur: 'bh_satis_liste' }); const l = r?.liste || [];
+      if (!r?.ok) { $('ust').textContent = r?.hata || 'Akcan sunucusuna ulaşılamadı'; return; }
+      if (!l.length) { $('ust').innerHTML = 'Zararına satılan (satış fiyatı alışın altında kalan) stoklu ürün yok. <button data-k="geri0">Listeye dön</button>'; $('geri0').onclick = () => ciz(false); return; }
+      const h = l[0].hedef;
+      $('ust').innerHTML = `Satış fiyatı (KDV hariç) kart alışının altında kalan ${l.length} stoklu ürün. İşaretlediklerinizin <b>satış fiyatı</b> %${h} kâr için önerilen fiyata (KDV dahil, 5 TL'ye yuvarlı) yükseltilir. Gri olanların alışı bugün %50'den fazla artırıldı: önce "Son yüklenenler / geri al" ile kontrol edin.`;
+      $('govde').innerHTML = '<table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="background:#f1f5f9;text-align:left"><th style="padding:4px"><input type="checkbox" data-k="shepsi" title="Gri olanlar hariç hepsini seç"></th><th>Ürün</th><th style="text-align:right">Alış</th><th style="text-align:right">Şu anki satış</th><th style="text-align:right">Yeni satış</th></tr></thead><tbody>' +
+        l.map((x, i) => `<tr style="border-top:1px solid #f1f5f9;${x.bekle ? 'color:#94a3b8;background:#f8fafc' : ''}"><td style="padding:4px"><input type="checkbox" data-s="${i}" ${x.bekle ? 'disabled' : 'checked'}></td><td><b>${esc(x.kod)}</b><div style="max-width:240px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(x.ad)}</div>${x.bekle ? '<div style="color:#b45309">alışı bugün %50+ arttı — önce kontrol</div>' : ''}</td><td style="text-align:right">${tl(x.alis)}<div style="color:#94a3b8">KDV hariç</div></td><td style="text-align:right;color:#b91c1c">${tl(x.kart_ham)}<div>marj %${x.marj}</div></td><td style="text-align:right"><b>${tl(x.yeni)}</b><div style="color:#64748b">+%${Math.round((x.yeni / x.kart_ham - 1) * 100)}</div></td></tr>`).join('') + '</tbody></table>';
+      $('shepsi').onchange = (e) => kutu.querySelectorAll('input[data-s]').forEach((c) => { if (!c.disabled) c.checked = e.target.checked; });
+      $('alt').innerHTML = '<div style="color:#475569;margin-bottom:6px">Yalnız işaretli ürünlerin <b>satış fiyatı</b> değişir; alış fiyatı ve diğer bilgiler aynen kalır.</div><button data-k="satisyukle" style="background:#1d4ed8;color:#fff;border:0;border-radius:6px;padding:7px 12px;cursor:pointer">Seçilenlerin satış fiyatını güncelle</button> <button data-k="geri">Listeye dön</button> <span data-k="sdurum"></span>';
+      $('geri').onclick = () => ciz(false);
+      let onay = false;
+      $('satisyukle').onclick = async () => {
+        const sec = [...kutu.querySelectorAll('input[data-s]:checked')].map((c) => l[+c.dataset.s]).filter((x) => !x.bekle); if (!sec.length) { $('sdurum').textContent = 'Ürün seçilmedi'; return; }
+        if (!onay) { onay = true; $('satisyukle').textContent = `Eminim: ${sec.length} ürünün satış fiyatını yükselt`; $('satisyukle').style.background = '#b91c1c'; $('sdurum').textContent = 'Onaylamak için tekrar basın'; return; }
+        $('satisyukle').disabled = true; $('sdurum').textContent = 'BizimHesap ürün listesi indiriliyor…';
+        try {
+          const r2 = await excelHazirla(sec, 'satis');
+          const atl = r2.atlanan.map(([x, n]) => `<li>${esc(x.kod)}: ${esc(n)}</li>`).join('');
+          if (!r2.blob) { $('sdurum').innerHTML = 'Güncellenecek ürün kalmadı.' + (atl ? `<ul style="margin:4px 0 0 16px;color:#b45309">${atl}</ul>` : ''); $('satisyukle').disabled = false; onay = false; return; }
+          await sor({ tur: 'bh_yazildi', kalemler: r2.yazilan.map((x) => ({ urun_id: x.urun_id, kod: x.kod, ad: x.ad, eski: x.eskiHam, yeni: x.yeniHam, tedarikci: 'zarar', alan: 'satis' })) });
+          $('sdurum').innerHTML = `${r2.yazilan.length} ürünün satış fiyatı BizimHesap'a yükleniyor…` + (atl ? `<ul style="margin:4px 0 0 16px;color:#b45309">Atlananlar:${atl}</ul>` : '');
+          const giris = document.getElementById('fileUpload'); if (!giris) throw new Error('BizimHesap yükleme kutusu bulunamadı');
+          const dt = new DataTransfer(); dt.items.add(new File([r2.blob], 'urunler.xlsx', { type: r2.blob.type })); giris.files = dt.files;
+          giris.dispatchEvent(new Event('change', { bubbles: true }));
+        } catch (e) { $('sdurum').textContent = 'Olmadı: ' + (e?.message || e); $('satisyukle').disabled = false; onay = false; }
+      };
+    };
+    $('satis').onclick = satisCiz;
     $('gerial').onclick = geriCiz;
     $('yenile').onclick = () => ciz(true);
     ciz(false);
