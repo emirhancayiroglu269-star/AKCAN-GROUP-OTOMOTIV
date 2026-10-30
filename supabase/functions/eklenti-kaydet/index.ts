@@ -60,7 +60,8 @@ async function bhListe() {
 }
 
 /**
- * Zararına satılan ürünler: BizimHesap satış fiyatı (KDV hariç) kart alışının altında. Öneri = %hedef marj (ayarlar, varsayılan 15) için KDV dahil fiyat, 50 TL'ye yukarı yuvarlanır.
+ * Zararına satılan ürünler: BizimHesap satış fiyatı (KDV hariç) güncel maliyetin altında. Güncel maliyet = kart alışı ya da tedarikçideki güncel fiyat
+ * (sitedeki fiyat uyarısıyla aynı kural: stokta olan en ucuz tedarikçi, yoksa en ucuz; kartı %3–%50 aşıyorsa kullanılır). Öneri = %hedef marj (ayarlar, varsayılan 15) için KDV dahil fiyat, 50 TL'ye yukarı yuvarlanır.
  * Son 48 saatte alışı eklentiyle %50'den fazla yükseltilmiş ve geri alınmamış ürünler "bekle" işaretlenir (önce alış kontrol edilmeli).
  */
 const HIZMET_RE = /işçilik|iscilik|hizmet|revizyon|prim\b|primi|montaj|tamir|torna|kaporta|ücret|rektefiye|değişim|degisim/;
@@ -72,6 +73,14 @@ async function bhSatisListe() {
     const { data, error } = await db.from('urunler').select('id,kod,ad,kategori,alis_fiyati,satis_fiyati,kdv,stok').eq('aktif', true).gt('stok', 0).gt('alis_fiyati', 0).gt('satis_fiyati', 0).order('id').range(i, i + 999);
     if (error) throw new Error(error.message); urunler.push(...(data ?? [])); if (!data || data.length < 1000) break;
   }
+  const tedEn = new Map<string, { fiyat: number; stokta: boolean; tedarikci: string }>();
+  for (let i = 0; i < 50000; i += 1000) {
+    const { data, error } = await db.from('tedarikci_maliyet').select('urun_id,tedarikci,fiyat,stok_var').not('fiyat', 'is', null).gt('zaman', new Date(Date.now() - 7 * 864e5).toISOString()).order('urun_id').range(i, i + 999);
+    if (error) throw new Error(error.message);
+    for (const t of data ?? []) { const f = Number(t.fiyat); if (!(f > 0)) continue; const st = t.stok_var === true; const e = tedEn.get(t.urun_id as string);
+      if (!e || (st && !e.stokta) || (st === e.stokta && f < e.fiyat)) tedEn.set(t.urun_id as string, { fiyat: f, stokta: st, tedarikci: String(t.tedarikci) }); }
+    if (!data || data.length < 1000) break;
+  }
   const { data: log } = await db.from('bh_alis_log').select('urun_id,eski,yeni,alan,zaman,tedarikci').gt('zaman', new Date(Date.now() - 48 * 3600000).toISOString()).order('zaman', { ascending: false }).limit(5000);
   const sonAlis = new Map<string, Obj>(); const sonSatis = new Set<string>();
   for (const x of log ?? []) { const id = x.urun_id as string; if (!id) continue;
@@ -80,12 +89,13 @@ async function bhSatisListe() {
   const out: Obj[] = [];
   for (const u of urunler) {
     const id = u.id as string; if (!u.kod || !u.kategori || sonSatis.has(id) || HIZMET_RE.test(String(u.ad ?? '').toLocaleLowerCase('tr'))) continue;
-    const kdv = Number(u.kdv) || 20; const alis = Number(u.alis_fiyati); const maliyet = kdvHaric ? alis : alis / (1 + kdv / 100);
+    const kdv = Number(u.kdv) || 20; const alis = Number(u.alis_fiyati); const kart = kdvHaric ? alis : alis / (1 + kdv / 100);
+    const t = tedEn.get(id); const tedKullan = !!t && t.fiyat > kart * 1.03 && t.fiyat <= kart * 1.5; const maliyet = tedKullan ? t!.fiyat : kart;
     const satis = Number(u.satis_fiyati); const net = satis / (1 + kdv / 100);
     if (net >= maliyet) continue;
     const oneri = Math.ceil((maliyet / (1 - hedef / 100)) * (1 + kdv / 100) / 50) * 50;
     const l = sonAlis.get(id); const bekle = !!l && l.tedarikci !== 'geri_al' && Number(l.yeni) > Number(l.eski) * 1.5 && Math.abs(alis - Number(l.yeni)) <= Math.max(0.05, Number(l.yeni) * 0.01);
-    out.push({ urun_id: id, kod: u.kod, ad: u.ad, alis: Math.round(maliyet * 100) / 100, kart_ham: satis, yeni: oneri, marj: Math.round(((net - maliyet) / net) * 1000) / 10, bekle, hedef });
+    out.push({ urun_id: id, kod: u.kod, ad: u.ad, alis: Math.round(maliyet * 100) / 100, kart: Math.round(kart * 100) / 100, kaynak: tedKullan ? t!.tedarikci : null, kart_ham: satis, yeni: oneri, marj: Math.round(((net - maliyet) / net) * 1000) / 10, bekle, hedef });
   }
   return out.sort((a, x) => Number(a.bekle) - Number(x.bekle) || Number(a.marj) - Number(x.marj));
 }
