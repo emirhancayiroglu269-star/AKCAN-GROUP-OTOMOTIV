@@ -191,11 +191,12 @@ function IronEklenti({ ironSay }: { ironSay: number }) {
   return (
     <div className="card mb-4 p-3 text-sm">
       <button className="flex w-full items-center gap-2 text-left" onClick={() => setAc(!ac)}>
-        <PlugZap size={16} className="text-marka-600" /><b>Iron eklentisi</b>
+        <PlugZap size={16} className="text-marka-600" /><b>Tedarikçi eklentisi (Iron + BizimHesap)</b>
         <span className="text-xs text-slate-500">{ironSay ? `${ironSay} ilanın ürününde Iron fiyatı var` : 'Iron fiyatı henüz yok'} · Iron'da arama yaptıkça fiyatlar buraya gelir</span>
         <span className="ml-auto text-xs text-slate-400">{ac ? '▲' : '▼'}</span>
       </button>
       {ac && <div className="mt-2 space-y-2 text-slate-600 dark:text-slate-300">
+        <p><b>BizimHesap:</b> eklenti BizimHesap panelinde sağ altta "… ürünün alışı tedarikçide zamlı" uyarısı gösterir. Tıklayınca Toplu Ürün Güncelleme sayfasında liste açılır; onayladığınız ürünlerin yalnız <b>kart alış fiyatı</b>, BizimHesap'ın kendi Excel güncellemesiyle yükseltilir (satış fiyatı ve diğer bilgiler değişmez). Kural: tedarikçide stokta ve karttan %3'ten fazla pahalı; %50'yi aşanlar işaretsiz gelir.</p>
         <p>Iron'un sitesi sunucudan otomatik okunmaya izin vermiyor. Bu Chrome eklentisi, siz Iron'da arama yaptığınızda sitenin getirdiği sonuçları okur; bizdeki ürünle stok kodu birebir aynı olanların net alış fiyatı (KDV hariç) Trendyol maliyet hesabına ve "Tedarikçide zamlı" listesine girer. Sepete eklemez, sipariş vermez.</p>
         <ol className="list-decimal space-y-0.5 pl-5">
           <li><a className="font-medium text-marka-700 hover:underline" href={`${import.meta.env.BASE_URL}iron-eklenti.zip`} download>Eklentiyi indirin</a> ve zip'i bir klasöre çıkarın (masaüstündeki PROJE1\eklenti\iron klasöründe de var).</li>
@@ -203,6 +204,7 @@ function IronEklenti({ ironSay }: { ironSay: number }) {
           <li><b>Paketlenmemiş öğe yükle</b> deyip klasörü seçin.</li>
           <li>Eklenti simgesine tıklayın, aşağıdaki anahtarı yapıştırıp <b>Kaydet ve dene</b>'ye basın.</li>
           <li>Iron'da arama yapın: sağ altta "Akcan: … ürün okundu" yazısı çıkar.</li>
+          <li>Eklentiyi güncellediğinizde <code>chrome://extensions</code> sayfasında eklentinin kartındaki yenile (↻) simgesine basın.</li>
         </ol>
         <div className="flex flex-wrap items-center gap-2"><span>Anahtar:</span>
           <code className="rounded bg-slate-100 px-2 py-1 text-xs dark:bg-slate-800">{anahtar === null ? 'yükleniyor…' : anahtar ? `${anahtar.slice(0, 6)}••••••••${anahtar.slice(-4)}` : 'okunamadı'}</code>
