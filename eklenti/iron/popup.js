@@ -6,7 +6,7 @@ chrome.storage.local.get(['anahtar', 'say']).then(({ anahtar, say }) => {
 });
 $('kaydet').onclick = async () => {
   const a = $('anahtar').value.trim(); $('durum').textContent = '…'; $('durum').className = '';
-  const r = await chrome.runtime.sendMessage({ tur: 'test', anahtar: a });
+  let r = null; try { r = await chrome.runtime.sendMessage({ tur: 'test', anahtar: a }); } catch (e) { r = { ok: false, hata: String(e?.message || e) }; }
   if (r?.ok) { await chrome.storage.local.set({ anahtar: a }); $('durum').textContent = 'Kaydedildi ✓'; $('durum').className = 'ok'; }
   else { $('durum').textContent = r?.hata || 'Olmadı'; $('durum').className = 'hata'; }
 };

@@ -12,11 +12,13 @@ function goster(metin, renk) {
 }
 window.addEventListener('message', (e) => {
   if (e.source !== window || e.origin !== location.origin || e.data?.kaynak !== 'akcan-iron' || !Array.isArray(e.data.urunler)) return;
-  chrome.runtime.sendMessage({ tur: 'kaydet', urunler: e.data.urunler.slice(0, 500) }, (r) => {
+  let canli = false; try { canli = !!chrome.runtime?.id; } catch { /* eklenti yenilendi */ }
+  if (!canli) { goster('Akcan: eklenti yenilendi — sayfayı yenileyin (F5)', '#b45309'); return; }
+  try { chrome.runtime.sendMessage({ tur: 'kaydet', urunler: e.data.urunler.slice(0, 500) }, (r) => {
     if (chrome.runtime.lastError) return;
     if (!r) return;
     if (r.anahtarYok) goster('Akcan: eklenti anahtarı girilmemiş (eklenti simgesine tıklayın)', '#b45309');
     else if (!r.ok) goster('Akcan: kaydedilemedi — ' + (r.hata || 'bağlantı hatası'), '#b91c1c');
     else goster(`Akcan: ${r.kaydedilen} ürün okundu` + (r.eslesen?.length ? ` · ${r.eslesen.length} tanesi bizde var, maliyeti güncellendi` : ''), '#047857');
-  });
+  }); } catch { goster('Akcan: eklenti yenilendi — sayfayı yenileyin (F5)', '#b45309'); }
 });

@@ -7,15 +7,20 @@
   const TED_AD = { otomarmara: 'Otomarmara', neko: 'Neko', iron: 'Iron' };
   const tl = (n) => Number(n).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ₺';
   const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-  const sor = (m) => new Promise((ok) => chrome.runtime.sendMessage(m, (r) => ok(chrome.runtime.lastError ? null : r)));
+  // eklenti yenilenince açık sayfadaki eski kopyanın bağlantısı kopar ("Extension context invalidated"): o durumda sessizce dur
+  const canli = () => { try { return !!chrome.runtime?.id; } catch { return false; } };
+  const sor = (m) => new Promise((ok) => { if (!canli()) return ok({ ok: false, hata: 'Eklenti yenilendi — sayfayı yenileyin (F5)' }); try { chrome.runtime.sendMessage(m, (r) => ok(chrome.runtime.lastError ? null : r)); } catch { ok({ ok: false, hata: 'Eklenti yenilendi — sayfayı yenileyin (F5)' }); } });
+  const depoAl = async (k) => { try { return canli() ? await chrome.storage.local.get(k) : {}; } catch { return {}; } };
+  const depoYaz = async (o) => { try { if (canli()) await chrome.storage.local.set(o); } catch { /* yok say */ } };
+  const depoSil = async (k) => { try { if (canli()) await chrome.storage.local.remove(k); } catch { /* yok say */ } };
 
   async function liste(zorla) {
-    const { bhOnbellek } = await chrome.storage.local.get('bhOnbellek');
+    const { bhOnbellek } = await depoAl('bhOnbellek');
     if (!zorla && bhOnbellek && Date.now() - bhOnbellek.zaman < 10 * 60000) return bhOnbellek;
     const r = await sor({ tur: 'bh_liste' });
     if (!r?.ok) return { hata: r?.anahtarYok ? 'Eklenti anahtarı girilmemiş (eklenti simgesine tıklayın)' : (r?.hata || 'Akcan sunucusuna ulaşılamadı'), liste: [] };
     const v = { zaman: Date.now(), liste: r.liste || [] };
-    await chrome.storage.local.set({ bhOnbellek: v });
+    await depoYaz({ bhOnbellek: v });
     return v;
   }
 
@@ -140,7 +145,7 @@
           const atl = r.atlanan.map(([x, n]) => `<li>${esc(x.kod)}: ${esc(n)}</li>`).join('');
           if (!r.blob) { $('durum').innerHTML = 'Yüklenecek ürün kalmadı.' + (atl ? `<ul style="margin:4px 0 0 16px;color:#b45309">${atl}</ul>` : ''); $('yukle').disabled = false; onay = false; return; }
           await sor({ tur: 'bh_yazildi', kalemler: r.yazilan.map((x) => ({ urun_id: x.urun_id, kod: x.kod, ad: x.ad, eski: x.eskiHam, yeni: x.yeniHam, tedarikci: x.tedarikci })) });
-          await chrome.storage.local.remove('bhOnbellek');
+          await depoSil('bhOnbellek');
           $('durum').innerHTML = `${r.yazilan.length} ürün BizimHesap'a yükleniyor…` + (atl ? `<ul style="margin:4px 0 0 16px;color:#b45309">Atlananlar:${atl}</ul>` : '');
           const giris = document.getElementById('fileUpload'); if (!giris) throw new Error('BizimHesap yükleme kutusu bulunamadı');
           const dt = new DataTransfer(); dt.items.add(new File([r.blob], 'urunler.xlsx', { type: r.blob.type })); giris.files = dt.files;
@@ -170,7 +175,7 @@
           const atl = r2.atlanan.map(([x, n]) => `<li>${esc(x.kod)}: ${esc(n)}</li>`).join('');
           if (!r2.blob) { $('gdurum').innerHTML = 'Döndürülecek ürün kalmadı.' + (atl ? `<ul style="margin:4px 0 0 16px;color:#b45309">${atl}</ul>` : ''); $('geriyukle').disabled = false; onay = false; return; }
           await sor({ tur: 'bh_yazildi', kalemler: r2.yazilan.map((x) => ({ urun_id: x.urun_id, kod: x.kod, ad: x.ad, eski: x.eskiHam, yeni: x.yeniHam, tedarikci: 'geri_al' })) });
-          await chrome.storage.local.remove('bhOnbellek');
+          await depoSil('bhOnbellek');
           $('gdurum').innerHTML = `${r2.yazilan.length} kart eski fiyatına döndürülüyor…` + (atl ? `<ul style="margin:4px 0 0 16px;color:#b45309">Atlananlar:${atl}</ul>` : '');
           const giris = document.getElementById('fileUpload'); if (!giris) throw new Error('BizimHesap yükleme kutusu bulunamadı');
           const dt = new DataTransfer(); dt.items.add(new File([r2.blob], 'urunler.xlsx', { type: r2.blob.type })); giris.files = dt.files;
@@ -212,6 +217,6 @@
     $('yenile').onclick = () => ciz(true);
     ciz(false);
   }
-  const bas = () => { if (location.pathname.toLowerCase().startsWith(GUNCELLEME_SAYFASI)) panel(); else rozet(); };
+  const bas = () => { if (!canli() || !document.body) return; (location.pathname.toLowerCase().startsWith(GUNCELLEME_SAYFASI) ? panel() : rozet()).catch(() => { /* panel açılamadı */ }); };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', bas); else bas();
 })();

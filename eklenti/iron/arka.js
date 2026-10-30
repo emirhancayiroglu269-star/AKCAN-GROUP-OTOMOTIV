@@ -7,6 +7,7 @@ async function gonder(govde) {
 }
 chrome.runtime.onMessage.addListener((m, _g, cevap) => {
   (async () => {
+    try {
     const { anahtar } = await chrome.storage.local.get('anahtar');
     if (m.tur === 'test') { if (!m.anahtar) return cevap({ ok: false, hata: 'anahtar boş' }); return cevap(await gonder({ anahtar: m.anahtar, tedarikci: 'iron', islem: 'test' }).catch((e) => ({ ok: false, hata: String(e) }))); }
     if (m.tur === 'bh_liste' || m.tur === 'bh_yazildi' || m.tur === 'bh_son' || m.tur === 'bh_satis_liste') {
@@ -26,6 +27,7 @@ chrome.runtime.onMessage.addListener((m, _g, cevap) => {
       }
       cevap(r);
     } catch (e) { cevap({ ok: false, hata: String(e?.message || e) }); }
+    } catch (e) { try { cevap({ ok: false, hata: String(e?.message || e) }); } catch { /* yok */ } }
   })();
   return true;
 });
