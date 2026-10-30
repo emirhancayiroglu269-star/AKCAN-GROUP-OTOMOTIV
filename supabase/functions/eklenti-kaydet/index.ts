@@ -65,6 +65,17 @@ Deno.serve(async (req) => {
   const { data: a } = await db.from('eklenti_anahtar').select('anahtar').eq('id', 1).maybeSingle();
   if (!a?.anahtar || typeof b.anahtar !== 'string' || b.anahtar.trim() !== a.anahtar) return yanit({ ok: false, hata: 'Eklenti anahtarı yanlış' }, 401);
   if (b.islem === 'bh_liste') return yanit({ ok: true, liste: await bhListe() });
+  if (b.islem === 'bh_son') {
+    // son 48 saatte eklentiyle yüklenen ve BizimHesap kartında hâlâ o değerde duran alış fiyatları (geri almak için)
+    const { data: l } = await db.from('bh_alis_log').select('urun_id,kod,ad,eski,yeni,tedarikci,zaman').gt('zaman', new Date(Date.now() - 48 * 3600000).toISOString()).neq('tedarikci', 'geri_al').order('zaman', { ascending: false }).limit(2000);
+    const ids = [...new Set((l ?? []).map((x) => x.urun_id as string).filter(Boolean))]; const mevcut = new Map<string, number>();
+    for (let i = 0; i < ids.length; i += 200) { const { data } = await db.from('urunler').select('id,alis_fiyati').in('id', ids.slice(i, i + 200)); for (const u of data ?? []) mevcut.set(u.id as string, Number(u.alis_fiyati)); }
+    const gor = new Set<string>(); const out: Obj[] = [];
+    for (const x of l ?? []) { const id = x.urun_id as string; if (!id || gor.has(id)) continue; gor.add(id); const m = mevcut.get(id); const yeni = Number(x.yeni), eski = Number(x.eski);
+      if (m === undefined || Math.abs(m - yeni) > Math.max(0.05, yeni * 0.01)) continue;
+      out.push({ urun_id: id, kod: x.kod, ad: x.ad, eski, yeni, tedarikci: x.tedarikci, zaman: x.zaman, supheli: eski > 0 && yeni > eski * 1.5 }); }
+    return yanit({ ok: true, liste: out.sort((a, x) => Number(x.supheli) - Number(a.supheli) || (Number(x.yeni) / Math.max(0.01, Number(x.eski))) - (Number(a.yeni) / Math.max(0.01, Number(a.eski)))) });
+  }
   if (b.islem === 'bh_yazildi') {
     const l = (Array.isArray(b.kalemler) ? b.kalemler as Obj[] : []).slice(0, 2000).map((x) => ({ urun_id: typeof x.urun_id === 'string' ? x.urun_id : null, kod: String(x.kod ?? '').slice(0, 80), ad: x.ad ? String(x.ad).slice(0, 250) : null, eski: sayi(x.eski), yeni: sayi(x.yeni), tedarikci: x.tedarikci ? String(x.tedarikci).slice(0, 20) : null }));
     if (l.length) { const { error } = await db.from('bh_alis_log').insert(l); if (error) return yanit({ ok: false, hata: error.message }, 500); }

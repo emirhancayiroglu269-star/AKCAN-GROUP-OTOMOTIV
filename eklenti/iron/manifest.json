@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Akcan — tedarikçi fiyat yardımcısı",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Iron Otomotiv B2B'de yaptığınız aramaların fiyatlarını Akcan'a kaydeder; BizimHesap'ta tedarikçide zamlanan ürünlerin kart alış fiyatını, sizin onayınızla BizimHesap'ın kendi Toplu Ürün Güncelleme özelliğiyle günceller. Sepete eklemez, sipariş vermez.",
   "permissions": [
     "storage"

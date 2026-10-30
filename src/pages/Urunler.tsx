@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react';
-import { Download, History, KeyRound, Link2, Pencil, RefreshCw, Tag } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { AlertTriangle, Download, History, KeyRound, Link2, Pencil, RefreshCw, Tag } from 'lucide-react';
 import { useStore, toast } from '../lib/store';
 import { backend } from '../lib/backend';
 import { gunu, kodNorm, para, parse, sayi, tarih, tarihSaat } from '../lib/format';
@@ -7,16 +7,17 @@ import type { Urun } from '../lib/types';
 import { Alan, Bos, Kpi, Modal, SayfaBaslik } from '../components/ui';
 import { aktifDepolar, stokHaritasi } from '../lib/depo';
 import { kodHaritasi, urunAra } from '../lib/kod';
-import { birimKar, hareketTutar, stokluMu, kritikAltinda, takipGunu, urunOzetleri } from '../lib/analiz';
+import { birimKar, netSatis, hareketTutar, stokluMu, kritikAltinda, takipGunu, urunOzetleri } from '../lib/analiz';
 import { EtiketModal, type EtiketKalem } from '../components/StokAraclari';
 import { Plus, X } from 'lucide-react';
 import { UrunLink } from '../components/DetayKart';
 import { OtoparcasanLink } from '../components/DisLink';
 import { genelArama } from '../lib/arama';
 import { omGuvenilir } from '../lib/muadil';
-import { sonAlislar } from '../lib/analiz2';
+import { onerilenFiyat, sonAlislar } from '../lib/analiz2';
+import { tedarikciEnIyi, type TedEn } from '../lib/trendyol';
 
-type Filtre = 'hepsi' | 'stoklu' | 'kritik' | 'biten' | 'hareketsiz' | 'eksi' | 'oemsiz' | 'markasiz' | 'barkodsuz' | 'pasif';
+type Filtre = 'hepsi' | 'fiyat' | 'stoklu' | 'kritik' | 'biten' | 'hareketsiz' | 'eksi' | 'oemsiz' | 'markasiz' | 'barkodsuz' | 'pasif';
 type SiraAlan = 'ad' | 'stok' | 'satis90' | 'son' | 'yeter' | 'fiyat' | 'marj';
 
 export default function Urunler() {
@@ -36,6 +37,19 @@ export default function Urunler() {
   const [etiket, setEtiket] = useState<EtiketKalem[] | null>(null);
   const [kodIce, setKodIce] = useState(false);
   const [gosterilen, setGosterilen] = useState(200);
+  // tedarikçilerdeki güncel alış (Otomarmara/Neko gece, Iron eklentiden) — yalnız yönetici
+  const [ted, setTed] = useState<Map<string, TedEn>>(new Map());
+  useEffect(() => { if (maliyetGor) backend.tedarikciMaliyet().then((l) => setTed(tedarikciEnIyi(l)), () => setTed(new Map())); }, [maliyetGor]);
+  const hedefMarj = Number(db.ayarlar.hedef_marj ?? 15) || 15;
+  /** Fiyat kontrolü: güncel maliyet = kart/fatura alışı ya da tedarikçideki güncel fiyat (kartı %50'den fazla aşmıyorsa) — hangisi yüksekse */
+  const fiyatDurum = (u: Urun) => {
+    const bk = birimKar(u, db.ayarlar); const t = ted.get(u.id);
+    const tedKullan = !!t && bk.alisNet > 0 && t.fiyat > bk.alisNet * 1.03 && t.fiyat <= bk.alisNet * 1.5;
+    const maliyet = tedKullan ? t!.fiyat : bk.alisNet; const net = netSatis(u.satis_fiyati, u.kdv);
+    const marj = net > 0 && maliyet > 0 ? ((net - maliyet) / net) * 100 : null;
+    const uyari = marj !== null && marj < hedefMarj - 0.5 ? (marj < 0 ? 'zarar' : 'dusuk') : null;
+    return { maliyet, marj, uyari, tedKullan, ted: t, oneri: uyari ? onerilenFiyat(u, maliyet, hedefMarj) : null } as const;
+  };
 
   const depolar = aktifDepolar(db);
   const harita = useMemo(() => stokHaritasi(db), [db]);
@@ -55,6 +69,8 @@ export default function Urunler() {
   const d90 = useMemo(() => ({ bas: gunu(new Date(Date.now() - 89 * 864e5)), bit: gunu() }), []);
   const oz = useMemo(() => urunOzetleri(db, d90), [db, d90]);
   const gun90 = useMemo(() => takipGunu(db, d90), [db, d90]);
+  /** uyarı yalnız stok tutulan, stokta olan ya da son 90 günde satılan ürünlerde */
+  const fiyatUyarili = (u: Urun) => maliyetGor && u.aktif && stokluMu(u) && u.satis_fiyati > 0 && (u.stok > 0 || (oz.get(u.id)?.satilan ?? 0) > 0) && !!fiyatDurum(u).uyari;
   const sb = (u: Urun) => { const o = oz.get(u.id); const s = o?.satilan ?? 0; const hiz = s / Math.max(1, gun90); return { s, son: o?.sonSatis, yeter: hiz > 0 ? Math.max(0, u.stok) / hiz : Infinity }; };
 
   const liste = useMemo(() => {
@@ -68,6 +84,7 @@ export default function Urunler() {
       if (marka && u.marka !== marka) return false;
       if (dId) { const m = harita.get(u.id); const bu = m?.get(dId) ?? 0; if (bu <= 0) return false; if (dTur === 'yalniz' && depolar.some((d) => d.id !== dId && (m?.get(d.id) ?? 0) > 0)) return false; }
       switch (filtre) {
+        case 'fiyat': return fiyatUyarili(u);
         case 'stoklu': return u.stok > 0;
         case 'biten': return u.stok <= 0 && stokluMu(u);
         case 'kritik': return kritikAltinda(u);
@@ -82,24 +99,25 @@ export default function Urunler() {
     if (!sira) return l;
     const deger = (u: Urun): number | string => { switch (sira.alan) {
       case 'ad': return u.ad; case 'stok': return u.stok; case 'satis90': return sb(u).s; case 'son': return sb(u).son ?? '';
-      case 'yeter': { const y = sb(u).yeter; return Number.isFinite(y) ? y : 1e9; } case 'fiyat': return u.satis_fiyati; case 'marj': { const b = birimKar(u, db.ayarlar); return b.maliyetYok ? -1e9 : b.marj; } } };
+      case 'yeter': { const y = sb(u).yeter; return Number.isFinite(y) ? y : 1e9; } case 'fiyat': return u.satis_fiyati; case 'marj': { const m = fiyatDurum(u).marj; return m === null ? -1e9 : m; } } };
     const k = sira.artan ? 1 : -1;
     return [...l].sort((a, b) => { const x = deger(a), y = deger(b); return (typeof x === 'string' ? x.localeCompare(y as string, 'tr') : x - (y as number)) * k; });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [db, q, kodlar, filtre, kat, marka, depoF, harita, oz, sira, omVar, sonAlis]);
+  }, [db, q, kodlar, filtre, kat, marka, depoF, harita, oz, sira, omVar, sonAlis, ted]);
 
   const aktifler = db.urunler.filter((u) => u.aktif);
   const stoklu = aktifler.filter((u) => u.stok > 0);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const hareketsiz = useMemo(() => aktifler.filter(hareketsizMi), [aktifler, oz, sonAlis]);
   const seciliUrunler = liste.filter((u) => secim.has(u.id));
-  const say = (f: Filtre) => f === 'oemsiz' ? aktifler.filter((u) => stokluMu(u) && oemYok(u)).length : f === 'markasiz' ? aktifler.filter((u) => stokluMu(u) && !(u.marka ?? '').trim()).length : f === 'barkodsuz' ? aktifler.filter((u) => stokluMu(u) && !(u.barkod ?? '').trim()).length : f === 'eksi' ? aktifler.filter((u) => u.stok < 0).length : f === 'hareketsiz' ? hareketsiz.length : null;
-  const filtreAd: [Filtre, string][] = [['hepsi', 'Aktif ürünler'], ['stoklu', 'Stoktakiler'], ['biten', 'Stoğu bitenler'], ['kritik', 'Kritik stok'], ['hareketsiz', '90 gündür satılmayan (stokta, yeni alınmamış)'], ['eksi', 'Eksi stok'], ['oemsiz', 'OEM/muadil kodu yok'], ['markasiz', 'Markası yok'], ['barkodsuz', 'Barkodu yok'], ['pasif', 'Pasif ürünler']];
+  const fiyatUyarilar = useMemo(() => aktifler.filter(fiyatUyarili), [db, ted, oz]); // eslint-disable-line react-hooks/exhaustive-deps
+  const say = (f: Filtre) => f === 'fiyat' ? fiyatUyarilar.length : f === 'oemsiz' ? aktifler.filter((u) => stokluMu(u) && oemYok(u)).length : f === 'markasiz' ? aktifler.filter((u) => stokluMu(u) && !(u.marka ?? '').trim()).length : f === 'barkodsuz' ? aktifler.filter((u) => stokluMu(u) && !(u.barkod ?? '').trim()).length : f === 'eksi' ? aktifler.filter((u) => u.stok < 0).length : f === 'hareketsiz' ? hareketsiz.length : null;
+  const filtreAd: [Filtre, string][] = [['hepsi', 'Aktif ürünler'], ...(maliyetGor ? [['fiyat', `Fiyat uyarısı (marj %${hedefMarj} altı)`] as [Filtre, string]] : []), ['stoklu', 'Stoktakiler'], ['biten', 'Stoğu bitenler'], ['kritik', 'Kritik stok'], ['hareketsiz', '90 gündür satılmayan (stokta, yeni alınmamış)'], ['eksi', 'Eksi stok'], ['oemsiz', 'OEM/muadil kodu yok'], ['markasiz', 'Markası yok'], ['barkodsuz', 'Barkodu yok'], ['pasif', 'Pasif ürünler']];
 
   const csvIndir = () => {
     const satir = (a: (string | number | null | undefined)[]) => a.map((x) => `"${String(x ?? '').replace(/"/g, '""')}"`).join(';');
-    const csv = [satir(['Kod', 'Barkod', 'Ad', 'Marka', 'Kategori', 'Birim', 'Alış', 'Satış', 'Marj % (KDV hariç)', 'KDV', 'Stok', ...depolar.map((d) => d.ad), 'Kritik', 'Raf', '90 gün satış', 'Son satış', 'Kaç gün yeter']),
-      ...liste.map((u) => { const x = sb(u); return satir([u.kod, u.barkod, u.ad, u.marka, u.kategori, u.birim, u.alis_fiyati, u.satis_fiyati, birimKar(u, db.ayarlar).marj.toFixed(1), u.kdv, u.stok, ...depolar.map((d) => harita.get(u.id)?.get(d.id) ?? 0), u.kritik_stok, u.raf, x.s, x.son ? tarih(x.son) : '', Number.isFinite(x.yeter) ? Math.round(x.yeter) : '']); })].join('\n');
+    const csv = [satir(['Kod', 'Barkod', 'Ad', 'Marka', 'Kategori', 'Birim', 'Alış', 'Satış', 'Marj % (KDV hariç)', 'Güncel maliyet', 'Önerilen satış', 'KDV', 'Stok', ...depolar.map((d) => d.ad), 'Kritik', 'Raf', '90 gün satış', 'Son satış', 'Kaç gün yeter']),
+      ...liste.map((u) => { const x = sb(u); return satir([u.kod, u.barkod, u.ad, u.marka, u.kategori, u.birim, u.alis_fiyati, u.satis_fiyati, ...(() => { const f = fiyatDurum(u); return [f.marj === null ? '' : f.marj.toFixed(1), f.maliyet ? f.maliyet.toFixed(2) : '', f.oneri ?? '']; })(), u.kdv, u.stok, ...depolar.map((d) => harita.get(u.id)?.get(d.id) ?? 0), u.kritik_stok, u.raf, x.s, x.son ? tarih(x.son) : '', Number.isFinite(x.yeter) ? Math.round(x.yeter) : '']); })].join('\n');
     const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv' })); a.download = 'urunler.csv'; a.click();
   };
   const topluGuncelle = (patch: Partial<Urun>, mesaj: string) => calistir(async () => { for (const u of seciliUrunler) await backend.update<Urun>('urunler', u.id, patch); }, `${seciliUrunler.length} üründe ${mesaj}`);
@@ -120,6 +138,12 @@ export default function Urunler() {
         {maliyetGor && <button className="btn-ghost" onClick={csvIndir}><Download size={16} /> Excel (CSV)</button>}
       </SayfaBaslik>
 
+      {maliyetGor && fiyatUyarilar.length > 0 && filtre !== 'fiyat' && (
+        <button className="mb-4 flex w-full items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-left text-sm text-amber-900 hover:bg-amber-100 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200" onClick={() => { setFiltre('fiyat'); setSira({ alan: 'marj', artan: true }); setSecim(new Set()); }}>
+          <AlertTriangle size={18} className="mt-0.5 shrink-0" />
+          <span><b>Fiyat uyarısı: {sayi(fiyatUyarilar.length)} üründe satış fiyatı güncel maliyete göre düşük</b>{(() => { const z = fiyatUyarilar.filter((u) => fiyatDurum(u).uyari === 'zarar').length; return z ? <> — <b className="text-red-700 dark:text-red-300">{sayi(z)} tanesi zararına</b></> : null; })()}. Marj %{hedefMarj} hedefin altında; önerilen satış fiyatlarını görmek için tıklayın, BizimHesap'ta satış fiyatını güncelleyin.</span>
+        </button>
+      )}
       <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-5">
         <button className="text-left" onClick={() => setFiltre('stoklu')}><Kpi etiket="Stoktaki ürün çeşidi" deger={sayi(stoklu.length)} alt={`${sayi(stoklu.reduce((t, u) => t + u.stok, 0))} adet`} /></button>
         <Kpi etiket="Stoğun satış değeri (KDV dahil)" deger={para(stoklu.reduce((t, u) => t + u.stok * u.satis_fiyati, 0))} renk="blue" />
@@ -157,7 +181,7 @@ export default function Urunler() {
             {/* telefon görünümü: kart listesi */}
             <div className="divide-y divide-slate-100 md:hidden dark:divide-slate-800">
               {gorunen.map((u) => {
-                const x = sb(u); const bk = birimKar(u, db.ayarlar);
+                const x = sb(u);
                 return (
                   <div key={u.id} className={`flex gap-3 p-3 ${secim.has(u.id) ? 'bg-sky-50/60 dark:bg-sky-500/5' : ''}`}>
                     <input type="checkbox" className="mt-1" checked={secim.has(u.id)} onChange={() => secDegis(u.id)} />
@@ -165,7 +189,7 @@ export default function Urunler() {
                       <div className="font-medium leading-snug"><UrunLink id={u.id}>{u.ad}</UrunLink></div>
                       <div className="text-xs text-slate-500">{[u.kod, u.marka, u.raf && `raf ${u.raf}`].filter(Boolean).join(' · ')}</div>
                       {depolar.length > 1 && <div className="mt-1 flex flex-wrap gap-1 text-[11px]">{depolar.map((d) => { const m = harita.get(u.id)?.get(d.id) ?? 0; return <span key={d.id} className={`rounded bg-slate-100 px-1.5 py-0.5 dark:bg-slate-800 ${m <= 0 ? 'text-slate-400' : ''}`}>{d.ad.replace(/ DEPO(SU)?$/i, '')}: <b>{sayi(m)}</b></span>; })}</div>}
-                      <div className="mt-1 text-[11px] text-slate-500">90 gün: {x.s ? <b>{sayi(x.s)}</b> : '—'}{u.stok > 0 && Number.isFinite(x.yeter) ? ` · ${x.yeter > 365 ? '1 yıl+' : `${Math.round(x.yeter)} gün`} yeter` : ''}{maliyetGor && !bk.maliyetYok ? <span className={bk.marj < 0 ? ' text-red-600' : bk.marj < 15 ? ' text-amber-600' : ''}> · marj %{bk.marj.toFixed(0)}</span> : ''}</div>
+                      <div className="mt-1 text-[11px] text-slate-500">90 gün: {x.s ? <b>{sayi(x.s)}</b> : '—'}{u.stok > 0 && Number.isFinite(x.yeter) ? ` · ${x.yeter > 365 ? '1 yıl+' : `${Math.round(x.yeter)} gün`} yeter` : ''}{maliyetGor ? (() => { const f = fiyatDurum(u); return f.marj === null ? '' : <span className={f.marj < 0 ? ' text-red-600' : f.marj < hedefMarj - 0.5 ? ' text-amber-600' : ''}> · marj %{f.marj.toFixed(0)}{f.oneri ? ` · öneri ${para(f.oneri)}` : ''}</span>; })() : ''}</div>
                     </div>
                     <div className="flex shrink-0 flex-col items-end gap-1">
                       <div className="font-semibold">{para(u.satis_fiyati)}</div>
@@ -193,8 +217,8 @@ export default function Urunler() {
                       <td><input type="checkbox" checked={secim.has(u.id)} onChange={() => secDegis(u.id)} /></td>
                       <td className="min-w-[17rem]"><div className="flex items-center gap-1 font-medium"><UrunLink id={u.id}>{u.ad}</UrunLink>{u.bh_id && <span title="BizimHesap'tan eşitleniyor"><Link2 size={13} className="text-sky-500" /></span>}</div><div className="text-xs text-slate-500" title={u.barkod ? `Barkod: ${u.barkod}` : undefined}>{u.kod && <span className="mr-1.5 font-mono">{u.kod}</span>}{u.kategori} <OtoparcasanLink u={u} kisa />{(() => { const kk = gecerliKodlar(u); return kk.length ? <span className="ml-1.5 rozet bg-sky-50 text-sky-700" title={kk.map((k) => k.kod).join(', ')}>{kk.length} OEM/muadil</span> : null; })()}</div></td>
                       <td className="whitespace-nowrap">{u.marka}</td><td className="whitespace-nowrap">{u.raf}</td>
-                      {maliyetGor && <td className="text-right">{u.alis_fiyati ? <>{para(u.alis_fiyati)}{u.kart_alis ? <div className="text-[10px] text-sky-700" title={`Kartta ${para(u.kart_alis)} yazıyor; ${u.alis_fatura?.tarih} tarihli faturanın net fiyatı kullanılıyor`}>fatura fiyatı</div> : null}</> : <span className="text-slate-300">—</span>}</td>}<td className="text-right font-medium">{para(u.satis_fiyati)}</td>
-                      {maliyetGor && <td className={`text-right ${bk.maliyetYok ? 'text-slate-300' : bk.marj < 0 ? 'text-red-600' : bk.marj < 15 ? 'text-amber-600' : 'text-slate-500'}`}>{bk.maliyetYok ? '—' : `%${bk.marj.toFixed(0)}`}</td>}
+                      {maliyetGor && <td className="text-right">{u.alis_fiyati ? <>{para(u.alis_fiyati)}{u.kart_alis ? <div className="text-[10px] text-sky-700" title={`Kartta ${para(u.kart_alis)} yazıyor; ${u.alis_fatura?.tarih} tarihli faturanın net fiyatı kullanılıyor`}>fatura fiyatı</div> : null}</> : <span className="text-slate-300">—</span>}</td>}<td className="whitespace-nowrap text-right font-medium">{para(u.satis_fiyati)}{(() => { if (!maliyetGor) return null; const f = fiyatDurum(u); return f.oneri ? <div className={`text-[11px] font-normal ${f.uyari === 'zarar' ? 'text-red-600' : 'text-amber-600'}`} title={`Güncel maliyet ${para(f.maliyet)} (KDV hariç); %${hedefMarj} marj için önerilen satış fiyatı`}>öneri {para(f.oneri)}</div> : null; })()}</td>
+                      {maliyetGor && (() => { const f = fiyatDurum(u); return <td className={`text-right ${f.marj === null ? 'text-slate-300' : f.marj < 0 ? 'font-semibold text-red-600' : f.marj < hedefMarj - 0.5 ? 'text-amber-600' : 'text-slate-500'}`} title={f.tedKullan ? `Tedarikçide güncel alış ${para(f.ted!.fiyat)} (kart ${para(bk.alisNet)}) — marj buna göre` : undefined}>{f.marj === null ? '—' : `%${f.marj.toFixed(0)}`}{f.tedKullan && <div className="text-[10px] text-red-500">tedarikçi zamlı</div>}</td>; })()}
                       {depolar.length > 1 && depolar.map((d) => { const m = harita.get(u.id)?.get(d.id) ?? 0; return <td key={d.id} className={`text-right ${m < 0 ? 'text-red-600' : m === 0 ? 'text-slate-300' : ''}`}>{sayi(m)}</td>; })}
                       <td className="whitespace-nowrap text-right"><span className={`rozet whitespace-nowrap ${u.stok <= 0 ? 'bg-red-100 text-red-700' : kritikAltinda(u) ? 'bg-amber-100 text-amber-800' : 'bg-emerald-50 text-emerald-700'}`}>{sayi(u.stok)} {u.birim}</span></td>
                       <td className="text-right">{x.s ? sayi(x.s) : <span className="text-slate-300">—</span>}</td>

@@ -86,7 +86,7 @@
       const mevcut = Number(String(s.o[S.alis] ?? '').replace(',', '.')) || 0;
       if (Math.abs(mevcut - Number(x.kart_ham || 0)) > Math.max(0.05, mevcut * 0.01)) { atlanan.push([x, `BizimHesap'taki alış (${tl(mevcut)}) Akcan'daki kayıttan farklı — önce eşitlemenin bitmesini bekleyin`]); continue; }
       const dahil = String(s.o[S.kdvDahil] || 'H').trim().toUpperCase() === 'E'; const kdv = Number(s.o[S.kdv]) || 20;
-      const yeni = Math.round((dahil ? x.yeni * (1 + kdv / 100) : x.yeni) * 100) / 100;
+      const yeni = x.ham ? Math.round(x.yeni * 100) / 100 : Math.round((dahil ? x.yeni * (1 + kdv / 100) : x.yeni) * 100) / 100;
       degis.set(s.no, yeni); yazilan.push({ ...x, eskiHam: mevcut, yeniHam: yeni });
     }
     if (!degis.size) return { blob: null, yazilan, atlanan };
@@ -114,7 +114,7 @@
   }
   async function panel() {
     const kutu = document.createElement('div'); kutu.style.cssText = stil + ';right:14px;top:70px;width:560px;max-height:80vh;display:flex;flex-direction:column;border:2px solid #1d4ed8';
-    kutu.innerHTML = '<div style="padding:10px 12px;border-bottom:1px solid #e2e8f0"><b>Akcan — tedarikçide zamlanan ürünler</b> <button data-k="yenile" style="float:right">Yenile</button><div data-k="ust" style="color:#475569;margin-top:4px">Yükleniyor…</div></div><div data-k="govde" style="overflow:auto;flex:1"></div><div data-k="alt" style="padding:10px 12px;border-top:1px solid #e2e8f0"></div>';
+    kutu.innerHTML = '<div style="padding:10px 12px;border-bottom:1px solid #e2e8f0"><b>Akcan — BizimHesap alış fiyatları</b> <button data-k="yenile" style="float:right">Yenile</button><button data-k="gerial" style="float:right;margin-right:6px">Son yüklenenler / geri al</button><div data-k="ust" style="color:#475569;margin-top:4px">Yükleniyor…</div></div><div data-k="govde" style="overflow:auto;flex:1"></div><div data-k="alt" style="padding:10px 12px;border-top:1px solid #e2e8f0"></div>';
     document.body.appendChild(kutu);
     const $ = (k) => kutu.querySelector(`[data-k="${k}"]`);
     const ciz = async (zorla) => {
@@ -122,15 +122,16 @@
       if (v.hata) { $('ust').textContent = v.hata; $('govde').innerHTML = ''; $('alt').innerHTML = ''; return; }
       if (!l.length) { $('ust').textContent = 'Güncellenecek ürün yok: kart alış fiyatları tedarikçilerdeki güncel fiyatlarla uyumlu.'; $('govde').innerHTML = ''; $('alt').innerHTML = ''; return; }
       $('ust').innerHTML = `Tedarikçide <b>stokta</b> olup kart alışından %3'ten fazla pahalı ${l.length} ürün. Turuncu olanlarda fark %50'yi aşıyor; kontrol edip isterseniz işaretleyin.`;
-      $('govde').innerHTML = '<table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="background:#f1f5f9;text-align:left"><th style="padding:4px"><input type="checkbox" data-k="hepsi"></th><th>Ürün</th><th style="text-align:right">Kart alış</th><th style="text-align:right">Yeni alış</th><th>Kaynak</th></tr></thead><tbody>' +
+      $('govde').innerHTML = '<table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="background:#f1f5f9;text-align:left"><th style="padding:4px"><input type="checkbox" data-k="hepsi" title="Turuncu (kontrol) olanlar hariç hepsini seç"></th><th>Ürün</th><th style="text-align:right">Kart alış</th><th style="text-align:right">Yeni alış</th><th>Kaynak</th></tr></thead><tbody>' +
         l.map((x, i) => `<tr style="border-top:1px solid #f1f5f9;${x.kontrol ? 'background:#fff7ed' : ''}"><td style="padding:4px"><input type="checkbox" data-i="${i}" ${x.kontrol ? '' : 'checked'}></td><td><b>${esc(x.kod)}</b><div style="color:#64748b;max-width:260px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(x.ad)}</div></td><td style="text-align:right">${x.kart > 0 ? tl(x.kart) : '—'}</td><td style="text-align:right;color:${x.kontrol ? '#c2410c' : '#b91c1c'}"><b>${tl(x.yeni)}</b>${x.kart > 0 ? `<div>+%${Math.round((x.yeni / x.kart - 1) * 100)}</div>` : ''}</td><td>${esc(TED_AD[x.tedarikci] || x.tedarikci)}<div style="color:#94a3b8">${new Date(x.zaman).toLocaleDateString('tr-TR')}</div></td></tr>`).join('') + '</tbody></table>';
-      $('hepsi').onchange = (e) => kutu.querySelectorAll('input[data-i]').forEach((c) => { c.checked = e.target.checked; });
+      $('hepsi').onchange = (e) => kutu.querySelectorAll('input[data-i]').forEach((c) => { if (!l[+c.dataset.i].kontrol || !e.target.checked) c.checked = e.target.checked; });
       const sec = () => [...kutu.querySelectorAll('input[data-i]:checked')].map((c) => l[+c.dataset.i]);
       $('alt').innerHTML = '<div style="color:#475569;margin-bottom:6px">Fiyatlar KDV hariç. Yalnız işaretli ürünlerin <b>alış fiyatı</b> değişir; satış fiyatı ve diğer bilgiler aynen kalır.</div><button data-k="yukle" style="background:#1d4ed8;color:#fff;border:0;border-radius:6px;padding:7px 12px;cursor:pointer">Seçilenleri BizimHesap\'a yükle</button> <span data-k="durum"></span>';
       let onay = false;
       $('yukle').onclick = async () => {
         const s = sec(); if (!s.length) { $('durum').textContent = 'Ürün seçilmedi'; return; }
-        if (!onay) { onay = true; $('yukle').textContent = `Eminim: ${s.length} ürünün alış fiyatını güncelle`; $('yukle').style.background = '#b91c1c'; $('durum').textContent = 'Onaylamak için tekrar basın'; return; }
+        const kn = s.filter((x) => x.kontrol).length;
+        if (!onay) { onay = true; $('yukle').textContent = `Eminim: ${s.length} ürünün alış fiyatını güncelle` + (kn ? ` (${kn} tanesi %50+ farklı!)` : ''); $('yukle').style.background = '#b91c1c'; $('durum').textContent = 'Onaylamak için tekrar basın'; return; }
         $('yukle').disabled = true; $('durum').textContent = 'BizimHesap ürün listesi indiriliyor…';
         try {
           const r = await excelHazirla(s);
@@ -145,6 +146,37 @@
         } catch (e) { $('durum').textContent = 'Olmadı: ' + (e?.message || e); $('yukle').disabled = false; onay = false; }
       };
     };
+    const geriCiz = async () => {
+      $('ust').textContent = 'Yükleniyor…'; $('govde').innerHTML = ''; $('alt').innerHTML = '';
+      const r = await sor({ tur: 'bh_son' }); const l = r?.liste || [];
+      if (!r?.ok) { $('ust').textContent = r?.hata || 'Akcan sunucusuna ulaşılamadı'; return; }
+      if (!l.length) { $('ust').textContent = 'Son 48 saatte eklentiyle yüklenmiş (ve hâlâ o fiyatta duran) kart yok.'; return; }
+      $('ust').innerHTML = `Son 48 saatte eklentiyle güncellenen ${l.length} kart. İşaretlediklerinizin alış fiyatı <b>eski değerine</b> döndürülür. Kırmızı olanlarda yeni fiyat eskinin %50'sinden fazla yukarıda (varsayılan seçili).`;
+      $('govde').innerHTML = '<table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="background:#f1f5f9;text-align:left"><th style="padding:4px"><input type="checkbox" data-k="ghepsi"></th><th>Ürün</th><th style="text-align:right">Eski alış</th><th style="text-align:right">Şu an</th><th>Kaynak</th></tr></thead><tbody>' +
+        l.map((x, i) => `<tr style="border-top:1px solid #f1f5f9;${x.supheli ? 'background:#fef2f2' : ''}"><td style="padding:4px"><input type="checkbox" data-g="${i}" ${x.supheli ? 'checked' : ''}></td><td><b>${esc(x.kod)}</b><div style="color:#64748b;max-width:260px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(x.ad)}</div></td><td style="text-align:right">${tl(x.eski)}</td><td style="text-align:right;color:${x.supheli ? '#b91c1c' : '#0f172a'}"><b>${tl(x.yeni)}</b>${x.eski > 0 ? `<div>+%${Math.round((x.yeni / x.eski - 1) * 100)}</div>` : ''}</td><td>${esc(TED_AD[x.tedarikci] || x.tedarikci)}</td></tr>`).join('') + '</tbody></table>';
+      $('ghepsi').onchange = (e) => kutu.querySelectorAll('input[data-g]').forEach((c) => { c.checked = e.target.checked; });
+      $('alt').innerHTML = '<button data-k="geriyukle" style="background:#b91c1c;color:#fff;border:0;border-radius:6px;padding:7px 12px;cursor:pointer">Seçilenleri eski alış fiyatına döndür</button> <button data-k="geri">Listeye dön</button> <span data-k="gdurum"></span>';
+      $('geri').onclick = () => ciz(false);
+      let onay = false;
+      $('geriyukle').onclick = async () => {
+        const sec = [...kutu.querySelectorAll('input[data-g]:checked')].map((c) => l[+c.dataset.g]); if (!sec.length) { $('gdurum').textContent = 'Ürün seçilmedi'; return; }
+        if (!onay) { onay = true; $('geriyukle').textContent = `Eminim: ${sec.length} kartı eski fiyata döndür`; $('gdurum').textContent = 'Onaylamak için tekrar basın'; return; }
+        $('geriyukle').disabled = true; $('gdurum').textContent = 'BizimHesap ürün listesi indiriliyor…';
+        try {
+          // geri alma: Excel'deki mevcut değer = yüklenen değer (ham), hedef = eski değer (ham)
+          const r2 = await excelHazirla(sec.map((x) => ({ ...x, kart_ham: x.yeni, yeni: x.eski, ham: true })));
+          const atl = r2.atlanan.map(([x, n]) => `<li>${esc(x.kod)}: ${esc(n)}</li>`).join('');
+          if (!r2.blob) { $('gdurum').innerHTML = 'Döndürülecek ürün kalmadı.' + (atl ? `<ul style="margin:4px 0 0 16px;color:#b45309">${atl}</ul>` : ''); $('geriyukle').disabled = false; onay = false; return; }
+          await sor({ tur: 'bh_yazildi', kalemler: r2.yazilan.map((x) => ({ urun_id: x.urun_id, kod: x.kod, ad: x.ad, eski: x.eskiHam, yeni: x.yeniHam, tedarikci: 'geri_al' })) });
+          await chrome.storage.local.remove('bhOnbellek');
+          $('gdurum').innerHTML = `${r2.yazilan.length} kart eski fiyatına döndürülüyor…` + (atl ? `<ul style="margin:4px 0 0 16px;color:#b45309">Atlananlar:${atl}</ul>` : '');
+          const giris = document.getElementById('fileUpload'); if (!giris) throw new Error('BizimHesap yükleme kutusu bulunamadı');
+          const dt = new DataTransfer(); dt.items.add(new File([r2.blob], 'urunler.xlsx', { type: r2.blob.type })); giris.files = dt.files;
+          giris.dispatchEvent(new Event('change', { bubbles: true }));
+        } catch (e) { $('gdurum').textContent = 'Olmadı: ' + (e?.message || e); $('geriyukle').disabled = false; onay = false; }
+      };
+    };
+    $('gerial').onclick = geriCiz;
     $('yenile').onclick = () => ciz(true);
     ciz(false);
   }
