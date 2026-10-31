@@ -94,7 +94,7 @@ async function cek(onceki: Izler, yeni: Izler) {
   let degisen = 0;
   urunler.sort((a, b) => String(a.bh_id).localeCompare(String(b.bh_id)));
   for (const [i, p] of parca(urunler, 400).entries()) {
-    const h = await ozet(p.map((u) => [u.bh_id, u.ad, u.kod, u.barkod, u.marka, u.kategori, u.birim, u.alis_fiyati, u.satis_fiyati, u.kdv, u.stok, al(u.ham as Obj, 'isActive')]));
+    const h = await ozet(p.map((u) => [u.bh_id, u.ad, u.kod, u.barkod, u.marka, u.kategori, u.birim, u.alis_fiyati, u.satis_fiyati, u.kdv, u.stok, al(u.ham as Obj, 'isActive'), al(u.ham as Obj, 'photo')])); // fotoğraf değişince de yazılır
     if (onceki.u?.[i] === h) { yeni.u![i] = h; continue; }
     degisen += Number(await rpc('bh_urunleri_yaz', { p })) || 0; yazilanParca++;
     yeni.u![i] = h;

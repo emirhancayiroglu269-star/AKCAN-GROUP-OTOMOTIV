@@ -1,0 +1,3 @@
+-- bh_urunleri_yaz: ürün fotoğrafı eklenince/değişince de satır güncellenir (önceden yalnız ad/kod/fiyat/stok değişince yazılıyordu).
+-- Tam fonksiyon tanımı veritabanında (migration: bh_urunleri_yaz_foto); değişiklik: where karşılaştırmasına bh_ham->>'photo' eklendi.
+-- Ayrıca bizimhesap-esitle parça özetine 'photo' alanı eklendi.
