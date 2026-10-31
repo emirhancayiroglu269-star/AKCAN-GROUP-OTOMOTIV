@@ -11,6 +11,8 @@ const db = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SE
 const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type' };
 type Obj = Record<string, unknown>;
 const norm = (s: unknown) => String(s ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+// marka karşılaştırması Türkçe harfleri sadeleştirir ("FİLTRON" = "FILTRON")
+const markaNorm = (s: unknown) => String(s ?? '').toLocaleUpperCase('tr').replace(/İ/g, 'I').replace(/Ş/g, 'S').replace(/Ğ/g, 'G').replace(/Ü/g, 'U').replace(/Ö/g, 'O').replace(/Ç/g, 'C').replace(/[^A-Z0-9]/g, '');
 const sayi = (v: unknown) => (v === null || v === undefined || v === '' || !Number.isFinite(Number(v)) ? null : Number(v));
 const TEDARIKCILER = new Set(['iron', 'basbug']);
 
@@ -27,7 +29,7 @@ async function harita() {
     if (error) throw new Error(error.message);
     for (const u of data ?? []) {
       const n = norm(u.kod); if (n.length < 3) continue;
-      const o = onekAt(String(u.kod)); const hu: HU = { id: u.id as string, kod: u.kod as string, marka: norm(u.marka), onek: o.onek };
+      const o = onekAt(String(u.kod)); const hu: HU = { id: u.id as string, kod: u.kod as string, marka: markaNorm(u.marka), onek: o.onek };
       if (!tam.has(n)) tam.set(n, hu);
       if (o.onek && o.govde.length >= 4) { const l = govde.get(o.govde) ?? []; l.push(hu); govde.set(o.govde, l); }
     }
@@ -38,9 +40,13 @@ async function harita() {
 /** Tedarikçi kodunu bizdeki ürüne bağlar: önce kodun tamamı, olmazsa marka öneki atılmış kod + marka uyumu (tek aday kalırsa) */
 function eslestir(h: NonNullable<typeof kodHarita>, kod: string, marka: string | null) {
   const t = h.tam.get(norm(kod)); if (t) return t;
-  const o = onekAt(kod); if (!o.onek || o.govde.length < 4) return null;
-  const m = norm(marka);
-  const aday = (h.govde.get(o.govde) ?? []).filter((u) => (m && u.marka && (u.marka === m || u.marka.startsWith(m) || m.startsWith(u.marka))) || (u.onek && (o.onek.startsWith(u.onek) || u.onek.startsWith(o.onek))));
+  const o = onekAt(kod); const m = markaNorm(marka);
+  const markaUyar = (u: HU) => !!m && !!u.marka && (u.marka === m || u.marka.startsWith(m) || m.startsWith(u.marka));
+  let aday: HU[];
+  if (o.onek && o.govde.length >= 4) aday = (h.govde.get(o.govde) ?? []).filter((u) => markaUyar(u) || (!!u.onek && (o.onek.startsWith(u.onek) || u.onek.startsWith(o.onek))));
+  // tedarikçi kodu marka öneksizse (Başbuğ "1682953780" + marka EUROREPAR ↔ bizim "ERP-1682953780"): yalnız marka uyarsa
+  else if (!o.onek && o.govde.length >= 6) aday = (h.govde.get(o.govde) ?? []).filter(markaUyar);
+  else return null;
   return aday.length === 1 ? aday[0] : null;
 }
 
