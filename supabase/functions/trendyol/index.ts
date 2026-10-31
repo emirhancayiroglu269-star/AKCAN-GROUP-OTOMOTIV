@@ -439,7 +439,10 @@ async function otoYukle(a: OtoAyar, adet?: number) {
 // Aynı ilana 24 saatte 3'ten fazla fiyat gönderilmişse başka bir sistem (ör. BizimHesap) fiyatı geri çekiyor demektir: durdurulur.
 async function fiyatGonder(kaynak: 'otomatik' | 'elle', a: OtoAyar) {
   const ilan = await tumSatir<Obj>((a, b) => db.from('ty_urun').select('barkod,baslik,stok,urun_id,satista,satis_fiyati,liste_fiyati,komisyon,kdv,desi').not('urun_id', 'is', null).order('barkod').range(a, b));
-  const l = (ilan ?? []).filter((x) => x.satista !== false && Number(x.satis_fiyati) > 0);
+  // stoğu 0'a düştüğü için Trendyol'un kendiliğinden satışa kapattığı ilanların da fiyatı güncellenir (stok gelince doğru fiyatla açılsın);
+  // Trendyol "satışa kapatılan..." hatası verdiyse (elle kapatılmış ilan) 24 saat atlanır
+  const kapali = new Set((await tumSatir<Obj>((a, b) => db.from('ty_gonderim').select('barkod').eq('durum', 'hatali').ilike('hata', '%Satışa kapatılan%').gt('zaman', new Date(Date.now() - 864e5).toISOString()).order('id').range(a, b))).map((x) => x.barkod as string));
+  const l = (ilan ?? []).filter((x) => (x.satista !== false || Number(x.stok) === 0) && !kapali.has(x.barkod as string) && Number(x.satis_fiyati) > 0);
   const ids = [...new Set(l.map((x) => x.urun_id as string))];
   const um = new Map<string, Obj>(); const sonAlis = new Map<string, number>();
   for (let i = 0; i < ids.length; i += 200) {
