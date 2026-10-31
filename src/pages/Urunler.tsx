@@ -12,6 +12,7 @@ import { EtiketModal, type EtiketKalem } from '../components/StokAraclari';
 import { Plus, X } from 'lucide-react';
 import { UrunLink } from '../components/DetayKart';
 import { OtoparcasanLink } from '../components/DisLink';
+import { KodKopyala } from '../components/KodKopyala';
 import { genelArama } from '../lib/arama';
 import { omGuvenilir } from '../lib/muadil';
 import { onerilenFiyat, sonAlislar } from '../lib/analiz2';
@@ -188,7 +189,7 @@ export default function Urunler() {
                     <input type="checkbox" className="mt-1" checked={secim.has(u.id)} onChange={() => secDegis(u.id)} />
                     <div className="min-w-0 flex-1">
                       <div className="font-medium leading-snug"><UrunLink id={u.id}>{u.ad}</UrunLink></div>
-                      <div className="text-xs text-slate-500">{[u.kod, u.marka, u.raf && `raf ${u.raf}`].filter(Boolean).join(' · ')}</div>
+                      <div className="text-xs text-slate-500">{u.kod && <><KodKopyala kod={u.kod} />{(u.marka || u.raf) && ' · '}</>}{[u.marka, u.raf && `raf ${u.raf}`].filter(Boolean).join(' · ')}</div>
                       {depolar.length > 1 && <div className="mt-1 flex flex-wrap gap-1 text-[11px]">{depolar.map((d) => { const m = harita.get(u.id)?.get(d.id) ?? 0; return <span key={d.id} className={`rounded bg-slate-100 px-1.5 py-0.5 dark:bg-slate-800 ${m <= 0 ? 'text-slate-400' : ''}`}>{d.ad.replace(/ DEPO(SU)?$/i, '')}: <b>{sayi(m)}</b></span>; })}</div>}
                       <div className="mt-1 text-[11px] text-slate-500">90 gün: {x.s ? <b>{sayi(x.s)}</b> : '—'}{u.stok > 0 && Number.isFinite(x.yeter) ? ` · ${x.yeter > 365 ? '1 yıl+' : `${Math.round(x.yeter)} gün`} yeter` : ''}{maliyetGor ? (() => { const f = fiyatDurum(u); return f.marj === null ? '' : <span className={f.marj < 0 ? ' text-red-600' : f.marj < hedefMarj - 0.5 ? ' text-amber-600' : ''}> · marj %{f.marj.toFixed(0)}{f.oneri ? ` · öneri ${para(f.oneri)}` : ''}</span>; })() : ''}</div>
                     </div>
@@ -216,7 +217,7 @@ export default function Urunler() {
                   return (
                     <tr key={u.id} className={secim.has(u.id) ? 'bg-sky-50/60 dark:bg-sky-500/5' : ''}>
                       <td><input type="checkbox" checked={secim.has(u.id)} onChange={() => secDegis(u.id)} /></td>
-                      <td className="min-w-[17rem]"><div className="flex items-center gap-1 font-medium"><UrunLink id={u.id}>{u.ad}</UrunLink>{u.bh_id && <span title="BizimHesap'tan eşitleniyor"><Link2 size={13} className="text-sky-500" /></span>}</div><div className="text-xs text-slate-500" title={u.barkod ? `Barkod: ${u.barkod}` : undefined}>{u.kod && <span className="mr-1.5 font-mono">{u.kod}</span>}{u.kategori} <OtoparcasanLink u={u} kisa />{(() => { const kk = gecerliKodlar(u); return kk.length ? <span className="ml-1.5 rozet bg-sky-50 text-sky-700" title={kk.map((k) => k.kod).join(', ')}>{kk.length} OEM/muadil</span> : null; })()}</div></td>
+                      <td className="min-w-[17rem]"><div className="flex items-center gap-1 font-medium"><UrunLink id={u.id}>{u.ad}</UrunLink>{u.bh_id && <span title="BizimHesap'tan eşitleniyor"><Link2 size={13} className="text-sky-500" /></span>}</div><div className="text-xs text-slate-500" title={u.barkod ? `Barkod: ${u.barkod}` : undefined}>{u.kod && <KodKopyala kod={u.kod} className="mr-1.5" />}{u.kategori} <OtoparcasanLink u={u} kisa />{(() => { const kk = gecerliKodlar(u); return kk.length ? <span className="ml-1.5 rozet bg-sky-50 text-sky-700" title={kk.map((k) => k.kod).join(', ')}>{kk.length} OEM/muadil</span> : null; })()}</div></td>
                       <td className="whitespace-nowrap">{u.marka}</td><td className="whitespace-nowrap">{u.raf}</td>
                       {maliyetGor && <td className="text-right">{u.alis_fiyati ? <>{para(u.alis_fiyati)}{u.kart_alis ? <div className="text-[10px] text-sky-700" title={`Kartta ${para(u.kart_alis)} yazıyor; ${u.alis_fatura?.tarih} tarihli faturanın net fiyatı kullanılıyor`}>fatura fiyatı</div> : null}</> : <span className="text-slate-300">—</span>}</td>}<td className="whitespace-nowrap text-right font-medium">{para(u.satis_fiyati)}{(() => { if (!maliyetGor) return null; const f = fiyatDurum(u); return f.oneri ? <div className={`text-[11px] font-normal ${f.uyari === 'zarar' ? 'text-red-600' : 'text-amber-600'}`} title={`Güncel maliyet ${para(f.maliyet)} (KDV hariç); %${hedefMarj} marj için önerilen satış fiyatı`}>öneri {para(f.oneri)}</div> : null; })()}</td>
                       {maliyetGor && (() => { const f = fiyatDurum(u); return <td className={`text-right ${f.marj === null ? 'text-slate-300' : f.marj < 0 ? 'font-semibold text-red-600' : f.marj < hedefMarj - 0.5 ? 'text-amber-600' : 'text-slate-500'}`} title={f.tedKullan ? `Tedarikçide güncel alış ${para(f.ted!.fiyat)} (kart ${para(bk.alisNet)}) — marj buna göre` : undefined}>{f.marj === null ? '—' : `%${f.marj.toFixed(0)}`}{f.tedKullan && <div className="text-[10px] text-red-500">tedarikçi zamlı</div>}</td>; })()}

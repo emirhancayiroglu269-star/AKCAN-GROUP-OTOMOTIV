@@ -1,3 +1,4 @@
+import { KodKopyala } from './KodKopyala';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Phone } from 'lucide-react';
 import { useStore } from '../lib/store';
@@ -41,7 +42,7 @@ function UrunIcerik({ id }: { id: string }) {
   const oneri = onerilenFiyat(u, maliyetGuncel, hedef);
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center gap-x-2 text-sm text-slate-500"><span>{[u.kod, u.barkod, u.marka, u.kategori, u.raf ? `Raf ${u.raf}` : '', k.arac ? `${k.arac.marka}${k.arac.model ? ' ' + k.arac.model : ''}` : ''].filter(Boolean).join(' · ')}</span><OtoparcasanLink u={u} /></div>
+      <div className="flex flex-wrap items-center gap-x-2 text-sm text-slate-500">{u.kod && <KodKopyala kod={u.kod} />}<span>{[u.barkod, u.marka, u.kategori, u.raf ? `Raf ${u.raf}` : '', k.arac ? `${k.arac.marka}${k.arac.model ? ' ' + k.arac.model : ''}` : ''].filter(Boolean).join(' · ')}</span><OtoparcasanLink u={u} /></div>
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         <Bilgi e="Stok" v={sayi(u.stok)} alt={k.depo.filter((x) => x.miktar).map((x) => `${x.ad.replace(/ DEPO$/i, '')}: ${sayi(x.miktar)}`).join(' · ') || undefined} />
         <Bilgi e="Satış fiyatı (KDV dahil)" v={para(u.satis_fiyati)} alt={oneri && maliyet ? `Kategori hedefiyle (%${hedef}) önerilen ${para(oneri)}` : undefined} />
