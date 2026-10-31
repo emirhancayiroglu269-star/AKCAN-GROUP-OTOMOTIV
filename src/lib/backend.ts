@@ -188,21 +188,22 @@ function supabaseBackend(sb: SupabaseClient): Backend {
     return norm(z.t, l);
   }
 
-  /** Supabase sorgu başına en fazla 1000 satır döndürür; tamamını sayfa sayfa çeker. */
+  /** Supabase sorgu başına en fazla 1000 satır döndürür; tamamını sayfa sayfa çeker (3 sayfa aynı anda: tam yükleme ~3 kat hızlı). */
   async function hepsi(t: string, order: string, asc = false, sinir = 50000, filtre?: [string, boolean], degil?: [string, string]) {
-    const sayfa = 1000; const sonuc: unknown[] = [];
-    for (let i = 0; i < sinir; i += sayfa) {
-      // ürünlerde BizimHesap'ın ham JSON'u (bh_ham) çok büyük ve sitede kullanılmıyor: çekilmez
-      const URUN = URUN_KOLON;
-      // sayfalama kararlı olsun: sıralama sütunu tekrarlı olabildiğinden (ör. aynı anda eklenen ürünler) benzersiz ikinci sıralama eklenir; yoksa sayfalar arasında kayıt tekrarlanır ya da atlanır
-      const ikinci = t === 'urun_depo_stok' ? 'depo_id' : t === 'hesap_bakiyeleri' || t === 'otomarmara_veri' ? null : 'id';
-      const sor = (kolon: string) => { let q = sb.from(t).select(kolon); if (filtre) q = q.eq(filtre[0], filtre[1]); if (degil) q = q.neq(degil[0], degil[1]); q = q.order(order, { ascending: asc }); if (ikinci && ikinci !== order) q = q.order(ikinci, { ascending: true }); return q.range(i, i + sayfa - 1); };
-      // etiket (OEM/muadil kodları): bh_ham içindeki tag alanının veritabanında hazır tutulan kopyası (ham JSON her seferinde açılmaz); okunamazsa onsuz devam edilir
-      let r = await sor(t === 'urunler' ? URUN + ',etiket' : '*');
-      if (r.error && t === 'urunler') r = await sor(URUN);
-      const d = ok(r) as unknown[];
-      sonuc.push(...d);
-      if (d.length < sayfa) break;
+    const sayfa = 1000; const PARALEL = 3; const sonuc: unknown[] = [];
+    // ürünlerde BizimHesap'ın ham JSON'u (bh_ham) çok büyük ve sitede kullanılmıyor: çekilmez
+    const URUN = URUN_KOLON;
+    // sayfalama kararlı olsun: sıralama sütunu tekrarlı olabildiğinden (ör. aynı anda eklenen ürünler) benzersiz ikinci sıralama eklenir; yoksa sayfalar arasında kayıt tekrarlanır ya da atlanır
+    const ikinci = t === 'urun_depo_stok' ? 'depo_id' : t === 'hesap_bakiyeleri' || t === 'otomarmara_veri' ? null : 'id';
+    const sor = (kolon: string, i: number) => { let q = sb.from(t).select(kolon); if (filtre) q = q.eq(filtre[0], filtre[1]); if (degil) q = q.neq(degil[0], degil[1]); q = q.order(order, { ascending: asc }); if (ikinci && ikinci !== order) q = q.order(ikinci, { ascending: true }); return q.range(i, i + sayfa - 1); };
+    // etiket (OEM/muadil kodları): bh_ham içindeki tag alanının veritabanında hazır tutulan kopyası (ham JSON her seferinde açılmaz); okunamazsa onsuz devam edilir
+    const sayfaAl = async (i: number) => { let r = await sor(t === 'urunler' ? URUN + ',etiket' : '*', i); if (r.error && t === 'urunler') r = await sor(URUN, i); return ok(r) as unknown[]; };
+    for (let i = 0; i < sinir; i += sayfa * PARALEL) {
+      const bas = Array.from({ length: PARALEL }, (_, k) => i + k * sayfa).filter((x) => x < sinir);
+      const parcalar = await Promise.all(bas.map(sayfaAl));
+      let bitti = false;
+      for (const d of parcalar) { sonuc.push(...d); if (d.length < sayfa) { bitti = true; break; } }
+      if (bitti) break;
     }
     return norm(t, sonuc);
   }
