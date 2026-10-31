@@ -4,7 +4,7 @@
 // Kayıt: tedarikci_katalog (gelen tüm ürünler) + tedarikci_maliyet (stok kodu bizdeki ürünle birebir aynı olanlar → Trendyol maliyet hesabı).
 // bh_liste: BizimHesap kart alışı tedarikçideki güncel fiyatın gerisinde kalan ürünler (eklenti BizimHesap'ın kendi
 // "Toplu Ürün Güncelleme" Excel'i ile kullanıcının onayıyla yükler); bh_satis_liste: zararına satılanlar (satış fiyatı önerisi);
-// bh_son: son yüklenen alışlar (geri almak için); bh_yazildi: yüklenenlerin kaydı (bh_alis_log, alan = alis | satis).
+// bh_stoksuz: tedarikçide stokta olmayan zamlılar (kontrol listesi, hiçbiri seçili gelmez); bh_son: son yüklenen alışlar (geri almak için); bh_yazildi: yüklenenlerin kaydı (bh_alis_log, alan = alis | satis).
 import { createClient } from 'npm:@supabase/supabase-js@2';
 
 const db = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!, { auth: { persistSession: false } });
@@ -82,6 +82,39 @@ async function bhListe() {
 }
 
 /**
+ * Kontrol listesi: hiçbir tedarikçide STOKTA olmayan ama okunan en ucuz güncel fiyatı (7 gün) kart alışından %3'ten fazla yüksek ürünler.
+ * Stokta olmadığı için fiyat eski/geçici olabilir: eklentide hiçbiri seçili gelmez, kullanıcı kontrol edip doğru olanları seçer.
+ */
+async function bhStoksuz() {
+  const sinir = new Date(Date.now() - 7 * 864e5).toISOString();
+  const en = new Map<string, Obj>(); const stoklu = new Set<string>();
+  for (let i = 0; i < 50000; i += 1000) {
+    const { data, error } = await db.from('tedarikci_maliyet').select('urun_id,tedarikci,kod,fiyat,stok_var,zaman').not('fiyat', 'is', null).gt('zaman', sinir).order('urun_id').range(i, i + 999);
+    if (error) throw new Error(error.message);
+    for (const t of data ?? []) { const id = t.urun_id as string; const f = Number(t.fiyat); if (!(f > 0)) continue;
+      if (t.stok_var === true) { stoklu.add(id); continue; }
+      const e = en.get(id); if (!e || f < Number(e.fiyat)) en.set(id, t); }
+    if (!data || data.length < 1000) break;
+  }
+  for (const id of stoklu) en.delete(id); // stokta olan tedarikçisi varsa ana listede (bh_liste) değerlendirilir
+  const { data: son } = await db.from('bh_alis_log').select('urun_id').gt('zaman', new Date(Date.now() - 2 * 3600000).toISOString()).limit(5000);
+  for (const x of son ?? []) en.delete(x.urun_id as string);
+  const ids = [...en.keys()]; const { data: ay } = await db.from('ayarlar').select('alis_kdv_haric').eq('id', 1).maybeSingle(); const kdvHaric = ay?.alis_kdv_haric !== false;
+  const out: Obj[] = [];
+  for (let i = 0; i < ids.length; i += 200) {
+    const { data } = await db.from('urunler').select('id,kod,ad,alis_fiyati,kdv,aktif,stok').in('id', ids.slice(i, i + 200));
+    for (const u of data ?? []) {
+      if (!u.aktif || !u.kod) continue;
+      const t = en.get(u.id as string)!; const kdv = Number(u.kdv) || 20; const alis = Number(u.alis_fiyati) || 0;
+      const kart = kdvHaric ? alis : alis / (1 + kdv / 100); const yeni = Math.round(Number(t.fiyat) * 100) / 100;
+      if (!(kart > 0) || yeni <= kart * 1.03) continue;
+      out.push({ urun_id: u.id, kod: u.kod, ad: u.ad, kart: Math.round(kart * 100) / 100, kart_ham: alis, yeni, tedarikci: t.tedarikci, ted_kod: t.kod, zaman: t.zaman, stok: Number(u.stok) || 0, kontrol: yeni > kart * 1.5 });
+    }
+  }
+  return out.sort((a, x) => Number(a.kontrol) - Number(x.kontrol) || (Number(a.yeni) / Number(a.kart)) - (Number(x.yeni) / Number(x.kart)));
+}
+
+/**
  * Hedef marjın altında satılan ürünler (zarar = satış fiyatı KDV hariç güncel maliyetin altında). Güncel maliyet = kart alışı ya da tedarikçideki güncel fiyat
  * (sitedeki fiyat uyarısıyla aynı kural: stokta olan en ucuz tedarikçi, yoksa en ucuz; kartı %3–%50 aşıyorsa kullanılır). Öneri = %hedef marj (ayarlar, varsayılan 15) için KDV dahil fiyat, 50 TL'ye yukarı yuvarlanır.
  * Son 48 saatte alışı eklentiyle %50'den fazla yükseltilmiş ve geri alınmamış ürünler "bekle" işaretlenir (önce alış kontrol edilmeli).
@@ -141,6 +174,7 @@ Deno.serve(async (req) => {
   const { data: a } = await db.from('eklenti_anahtar').select('anahtar').eq('id', 1).maybeSingle();
   if (!a?.anahtar || typeof b.anahtar !== 'string' || b.anahtar.trim() !== a.anahtar) return yanit({ ok: false, hata: 'Eklenti anahtarı yanlış' }, 401);
   if (b.islem === 'bh_liste') return yanit({ ok: true, liste: await bhListe() });
+  if (b.islem === 'bh_stoksuz') return yanit({ ok: true, liste: await bhStoksuz() });
   if (b.islem === 'bh_satis_liste') return yanit({ ok: true, liste: await bhSatisListe() });
   if (b.islem === 'bh_son') {
     // son 48 saatte eklentiyle yüklenen ve BizimHesap kartında hâlâ o değerde duran alış fiyatları (geri almak için)

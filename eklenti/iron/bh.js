@@ -120,8 +120,8 @@
     document.body.appendChild(a);
   }
   async function panel() {
-    const kutu = document.createElement('div'); kutu.style.cssText = stil + ';right:14px;top:70px;width:560px;max-height:80vh;display:flex;flex-direction:column;border:2px solid #1d4ed8';
-    kutu.innerHTML = '<div style="padding:10px 12px;border-bottom:1px solid #e2e8f0"><b>Akcan — BizimHesap alış fiyatları</b> <button data-k="yenile" style="float:right">Yenile</button><button data-k="gerial" style="float:right;margin-right:6px">Son yüklenenler / geri al</button><button data-k="satis" style="float:right;margin-right:6px">Satış fiyatı düşükler</button><div data-k="ust" style="color:#475569;margin-top:4px">Yükleniyor…</div></div><div data-k="govde" style="overflow:auto;flex:1"></div><div data-k="alt" style="padding:10px 12px;border-top:1px solid #e2e8f0"></div>';
+    const kutu = document.createElement('div'); kutu.style.cssText = stil + ';right:14px;top:70px;width:660px;max-height:80vh;display:flex;flex-direction:column;border:2px solid #1d4ed8';
+    kutu.innerHTML = '<div style="padding:10px 12px;border-bottom:1px solid #e2e8f0"><b>Akcan — BizimHesap alış fiyatları</b> <button data-k="yenile" style="float:right">Yenile</button><button data-k="gerial" style="float:right;margin-right:6px">Son yüklenenler / geri al</button><button data-k="satis" style="float:right;margin-right:6px">Satış fiyatı düşükler</button><button data-k="stoksuz" style="float:right;margin-right:6px">Stoksuz zamlılar</button><div data-k="ust" style="color:#475569;margin-top:4px">Yükleniyor…</div></div><div data-k="govde" style="overflow:auto;flex:1"></div><div data-k="alt" style="padding:10px 12px;border-top:1px solid #e2e8f0"></div>';
     document.body.appendChild(kutu);
     const $ = (k) => kutu.querySelector(`[data-k="${k}"]`);
     const ciz = async (zorla) => {
@@ -214,6 +214,37 @@
         } catch (e) { $('sdurum').textContent = 'Olmadı: ' + (e?.message || e); $('satisyukle').disabled = false; onay = false; }
       };
     };
+    const stoksuzCiz = async () => {
+      $('ust').textContent = 'Yükleniyor…'; $('govde').innerHTML = ''; $('alt').innerHTML = '';
+      const r = await sor({ tur: 'bh_stoksuz' }); const l = r?.liste || [];
+      if (!r?.ok) { $('ust').textContent = r?.hata || 'Akcan sunucusuna ulaşılamadı'; return; }
+      if (!l.length) { $('ust').innerHTML = 'Tedarikçide stokta olmayan zamlı ürün yok. <button data-k="geri0">Listeye dön</button>'; $('geri0').onclick = () => ciz(false); return; }
+      $('ust').innerHTML = `<b>Kontrol listesi:</b> hiçbir tedarikçide şu an <b>stokta olmayan</b> ama okunan fiyatı kart alışından %3'ten fazla yüksek ${l.length} ürün. Stokta olmadığı için fiyat eski ya da geçici olabilir — <b>hiçbiri seçili gelmez</b>; doğru olduğunu bildiklerinizi işaretleyin. Turuncu: fark %50'nin üstünde (adet/takım farkı olabilir). <label style="margin-left:6px"><input type="checkbox" data-k="kstok"> sadece bizde stoğu olanlar</label>`;
+      $('govde').innerHTML = '<table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="background:#f1f5f9;text-align:left"><th style="padding:4px"></th><th>Ürün</th><th style="text-align:right">Kart alış</th><th style="text-align:right">Tedarikçi fiyatı</th><th>Kaynak</th></tr></thead><tbody>' +
+        l.map((x, i) => `<tr data-st="${x.stok > 0 ? 1 : 0}" style="border-top:1px solid #f1f5f9;${x.kontrol ? 'background:#fff7ed' : ''}"><td style="padding:4px"><input type="checkbox" data-n="${i}"></td><td><b>${esc(x.kod)}</b><div style="color:#64748b;max-width:240px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(x.ad)}</div><div style="color:#94a3b8">bizde stok: ${x.stok}</div></td><td style="text-align:right">${tl(x.kart)}</td><td style="text-align:right;color:${x.kontrol ? '#c2410c' : '#b91c1c'}"><b>${tl(x.yeni)}</b><div>+%${Math.round((x.yeni / x.kart - 1) * 100)}</div></td><td>${esc(TED_AD[x.tedarikci] || x.tedarikci)}<div style="color:#94a3b8">${esc(x.ted_kod || '')}</div><div style="color:#94a3b8">${new Date(x.zaman).toLocaleDateString('tr-TR')} · stokta yok</div></td></tr>`).join('') + '</tbody></table>';
+      $('kstok').onchange = (e) => kutu.querySelectorAll('tr[data-st]').forEach((tr) => { const gizle = e.target.checked && tr.dataset.st !== '1'; tr.style.display = gizle ? 'none' : ''; if (gizle) tr.querySelector('input').checked = false; });
+      $('alt').innerHTML = '<div style="color:#475569;margin-bottom:6px">Fiyatlar KDV hariç. Yalnız işaretli ürünlerin <b>alış fiyatı</b> değişir; satış fiyatı ve diğer bilgiler aynen kalır.</div><button data-k="kyukle" style="background:#1d4ed8;color:#fff;border:0;border-radius:6px;padding:7px 12px;cursor:pointer">Seçilenlerin alış fiyatını güncelle</button> <button data-k="geri">Listeye dön</button> <span data-k="kdurum"></span>';
+      $('geri').onclick = () => ciz(false);
+      let onay = false;
+      $('kyukle').onclick = async () => {
+        const sec = [...kutu.querySelectorAll('input[data-n]:checked')].map((c) => l[+c.dataset.n]); if (!sec.length) { $('kdurum').textContent = 'Ürün seçilmedi'; return; }
+        const kn = sec.filter((x) => x.kontrol).length;
+        if (!onay) { onay = true; $('kyukle').textContent = `Eminim: ${sec.length} ürünün alış fiyatını güncelle` + (kn ? ` (${kn} tanesi %50+ farklı!)` : ''); $('kyukle').style.background = '#b91c1c'; $('kdurum').textContent = 'Onaylamak için tekrar basın'; return; }
+        $('kyukle').disabled = true; $('kdurum').textContent = 'BizimHesap ürün listesi indiriliyor…';
+        try {
+          const r2 = await excelHazirla(sec);
+          const atl = r2.atlanan.map(([x, n]) => `<li>${esc(x.kod)}: ${esc(n)}</li>`).join('');
+          if (!r2.blob) { $('kdurum').innerHTML = 'Yüklenecek ürün kalmadı.' + (atl ? `<ul style="margin:4px 0 0 16px;color:#b45309">${atl}</ul>` : ''); $('kyukle').disabled = false; onay = false; return; }
+          await sor({ tur: 'bh_yazildi', kalemler: r2.yazilan.map((x) => ({ urun_id: x.urun_id, kod: x.kod, ad: x.ad, eski: x.eskiHam, yeni: x.yeniHam, tedarikci: x.tedarikci })) });
+          await depoSil('bhOnbellek');
+          $('kdurum').innerHTML = `${r2.yazilan.length} ürün BizimHesap'a yükleniyor…` + (atl ? `<ul style="margin:4px 0 0 16px;color:#b45309">Atlananlar:${atl}</ul>` : '');
+          const giris = document.getElementById('fileUpload'); if (!giris) throw new Error('BizimHesap yükleme kutusu bulunamadı');
+          const dt = new DataTransfer(); dt.items.add(new File([r2.blob], 'urunler.xlsx', { type: r2.blob.type })); giris.files = dt.files;
+          giris.dispatchEvent(new Event('change', { bubbles: true }));
+        } catch (e) { $('kdurum').textContent = 'Olmadı: ' + (e?.message || e); $('kyukle').disabled = false; onay = false; }
+      };
+    };
+    $('stoksuz').onclick = stoksuzCiz;
     $('satis').onclick = satisCiz;
     $('gerial').onclick = geriCiz;
     $('yenile').onclick = () => ciz(true);
