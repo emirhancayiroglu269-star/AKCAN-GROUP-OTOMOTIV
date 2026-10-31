@@ -2,7 +2,8 @@
 // Hiçbir istek göndermez, hiçbir şeyi değiştirmez; yalnız gelen sonuçları içerik betiğine iletir.
 (() => {
   const TED = /(^|\.)b2bbasbug\.com$/.test(location.hostname) ? 'basbug' : 'iron';
-  const ARAMA = /\/Service\/(ProductSearch[A-Za-z]*|SelectiveSearchItems|SearchProductBy[A-Za-z]*|ProductDetails)(\?|$)/;
+  // PurchasedProductList: site girişte "Aldıklarım" listesini (daha önce alınan tüm ürünler, güncel fiyat+stok) kendisi çeker
+  const ARAMA = /\/Service\/(ProductSearch[A-Za-z]*|PurchasedProductList|SelectiveSearchItems|SearchProductBy[A-Za-z]*|ProductDetails)(\?|$)/;
   // Iron stok kodunu sayfada şifreli tutar: her onaltılık rakam (ASCII) 0x72 ile XOR'lanmış, sonra yine onaltılık yazılmış
   const kodCoz = (s) => {
     if (typeof s !== 'string' || !/^[0-9A-Fa-f]+$/.test(s) || s.length % 4) return null;
