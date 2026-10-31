@@ -55,7 +55,6 @@ export default function Urunler() {
   const depolar = aktifDepolar(db);
   const harita = useMemo(() => stokHaritasi(db), [db]);
   const kategoriler = useMemo(() => Array.from(new Set(db.urunler.map((u) => u.kategori).filter(Boolean))).sort() as string[], [db.urunler]);
-  const markalar = useMemo(() => Array.from(new Set(db.urunler.filter((u) => u.aktif).map((u) => u.marka).filter(Boolean))).sort((a, b) => a!.localeCompare(b!, 'tr')) as string[], [db.urunler]);
   const kodlar = useMemo(() => kodHaritasi(db), [db]);
   // Otomarmara'dan gelen kodlar yalnız eşleşmesi güvenilir üründe sayılır (şüpheli eşleşmede başka ürünün kodları olabilir)
   const guven = useMemo(() => omGuvenilir(db), [db]);
@@ -74,15 +73,14 @@ export default function Urunler() {
   const fiyatUyarili = (u: Urun) => maliyetGor && u.aktif && stokluMu(u) && u.satis_fiyati > 0 && (u.stok > 0 || (oz.get(u.id)?.satilan ?? 0) > 0) && !!fiyatDurum(u).uyari;
   const sb = (u: Urun) => { const o = oz.get(u.id); const s = o?.satilan ?? 0; const hiz = s / Math.max(1, gun90); return { s, son: o?.sonSatis, yeter: hiz > 0 ? Math.max(0, u.stok) / hiz : Infinity }; };
 
-  const liste = useMemo(() => {
+  const sonuc = useMemo(() => {
     // arama "Ürün Ara" sayfasıyla aynı motor: kod, barkod, OEM (doğrulanmış), Otomarmara eşdeğeri, ad ve araç-model; pasiflerde eski arama
     const aday = !q.trim() ? [...db.urunler].sort((a, b) => a.ad.localeCompare(b.ad, 'tr'))
       : filtre === 'pasif' ? urunAra(db, q, kodlar, { sadeceAktif: false }).map((x) => x.urun) : genelArama(db, q, 5000).map((x) => x.u);
     const [dId, dTur] = depoF.split(':');
-    const l = aday.filter((u) => {
+    // marka/kategori dışındaki filtreler: seçenek listeleri bu kümeden üretilir (yalnız o filtrede olan markalar/kategoriler görünsün)
+    const temel = aday.filter((u) => {
       if (filtre === 'pasif' ? u.aktif : !u.aktif) return false;
-      if (kat && u.kategori !== kat) return false;
-      if (marka && u.marka !== marka) return false;
       if (dId) { const m = harita.get(u.id); const bu = m?.get(dId) ?? 0; if (bu <= 0) return false; if (dTur === 'yalniz' && depolar.some((d) => d.id !== dId && (m?.get(d.id) ?? 0) > 0)) return false; }
       switch (filtre) {
         case 'fiyat': return fiyatUyarili(u);
@@ -98,14 +96,22 @@ export default function Urunler() {
         default: return true;
       }
     });
-    if (!sira) return l;
+    const tr = (a: string, b: string) => a.localeCompare(b, 'tr');
+    const markaSec = [...new Set(temel.filter((u) => !kat || u.kategori === kat).map((u) => u.marka).filter(Boolean) as string[])].sort(tr);
+    const katSec = [...new Set(temel.filter((u) => !marka || u.marka === marka).map((u) => u.kategori).filter(Boolean) as string[])].sort(tr);
+    const l = temel.filter((u) => (!kat || u.kategori === kat) && (!marka || u.marka === marka));
+    if (!sira) return { liste: l, markaSec, katSec };
     const deger = (u: Urun): number | string => { switch (sira.alan) {
       case 'ad': return u.ad; case 'stok': return u.stok; case 'satis90': return sb(u).s; case 'son': return sb(u).son ?? '';
       case 'yeter': { const y = sb(u).yeter; return Number.isFinite(y) ? y : 1e9; } case 'fiyat': return u.satis_fiyati; case 'marj': { const m = fiyatDurum(u).marj; return m === null ? -1e9 : m; } } };
     const k = sira.artan ? 1 : -1;
-    return [...l].sort((a, b) => { const x = deger(a), y = deger(b); return (typeof x === 'string' ? x.localeCompare(y as string, 'tr') : x - (y as number)) * k; });
+    return { liste: [...l].sort((a, b) => { const x = deger(a), y = deger(b); return (typeof x === 'string' ? x.localeCompare(y as string, 'tr') : x - (y as number)) * k; }), markaSec, katSec };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [db, q, kodlar, filtre, kat, marka, depoF, harita, oz, sira, omVar, sonAlis, ted]);
+  const liste = sonuc.liste;
+  // seçili marka/kategori yeni filtrede yoksa da listede kalsın (seçimi kaybetmeyin)
+  const markaSecenek = marka && !sonuc.markaSec.includes(marka) ? [marka, ...sonuc.markaSec] : sonuc.markaSec;
+  const katSecenek = kat && !sonuc.katSec.includes(kat) ? [kat, ...sonuc.katSec] : sonuc.katSec;
 
   const aktifler = db.urunler.filter((u) => u.aktif);
   const stoklu = aktifler.filter((u) => u.stok > 0);
@@ -158,8 +164,8 @@ export default function Urunler() {
       <div className="card">
         <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 p-3 dark:border-slate-800">
           <input className="inp max-w-sm" placeholder="Ad, kod, barkod, marka, raf veya OEM / muadil kodu…" value={q} onChange={(e) => { setQ(e.target.value); setGosterilen(200); }} autoFocus />
-          <select className="inp w-40" value={kat} onChange={(e) => setKat(e.target.value)}><option value="">Tüm kategoriler</option>{kategoriler.map((k) => <option key={k}>{k}</option>)}</select>
-          <select className="inp w-36" value={marka} onChange={(e) => setMarka(e.target.value)}><option value="">Tüm markalar</option>{markalar.map((k) => <option key={k}>{k}</option>)}</select>
+          <select className="inp w-40" value={kat} onChange={(e) => setKat(e.target.value)}><option value="">Tüm kategoriler ({katSecenek.length})</option>{katSecenek.map((k) => <option key={k}>{k}</option>)}</select>
+          <select className="inp w-36" value={marka} onChange={(e) => setMarka(e.target.value)}><option value="">Tüm markalar ({markaSecenek.length})</option>{markaSecenek.map((k) => <option key={k}>{k}</option>)}</select>
           {depolar.length > 1 && <select className="inp w-44" value={depoF} onChange={(e) => setDepoF(e.target.value)}><option value="">Tüm depolar</option>{depolar.map((d) => [<option key={d.id} value={`${d.id}:var`}>{d.ad}'da stoklu</option>, <option key={d.id + 'y'} value={`${d.id}:yalniz`}>Yalnız {d.ad}'da</option>])}</select>}
           <select className="inp w-52" value={filtre} onChange={(e) => { const f = e.target.value as Filtre; setFiltre(f); setSecim(new Set()); if (f === 'gorselsiz') setSira({ alan: 'satis90', artan: false }); }}>{filtreAd.map(([f, ad]) => { const n = say(f); return <option key={f} value={f}>{ad}{n !== null ? ` (${sayi(n)})` : ''}</option>; })}</select>
           <span className="ml-auto text-xs text-slate-500">{sayi(liste.length)} sonuç</span>
