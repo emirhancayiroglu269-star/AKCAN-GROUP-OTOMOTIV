@@ -14,7 +14,7 @@ window.addEventListener('message', (e) => {
   if (e.source !== window || e.origin !== location.origin || e.data?.kaynak !== 'akcan-iron' || !Array.isArray(e.data.urunler)) return;
   let canli = false; try { canli = !!chrome.runtime?.id; } catch { /* eklenti yenilendi */ }
   if (!canli) { goster('Akcan: eklenti yenilendi — sayfayı yenileyin (F5)', '#b45309'); return; }
-  try { chrome.runtime.sendMessage({ tur: 'kaydet', urunler: e.data.urunler.slice(0, 500) }, (r) => {
+  try { chrome.runtime.sendMessage({ tur: 'kaydet', tedarikci: e.data.tedarikci === 'basbug' ? 'basbug' : 'iron', urunler: e.data.urunler.slice(0, 500) }, (r) => {
     if (chrome.runtime.lastError) return;
     if (!r) return;
     if (r.anahtarYok) goster('Akcan: eklenti anahtarı girilmemiş (eklenti simgesine tıklayın)', '#b45309');

@@ -120,7 +120,7 @@ function Siparisler({ veri, v }: { veri: TyVeri; v: TyVarsayim }) {
 
 /* ───────── İlanlar & fiyat ───────── */
 type IlanFiltre = 'hepsi' | 'zarar' | 'hedefAlti' | 'tedZam' | 'stokFark' | 'eslesmeyen' | 'kapali';
-const TED_AD: Record<string, string> = { otomarmara: 'Otomarmara', neko: 'Neko', iron: 'Iron' };
+const TED_AD: Record<string, string> = { otomarmara: 'Otomarmara', neko: 'Neko', iron: 'Iron', basbug: 'Başbuğ' };
 function Ilanlar({ veri, v }: { veri: TyVeri; v: TyVarsayim }) {
   const { db, izin } = useStore();
   const [f, setF] = useState<IlanFiltre>('hepsi'); const [q, setQ] = useState('');
@@ -150,7 +150,7 @@ function Ilanlar({ veri, v }: { veri: TyVeri; v: TyVarsayim }) {
         <Kpi etiket={`Hedef marj (%${v.hedef_marj}) altında`} deger={sayi(say('hedefAlti'))} renk="amber" />
         <Kpi etiket="Stok farkı" deger={sayi(say('stokFark'))} alt="Trendyol stoğu ≠ iki deponun toplamı" renk="blue" />
       </div>
-      {izin('maliyet') && <IronEklenti ironSay={[...ted.values()].filter((x) => x.hepsi.some((h) => h.tedarikci === 'iron')).length} />}
+      {izin('maliyet') && <IronEklenti ironSay={[...ted.values()].filter((x) => x.hepsi.some((h) => (h.tedarikci === 'iron' || h.tedarikci === 'basbug'))).length} />}
       <FiyatGuncelleme hedefAlti={satirlar.filter((x) => x.u && x.hedef && x.t.satis_fiyati && x.t.satista !== false && Math.abs(x.hedef - x.t.satis_fiyati) >= Math.max(1, x.t.satis_fiyati * 0.01)).length} />
       <div className="mb-3 flex flex-wrap items-center gap-1.5">
         {fBtn('hepsi', 'Tümü')}{fBtn('zarar', 'Zararına')}{fBtn('hedefAlti', 'Hedef altı')}{ted.size > 0 && fBtn('tedZam', 'Tedarikçide zamlı')}{fBtn('stokFark', 'Stok farkı')}{fBtn('eslesmeyen', 'Bizde eşleşmeyen')}{fBtn('kapali', 'Satışta değil')}
@@ -191,19 +191,19 @@ function IronEklenti({ ironSay }: { ironSay: number }) {
   return (
     <div className="card mb-4 p-3 text-sm">
       <button className="flex w-full items-center gap-2 text-left" onClick={() => setAc(!ac)}>
-        <PlugZap size={16} className="text-marka-600" /><b>Tedarikçi eklentisi (Iron + BizimHesap)</b>
-        <span className="text-xs text-slate-500">{ironSay ? `${ironSay} ilanın ürününde Iron fiyatı var` : 'Iron fiyatı henüz yok'} · Iron'da arama yaptıkça fiyatlar buraya gelir</span>
+        <PlugZap size={16} className="text-marka-600" /><b>Tedarikçi eklentisi (Iron + Başbuğ + BizimHesap)</b>
+        <span className="text-xs text-slate-500">{ironSay ? `${ironSay} ilanın ürününde Iron/Başbuğ fiyatı var` : 'Iron/Başbuğ fiyatı henüz yok'} · Iron ve Başbuğ'da arama yaptıkça fiyatlar buraya gelir</span>
         <span className="ml-auto text-xs text-slate-400">{ac ? '▲' : '▼'}</span>
       </button>
       {ac && <div className="mt-2 space-y-2 text-slate-600 dark:text-slate-300">
         <p><b>BizimHesap:</b> eklenti BizimHesap panelinde sağ altta "… ürünün alışı tedarikçide zamlı" uyarısı gösterir. Tıklayınca Toplu Ürün Güncelleme sayfasında liste açılır; onayladığınız ürünlerin yalnız <b>kart alış fiyatı</b>, BizimHesap'ın kendi Excel güncellemesiyle yükseltilir (satış fiyatı ve diğer bilgiler değişmez). Kural: tedarikçide stokta ve karttan %3'ten fazla pahalı; %50'yi aşanlar işaretsiz gelir.</p>
-        <p>Iron'un sitesi sunucudan otomatik okunmaya izin vermiyor. Bu Chrome eklentisi, siz Iron'da arama yaptığınızda sitenin getirdiği sonuçları okur; bizdeki ürünle stok kodu birebir aynı olanların net alış fiyatı (KDV hariç) Trendyol maliyet hesabına ve "Tedarikçide zamlı" listesine girer. Sepete eklemez, sipariş vermez.</p>
+        <p>Iron ve Başbuğ'un siteleri (ikisi aynı B2B yazılımı) sunucudan otomatik okunmaya izin vermiyor. Bu Chrome eklentisi, siz bu sitelerde arama yaptığınızda sitenin getirdiği sonuçları okur; bizdeki ürünle stok kodu aynı olanların (Başbuğ'da marka öneki farkı tolere edilir, örn. MANN HU 7032 Z = MAN-HU7032Z) net alış fiyatı (KDV hariç) Trendyol maliyet hesabına ve "Tedarikçide zamlı" listesine girer. Sepete eklemez, sipariş vermez.</p>
         <ol className="list-decimal space-y-0.5 pl-5">
           <li><a className="font-medium text-marka-700 hover:underline" href={`${import.meta.env.BASE_URL}iron-eklenti.zip`} download>Eklentiyi indirin</a> ve zip'i bir klasöre çıkarın (masaüstündeki PROJE1\eklenti\iron klasöründe de var).</li>
           <li>Chrome'da adres çubuğuna <code>chrome://extensions</code> yazın, sağ üstten <b>Geliştirici modu</b>'nu açın.</li>
           <li><b>Paketlenmemiş öğe yükle</b> deyip klasörü seçin.</li>
           <li>Eklenti simgesine tıklayın, aşağıdaki anahtarı yapıştırıp <b>Kaydet ve dene</b>'ye basın.</li>
-          <li>Iron'da arama yapın: sağ altta "Akcan: … ürün okundu" yazısı çıkar.</li>
+          <li>Iron ya da Başbuğ'da arama yapın: sağ altta "Akcan: … ürün okundu" yazısı çıkar.</li>
           <li>Eklentiyi güncellediğinizde <code>chrome://extensions</code> sayfasında eklentinin kartındaki yenile (↻) simgesine basın.</li>
         </ol>
         <div className="flex flex-wrap items-center gap-2"><span>Anahtar:</span>

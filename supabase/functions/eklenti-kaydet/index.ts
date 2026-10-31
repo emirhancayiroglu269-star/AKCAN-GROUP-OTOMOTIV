@@ -1,5 +1,5 @@
 // Tarayıcı eklentisinden gelen tedarikçi ürünlerini kaydeder (Supabase Edge Function).
-// Eklenti, kullanıcı tedarikçi sitesinde (şimdilik Iron Otomotiv B2B) KENDİSİ arama yaptığında sitenin getirdiği sonuçları okur ve buraya yollar.
+// Eklenti, kullanıcı tedarikçi sitesinde (Iron Otomotiv ve Başbuğ B2B — ikisi aynı B2B yazılımı) KENDİSİ arama yaptığında sitenin getirdiği sonuçları okur ve buraya yollar.
 // Sunucu tedarikçi sitesine hiç bağlanmaz. Yetki: eklenti_anahtar tablosundaki anahtar (sitede Trendyol > İlanlar sayfasında yöneticiye gösterilir).
 // Kayıt: tedarikci_katalog (gelen tüm ürünler) + tedarikci_maliyet (stok kodu bizdeki ürünle birebir aynı olanlar → Trendyol maliyet hesabı).
 // bh_liste: BizimHesap kart alışı tedarikçideki güncel fiyatın gerisinde kalan ürünler (eklenti BizimHesap'ın kendi
@@ -12,20 +12,36 @@ const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers
 type Obj = Record<string, unknown>;
 const norm = (s: unknown) => String(s ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '');
 const sayi = (v: unknown) => (v === null || v === undefined || v === '' || !Number.isFinite(Number(v)) ? null : Number(v));
-const TEDARIKCILER = new Set(['iron']);
+const TEDARIKCILER = new Set(['iron', 'basbug']);
 
 // bizdeki aktif ürünlerin normalize stok kodları (fonksiyon sıcakken 10 dk saklanır)
-let kodHarita: Map<string, { id: string; kod: string }> | null = null; let haritaZaman = 0;
+// tam: kodun tamamı (Iron, Otomarmara gibi bizimle aynı kodlayanlar); govde: marka öneki atılmış kod (Başbuğ "MANN HU 7032 Z" ↔ bizim "MAN-HU7032Z")
+type HU = { id: string; kod: string; marka: string; onek: string };
+let kodHarita: { tam: Map<string, HU>; govde: Map<string, HU[]> } | null = null; let haritaZaman = 0;
+const onekAt = (k: string) => { const t = k.trim(); const m = t.match(/^([A-Za-zÇĞİÖŞÜçğıöşü]{2,6})[\s-]+(.+)$/); return m ? { onek: norm(m[1]), govde: norm(m[2]) } : { onek: '', govde: norm(t) }; };
 async function harita() {
   if (kodHarita && Date.now() - haritaZaman < 600_000) return kodHarita;
-  const m = new Map<string, { id: string; kod: string }>();
+  const tam = new Map<string, HU>(); const govde = new Map<string, HU[]>();
   for (let i = 0; i < 50000; i += 1000) {
-    const { data, error } = await db.from('urunler').select('id,kod').eq('aktif', true).not('kod', 'is', null).order('id').range(i, i + 999);
+    const { data, error } = await db.from('urunler').select('id,kod,marka').eq('aktif', true).not('kod', 'is', null).order('id').range(i, i + 999);
     if (error) throw new Error(error.message);
-    for (const u of data ?? []) { const n = norm(u.kod); if (n.length >= 3 && !m.has(n)) m.set(n, { id: u.id as string, kod: u.kod as string }); }
+    for (const u of data ?? []) {
+      const n = norm(u.kod); if (n.length < 3) continue;
+      const o = onekAt(String(u.kod)); const hu: HU = { id: u.id as string, kod: u.kod as string, marka: norm(u.marka), onek: o.onek };
+      if (!tam.has(n)) tam.set(n, hu);
+      if (o.onek && o.govde.length >= 4) { const l = govde.get(o.govde) ?? []; l.push(hu); govde.set(o.govde, l); }
+    }
     if (!data || data.length < 1000) break;
   }
-  kodHarita = m; haritaZaman = Date.now(); return m;
+  kodHarita = { tam, govde }; haritaZaman = Date.now(); return kodHarita;
+}
+/** Tedarikçi kodunu bizdeki ürüne bağlar: önce kodun tamamı, olmazsa marka öneki atılmış kod + marka uyumu (tek aday kalırsa) */
+function eslestir(h: NonNullable<typeof kodHarita>, kod: string, marka: string | null) {
+  const t = h.tam.get(norm(kod)); if (t) return t;
+  const o = onekAt(kod); if (!o.onek || o.govde.length < 4) return null;
+  const m = norm(marka);
+  const aday = (h.govde.get(o.govde) ?? []).filter((u) => (m && u.marka && (u.marka === m || u.marka.startsWith(m) || m.startsWith(u.marka))) || (u.onek && (o.onek.startsWith(u.onek) || u.onek.startsWith(o.onek))));
+  return aday.length === 1 ? aday[0] : null;
 }
 
 /**
@@ -151,13 +167,14 @@ Deno.serve(async (req) => {
   if (e1) return yanit({ ok: false, hata: e1.message }, 500);
 
   // bizdeki ürünle birebir aynı stok kodu → maliyet (aynı ürüne birden çok satır düşerse stokta olanların en ucuzu)
-  const h = await harita(); const sec = new Map<string, Obj>(); const eslesen: { kod: string; bizim: string; fiyat: number | null }[] = [];
+  const h = await harita(); const sec = new Map<string, Obj>(); const bizimKod = new Map<string, string>(); const eslesen: { kod: string; bizim: string; fiyat: number | null }[] = [];
   for (const x of tekil) {
-    const u = h.get(norm(x.kod)); if (!u || !(x.fiyat && x.fiyat > 0)) continue;
+    const u = eslestir(h, x.kod, x.marka); if (!u || !(x.fiyat && x.fiyat > 0)) continue;
+    bizimKod.set(u.id, u.kod);
     const stokta = (x.stok ?? 0) > 0; const e = sec.get(u.id);
     if (!e || (stokta && !e.stok_var) || (stokta === e.stok_var && x.fiyat < Number(e.fiyat))) sec.set(u.id, { urun_id: u.id, tedarikci: ted, kod: x.kod, ad: x.ad, fiyat: Math.round(x.fiyat * 100) / 100, stok_var: stokta, ham: { liste: x.liste, stok: x.stok, depolar: x.depolar }, hata: null, zaman });
   }
   if (sec.size) { const { error: e2 } = await db.from('tedarikci_maliyet').upsert([...sec.values()]); if (e2) return yanit({ ok: false, hata: e2.message }, 500); }
-  for (const s of sec.values()) eslesen.push({ kod: String(s.kod), bizim: h.get(norm(s.kod))!.kod, fiyat: Number(s.fiyat) });
+  for (const s of sec.values()) eslesen.push({ kod: String(s.kod), bizim: bizimKod.get(String(s.urun_id)) ?? String(s.kod), fiyat: Number(s.fiyat) });
   return yanit({ ok: true, kaydedilen: tekil.length, eslesen });
 });

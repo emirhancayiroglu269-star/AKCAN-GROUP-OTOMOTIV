@@ -4,7 +4,7 @@
 // Güvenlik: Excel'deki mevcut alış fiyatı Akcan'daki kayıtla tutmuyorsa, döviz TL değilse ya da alış iskontosu varsa o satır atlanır.
 (() => {
   const GUNCELLEME_SAYFASI = '/web/ngn/prd/ngnexcelpriceupdate';
-  const TED_AD = { otomarmara: 'Otomarmara', neko: 'Neko', iron: 'Iron' };
+  const TED_AD = { otomarmara: 'Otomarmara', neko: 'Neko', iron: 'Iron', basbug: 'Başbuğ' };
   const tl = (n) => Number(n).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ₺';
   const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   // eklenti yenilenince açık sayfadaki eski kopyanın bağlantısı kopar ("Extension context invalidated"): o durumda sessizce dur
