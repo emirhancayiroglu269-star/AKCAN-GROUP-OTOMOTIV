@@ -5,8 +5,8 @@ import { SUPABASE_ANON_KEY, SUPABASE_URL } from './baglanti';
 import { onbellekOku, onbellekYaz, onbellekSil } from './onbellek';
 
 /** ürünlerde BizimHesap'ın ham JSON'u (bh_ham) çok büyük ve sitede kullanılmıyor: çekilmez */
-const URUN_KOLON = 'id,kod,barkod,ad,marka,kategori,birim,alis_fiyati,satis_fiyati,kdv,stok,kritik_stok,raf,aktif,olusturma,bh_id,bh_guncelleme,bh_stok,degisim';
-const ONBELLEK_ANAHTAR = 'ham'; const ONBELLEK_SURUM = 1;
+const URUN_KOLON = 'id,kod,barkod,ad,marka,kategori,birim,alis_fiyati,satis_fiyati,kdv,stok,kritik_stok,raf,aktif,olusturma,bh_id,bh_guncelleme,bh_stok,degisim,gorsel_var';
+const ONBELLEK_ANAHTAR = 'ham'; const ONBELLEK_SURUM = 2; // 2: urunler.gorsel_var eklendi
 /** çıkışta önbellek silinir (ortak bilgisayarda veri kalmasın) */
 export const onbellekTemizle = () => onbellekSil(ONBELLEK_ANAHTAR);
 

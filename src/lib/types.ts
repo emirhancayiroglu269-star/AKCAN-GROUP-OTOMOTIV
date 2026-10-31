@@ -5,6 +5,8 @@ export interface Urun {
   birim: string; alis_fiyati: number; satis_fiyati: number; kdv: number; stok: number; kritik_stok: number;
   /** analizde fatura fiyatı kullanılıyorsa: kartta yazan asıl alış ve faturanın bilgisi (yalnız istemcide) */
   kart_alis?: number;
+  /** BizimHesap kartında fotoğraf var mı (sunucuda hesaplanır) */
+  gorsel_var?: boolean;
   /** BizimHesap kartındaki etiket alanı (OEM / muadil kodları, virgülle) */
   etiket?: string | null; alis_fatura?: { tarih: string; tedarikci: string | null };
   raf?: string | null; aktif: boolean; olusturma?: string; bh_id?: string | null; bh_guncelleme?: string | null; bh_stok?: number | null;

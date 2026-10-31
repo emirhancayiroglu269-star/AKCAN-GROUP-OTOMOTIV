@@ -17,7 +17,7 @@ import { omGuvenilir } from '../lib/muadil';
 import { onerilenFiyat, sonAlislar } from '../lib/analiz2';
 import { tedarikciEnIyi, type TedEn } from '../lib/trendyol';
 
-type Filtre = 'hepsi' | 'fiyat' | 'stoklu' | 'kritik' | 'biten' | 'hareketsiz' | 'eksi' | 'oemsiz' | 'markasiz' | 'barkodsuz' | 'pasif';
+type Filtre = 'hepsi' | 'fiyat' | 'stoklu' | 'kritik' | 'biten' | 'hareketsiz' | 'eksi' | 'oemsiz' | 'markasiz' | 'barkodsuz' | 'gorselsiz' | 'pasif';
 type SiraAlan = 'ad' | 'stok' | 'satis90' | 'son' | 'yeter' | 'fiyat' | 'marj';
 
 export default function Urunler() {
@@ -93,6 +93,7 @@ export default function Urunler() {
         case 'oemsiz': return stokluMu(u) && oemYok(u);
         case 'markasiz': return stokluMu(u) && !(u.marka ?? '').trim();
         case 'barkodsuz': return stokluMu(u) && !(u.barkod ?? '').trim();
+        case 'gorselsiz': return u.stok > 0 && u.gorsel_var === false;
         default: return true;
       }
     });
@@ -111,8 +112,8 @@ export default function Urunler() {
   const hareketsiz = useMemo(() => aktifler.filter(hareketsizMi), [aktifler, oz, sonAlis]);
   const seciliUrunler = liste.filter((u) => secim.has(u.id));
   const fiyatUyarilar = useMemo(() => aktifler.filter(fiyatUyarili), [db, ted, oz]); // eslint-disable-line react-hooks/exhaustive-deps
-  const say = (f: Filtre) => f === 'fiyat' ? fiyatUyarilar.length : f === 'oemsiz' ? aktifler.filter((u) => stokluMu(u) && oemYok(u)).length : f === 'markasiz' ? aktifler.filter((u) => stokluMu(u) && !(u.marka ?? '').trim()).length : f === 'barkodsuz' ? aktifler.filter((u) => stokluMu(u) && !(u.barkod ?? '').trim()).length : f === 'eksi' ? aktifler.filter((u) => u.stok < 0).length : f === 'hareketsiz' ? hareketsiz.length : null;
-  const filtreAd: [Filtre, string][] = [['hepsi', 'Aktif ürünler'], ...(maliyetGor ? [['fiyat', `Fiyat uyarısı (marj %${hedefMarj} altı)`] as [Filtre, string]] : []), ['stoklu', 'Stoktakiler'], ['biten', 'Stoğu bitenler'], ['kritik', 'Kritik stok'], ['hareketsiz', '90 gündür satılmayan (stokta, yeni alınmamış)'], ['eksi', 'Eksi stok'], ['oemsiz', 'OEM/muadil kodu yok'], ['markasiz', 'Markası yok'], ['barkodsuz', 'Barkodu yok'], ['pasif', 'Pasif ürünler']];
+  const say = (f: Filtre) => f === 'fiyat' ? fiyatUyarilar.length : f === 'oemsiz' ? aktifler.filter((u) => stokluMu(u) && oemYok(u)).length : f === 'markasiz' ? aktifler.filter((u) => stokluMu(u) && !(u.marka ?? '').trim()).length : f === 'barkodsuz' ? aktifler.filter((u) => stokluMu(u) && !(u.barkod ?? '').trim()).length : f === 'gorselsiz' ? aktifler.filter((u) => u.stok > 0 && u.gorsel_var === false).length : f === 'eksi' ? aktifler.filter((u) => u.stok < 0).length : f === 'hareketsiz' ? hareketsiz.length : null;
+  const filtreAd: [Filtre, string][] = [['hepsi', 'Aktif ürünler'], ...(maliyetGor ? [['fiyat', `Fiyat uyarısı (marj %${hedefMarj} altı)`] as [Filtre, string]] : []), ['stoklu', 'Stoktakiler'], ['biten', 'Stoğu bitenler'], ['kritik', 'Kritik stok'], ['hareketsiz', '90 gündür satılmayan (stokta, yeni alınmamış)'], ['eksi', 'Eksi stok'], ['oemsiz', 'OEM/muadil kodu yok'], ['markasiz', 'Markası yok'], ['barkodsuz', 'Barkodu yok'], ['gorselsiz', 'Görseli yok (stokta)'], ['pasif', 'Pasif ürünler']];
 
   const csvIndir = () => {
     const satir = (a: (string | number | null | undefined)[]) => a.map((x) => `"${String(x ?? '').replace(/"/g, '""')}"`).join(';');
@@ -159,7 +160,7 @@ export default function Urunler() {
           <select className="inp w-40" value={kat} onChange={(e) => setKat(e.target.value)}><option value="">Tüm kategoriler</option>{kategoriler.map((k) => <option key={k}>{k}</option>)}</select>
           <select className="inp w-36" value={marka} onChange={(e) => setMarka(e.target.value)}><option value="">Tüm markalar</option>{markalar.map((k) => <option key={k}>{k}</option>)}</select>
           {depolar.length > 1 && <select className="inp w-44" value={depoF} onChange={(e) => setDepoF(e.target.value)}><option value="">Tüm depolar</option>{depolar.map((d) => [<option key={d.id} value={`${d.id}:var`}>{d.ad}'da stoklu</option>, <option key={d.id + 'y'} value={`${d.id}:yalniz`}>Yalnız {d.ad}'da</option>])}</select>}
-          <select className="inp w-52" value={filtre} onChange={(e) => { setFiltre(e.target.value as Filtre); setSecim(new Set()); }}>{filtreAd.map(([f, ad]) => { const n = say(f); return <option key={f} value={f}>{ad}{n !== null ? ` (${sayi(n)})` : ''}</option>; })}</select>
+          <select className="inp w-52" value={filtre} onChange={(e) => { const f = e.target.value as Filtre; setFiltre(f); setSecim(new Set()); if (f === 'gorselsiz') setSira({ alan: 'satis90', artan: false }); }}>{filtreAd.map(([f, ad]) => { const n = say(f); return <option key={f} value={f}>{ad}{n !== null ? ` (${sayi(n)})` : ''}</option>; })}</select>
           <span className="ml-auto text-xs text-slate-500">{sayi(liste.length)} sonuç</span>
         </div>
         {secim.size > 0 && (
