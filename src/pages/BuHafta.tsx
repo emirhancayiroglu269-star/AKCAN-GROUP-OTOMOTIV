@@ -1,3 +1,4 @@
+import { almaDurumu } from '../lib/alma';
 import { useEffect, useMemo, useState } from 'react';
 import { Copy, Download, ExternalLink, Info, Loader2, MessageSquare, RefreshCw, Truck } from 'lucide-react';
 import { useStore, toast } from '../lib/store';
@@ -90,6 +91,7 @@ export default function BuHafta() {
       if (t > x.son) x.son = t;
     }
     const siparisteki = new Set(db.stok_aksiyon.filter((a) => a.aksiyon === 'siparis' && a.durum === 'planlandi').map((a) => a.urun_id));
+    for (const id of almaDurumu(db).gizli.keys()) siparisteki.add(id); // "şimdilik alma" işaretliler de önerilmez
     return db.urunler.filter((u) => u.aktif && stokluMu(u) && !siparisteki.has(u.id)).flatMap((u) => {
       const z = dz.get(u.id); if (!z) return [];
       const ay3 = [0, 1, 2].filter((i) => z.ay.has(i)).length;

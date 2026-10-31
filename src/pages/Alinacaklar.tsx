@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Check, Download, Info, MessageCircle, PackageCheck, Printer, Snowflake, Sun, Truck, X } from 'lucide-react';
+import { Check, Download, EyeOff, Info, MessageCircle, PackageCheck, Printer, Snowflake, Sun, Truck, X } from 'lucide-react';
 import { useStore } from '../lib/store';
 import { backend } from '../lib/backend';
 import { alinacakHesap, birimKar, gecerliHareketler, stokluMu, takipGunu, urunOzetleri, type Donem, kritikAltinda } from '../lib/analiz';
@@ -13,6 +13,7 @@ import { UrunLink } from '../components/DetayKart';
 import { muadilMetin, stoktakiMuadiller } from '../lib/muadil';
 import { OmIsteDugme } from '../components/OmIsteDugme';
 import { PahaliRozet } from '../components/PahaliRozet';
+import { almaDurumu } from '../lib/alma';
 
 interface Satir {
   u: Urun; satilan: number; satilan90: number; hiz: number; yeter: number; oneri: number; yolda: number;
@@ -42,7 +43,7 @@ export default function Alinacaklar() {
   const [sirala, setSirala] = useState<'oncelik' | 'yeter'>('oncelik');
   const [butce, setButce] = useState(() => yerel.al('siparis_butce', ''));
   const [kritikGun, setKritikGun] = useState(() => Number(yerel.al('kritik_gun', '10')) || 10);
-  const [panel, setPanel] = useState<'' | 'yolda' | 'kritik'>('');
+  const [panel, setPanel] = useState<'' | 'yolda' | 'kritik' | 'gizli'>('');
   const [gorunum, setGorunum] = useState<'depo' | 'toplam'>(() => (yerel.al('alinacak_gorunum', 'depo') as 'depo' | 'toplam'));
   const [guven, setGuven] = useState<'kesin' | 'kontrol' | 'hepsi'>(() => (yerel.al('alinacak_guven', 'kesin') as 'kesin' | 'kontrol' | 'hepsi'));
   const ted = useMemo(() => urunTedarikcileri(db), [db]);
@@ -85,6 +86,18 @@ export default function Alinacaklar() {
     Promise.all(kapat.map((k) => backend.update<StokAksiyon>('stok_aksiyon', k.id, { durum: 'yapildi', guncelleme: new Date().toISOString() }))).catch(() => undefined);
   }, [acik, duzenle]);
 
+  // ---------- "şimdilik alma": muadili rafta / alınmayacak biten ürünler gizlenir; stok girerse işaret kendiliğinden kalkar ----------
+  const alma = useMemo(() => almaDurumu(db), [db]);
+  const almaKalkan = useRef(new Set<string>());
+  useEffect(() => {
+    if (!duzenle) return;
+    const l = alma.kalkacak.filter((k) => !almaKalkan.current.has(String(k.id))); if (!l.length) return;
+    l.forEach((k) => almaKalkan.current.add(String(k.id)));
+    Promise.all(l.map((k) => backend.update<StokAksiyon>('stok_aksiyon', k.id, { durum: 'yapildi', guncelleme: new Date().toISOString() }))).catch(() => undefined);
+  }, [alma, duzenle]);
+  const almaIsaretle = (u: Urun) => calistir(() => backend.insert<Partial<StokAksiyon>>('stok_aksiyon', { urun_id: u.id, aksiyon: 'alma', baslangic_stok: u.stok, durum: 'planlandi', kullanici: personel, notlar: 'Şimdilik alma (stok girerse kendiliğinden kalkar)' }), 'Şimdilik listeden çıkarıldı; stok girip tekrar biterse yine görünür');
+  const almaGeriAl = (a: StokAksiyon) => calistir(() => backend.update<StokAksiyon>('stok_aksiyon', a.id, { durum: 'vazgecildi', guncelleme: new Date().toISOString() }), 'Listeye geri alındı');
+
   // ---------- satış düzeni (son 180 gün): "kesin alınacak" kararı için ----------
   const duzenler = useMemo(() => {
     const simdi = Date.now(); const d180: Donem = { bas: gunu(new Date(simdi - 179 * 864e5)), bit: gunu() };
@@ -107,7 +120,7 @@ export default function Alinacaklar() {
 
   const satirlar = useMemo<Satir[]>(() => {
     const oz = urunOzetleri(db, d), oz90 = urunOzetleri(db, d90);
-    return db.urunler.filter((u) => u.aktif && stokluMu(u)).flatMap((u) => {
+    return db.urunler.filter((u) => u.aktif && stokluMu(u) && !alma.gizli.has(u.id)).flatMap((u) => {
       const satilan = oz.get(u.id)?.satilan ?? 0; const satisSay = oz.get(u.id)?.satisSayisi ?? 0;
       const satilan90 = oz90.get(u.id)?.satilan ?? 0;
       const ms = mevsimAcik ? mevsim(u) : null;
@@ -129,15 +142,15 @@ export default function Alinacaklar() {
         kesin: !olu && kesinMi(duzenler.get(u.id)), duzen: duzenler.get(u.id) ?? null }];
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [db, gunSec, gun, hedefGun, mevsimAcik, acik, duzenler]);
+  }, [db, gunSec, gun, hedefGun, mevsimAcik, acik, duzenler, alma]);
 
   const muadilStokHesap = useMemo(() => { const m = new Map<string, number>(); for (const x of satirlar) if (x.u.stok <= 0) { const t = stoktakiMuadiller(db, x.u).reduce((a, v) => a + v.stok, 0); if (t > 0) m.set(x.u.id, t); } return m; }, [db, satirlar]);
   const kesinSay = satirlar.filter((x) => x.kesin && x.oneri > 0 && !((muadilStokHesap.get(x.u.id) ?? 0) >= x.oneri)).length;
   // ---------- kesin alınacaklar depo bazında: her deponun kendi satışı ve stoğu; diğer depoda fazlası varsa transfer ----------
   const kesinUrun = useMemo(() => new Set(db.urunler.filter((u) => u.aktif && kesinMi(duzenler.get(u.id))).map((u) => u.id)),
     [db, duzenler]);
-  const depoKesin = useMemo(() => guven !== 'kesin' ? [] : depoSiparisleri(db, 60, hedefGun, mevsimAcik).map((dp) => ({ ...dp, satirlar: dp.satirlar.filter((x) => kesinUrun.has(x.u.id) && (x.siparis > 0 || x.transfer > 0)) })),
-    [db, guven, hedefGun, mevsimAcik, kesinUrun]);
+  const depoKesin = useMemo(() => guven !== 'kesin' ? [] : depoSiparisleri(db, 60, hedefGun, mevsimAcik).map((dp) => ({ ...dp, satirlar: dp.satirlar.filter((x) => kesinUrun.has(x.u.id) && !alma.gizli.has(x.u.id) && (x.siparis > 0 || x.transfer > 0)) })),
+    [db, guven, hedefGun, mevsimAcik, kesinUrun, alma]);
   const markalar = useMemo(() => Array.from(new Set(satirlar.map((x) => x.u.marka).filter(Boolean))).sort() as string[], [satirlar]);
   const kategoriler = useMemo(() => Array.from(new Set(satirlar.map((x) => x.u.kategori).filter(Boolean))).sort() as string[], [satirlar]);
   const muadilYeter = (x: Satir) => (muadilStokHesap.get(x.u.id) ?? 0) >= x.oneri;
@@ -221,7 +234,8 @@ export default function Alinacaklar() {
   const acikListe = [...acik.entries()].filter(([, x]) => x.kalan > 0).map(([id, x]) => ({ id, u: urunMap.get(id), ...x })).sort((a, b) => a.ilk.localeCompare(b.ilk));
   const yoldaTutar = acikListe.reduce((t, x) => t + x.kalan * (x.kayitlar[0]?.fiyat ?? x.u?.alis_fiyati ?? 0), 0);
   const oluSay = satirlar.filter((x) => x.olu).length;
-  const sekmeBtn = (id: '' | 'yolda' | 'kritik', ad: string, n?: number) => <button onClick={() => setPanel(panel === id ? '' : id)} className={`rounded-full px-3 py-1.5 text-sm ${panel === id ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900' : 'bg-white text-slate-600 dark:bg-slate-900 dark:text-slate-300'}`}>{ad}{n !== undefined && <span className="ml-1 opacity-60">{n}</span>}</button>;
+  const gizliListe = [...alma.gizli.values()].map((a) => ({ a, u: urunMap.get(a.urun_id) })).filter((x) => x.u).sort((a, b) => (b.a.olusturma ?? '').localeCompare(a.a.olusturma ?? ''));
+  const sekmeBtn = (id: '' | 'yolda' | 'kritik' | 'gizli', ad: string, n?: number) => <button onClick={() => setPanel(panel === id ? '' : id)} className={`rounded-full px-3 py-1.5 text-sm ${panel === id ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900' : 'bg-white text-slate-600 dark:bg-slate-900 dark:text-slate-300'}`}>{ad}{n !== undefined && <span className="ml-1 opacity-60">{n}</span>}</button>;
 
   return (
     <div>
@@ -250,6 +264,7 @@ export default function Alinacaklar() {
         <span className="mx-1 h-5 w-px bg-slate-300 dark:bg-slate-700" />
         {sekmeBtn('yolda', 'Yoldaki siparişler', acikListe.length)}
         {duzenle && sekmeBtn('kritik', 'Kritik seviye önerileri')}
+        {gizliListe.length > 0 && sekmeBtn('gizli', 'Şimdilik alınmayacaklar', gizliListe.length)}
         {maliyetGor && <label className="ml-auto flex items-center gap-2 text-sm">Sipariş bütçesi
           <input className="inp w-32 py-1 text-right" placeholder="sınırsız" value={butce} onChange={(e) => { setButce(e.target.value); yerel.yaz('siparis_butce', e.target.value); }} /> TL</label>}
       </div>
@@ -273,6 +288,24 @@ export default function Alinacaklar() {
                   </tr>); })}</tbody>
               </table>
             )}
+          </div>
+        </div>
+      )}
+
+      {panel === 'gizli' && (
+        <div className="card mb-4">
+          <div className="border-b border-slate-200 p-3 text-sm dark:border-slate-800"><b>Şimdilik alınmayacaklar</b> <span className="text-slate-500">· muadili rafta ya da alınmayacak diye işaretlenen biten ürünler. Ürüne yeniden stok girerse işaret kendiliğinden kalkar; stok tekrar biterse listeye yine düşer.</span></div>
+          <div className="max-h-[40vh] overflow-auto">
+            <table className="tbl">
+              <thead><tr><th>Ürün</th><th>Not</th><th className="text-right">İşaretlendi</th>{duzenle && <th></th>}</tr></thead>
+              <tbody>{gizliListe.map(({ a, u }) => (
+                <tr key={String(a.id)}>
+                  <td><div className="font-medium"><UrunLink id={u!.id}>{u!.ad}</UrunLink></div><div className="text-xs text-slate-500">{[u!.kod, u!.marka].filter(Boolean).join(' · ')} · stok {sayi(u!.stok)}</div></td>
+                  <td className="text-xs text-slate-500">{a.notlar}</td>
+                  <td className="text-right text-slate-500">{tarih(a.olusturma)}</td>
+                  {duzenle && <td className="text-right"><button className="btn-ghost px-2 py-1 text-xs" onClick={() => almaGeriAl(a)}>Listeye geri al</button></td>}
+                </tr>))}</tbody>
+            </table>
           </div>
         </div>
       )}
@@ -357,7 +390,8 @@ export default function Alinacaklar() {
                     {x.olu && <span className="ml-1.5 rozet bg-red-100 text-red-700" title="Kritik seviyesi tanımlı ama 90 gündür hiç satılmadı">90 gündür satılmadı</span>}
                     {butceDisi.has(x.u.id) && <span className="ml-1.5 rozet bg-slate-200 text-slate-600">bütçe dışı</span>}
                   </div></td>
-                  <td className={`text-right font-medium ${x.u.stok <= 0 ? 'text-red-600' : 'text-amber-700'}`}>{sayi(x.u.stok)}</td>
+                  <td className={`text-right font-medium ${x.u.stok <= 0 ? 'text-red-600' : 'text-amber-700'}`}>{sayi(x.u.stok)}
+                    {duzenle && x.u.stok <= 0 && <button className="mt-0.5 block w-full whitespace-nowrap text-right text-[10px] font-normal text-slate-400 hover:text-slate-700 hover:underline" title="Muadili rafta ya da alınmayacak: listeden gizle. Stok girip tekrar biterse yine görünür." onClick={() => almaIsaretle(x.u)}><EyeOff size={10} className="mr-0.5 inline" />şimdilik alma</button>}</td>
                   <td>{duzenle ? <input className="inp py-1 text-right" defaultValue={x.u.kritik_stok || ''} placeholder="—" key={x.u.kritik_stok} onBlur={(e) => kritikKaydet(x.u, e.target.value)} /> : <div className="text-right">{x.u.kritik_stok || '—'}</div>}
                     {duzenle && ko !== (x.u.kritik_stok || 0) && <button className="mt-0.5 block w-full text-right text-[10px] text-marka-600 hover:underline" title="90 günlük satış hızına göre; uygulamak için tıklayın" onClick={() => kritikKaydet(x.u, String(ko))}>öneri: {ko || 'kaldır'}</button>}</td>
                   <td className="text-right text-slate-500">{sayi(x.satilan)}</td>

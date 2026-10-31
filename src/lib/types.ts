@@ -37,7 +37,7 @@ export interface VadesiGecen { id: number; cari: string; telefon?: string | null
 export interface Masraf { id: number; tarih: string; odeme_tarihi?: string | null; durum?: string | null; ana?: string | null; alt?: string | null; hesap?: string | null; aciklama?: string | null; tutar: number }
 export interface TahsilatNot { id: ID; cari: string; cari_guid?: string | null; tur: 'not' | 'arama' | 'mesaj' | 'soz'; metin?: string | null; soz_tarih?: string | null; soz_tutar?: number | null; durum?: 'acik' | 'tutuldu' | 'tutulmadi' | null; kullanici?: string | null; olusturma?: string }
 /** 'siparis': Alınacaklar'dan verilen tedarikçi siparişi (baslangic_deger = sipariş adedi, fiyat = birim alış; planlandi = yolda, yapildi = geldi) */
-export type StokAksiyonTur = 'iade' | 'kampanya' | 'toplu' | 'beklet' | 'siparis';
+export type StokAksiyonTur = 'iade' | 'kampanya' | 'toplu' | 'beklet' | 'siparis' | 'alma';
 export interface StokAksiyon { id: ID; urun_id: ID; aksiyon: StokAksiyonTur; fiyat?: number | null; tedarikci?: string | null; durum: 'planlandi' | 'yapildi' | 'vazgecildi'; notlar?: string | null; baslangic_stok?: number | null; baslangic_deger?: number | null; kullanici?: string | null; olusturma?: string; guncelleme?: string | null }
 export interface FiyatGecmisi { id: number; tarih: string; urun_id: ID; alis_eski: number; alis_yeni: number; satis_eski: number; satis_yeni: number }
 
