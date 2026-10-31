@@ -3,7 +3,7 @@ import { AlertTriangle, CalendarCheck, Check, ChevronDown, HandCoins, Info, Mess
 import { useStore } from '../lib/store';
 import { backend } from '../lib/backend';
 import { gunu, para, parse, tarih, tarihSaat, telLink } from '../lib/format';
-import { haftalikTahsilat, MESAJLAR, tahsilatDisiListe, tahsilatListesi, type TahsilatDurum, type TahsilatSatir } from '../lib/tahsilat';
+import { cariAnahtar, haftalikTahsilat, icCari, MESAJLAR, tahsilatDisiListe, tahsilatListesi, type TahsilatDurum, type TahsilatSatir } from '../lib/tahsilat';
 import type { TahsilatNot } from '../lib/types';
 import { MusteriLink } from '../components/DetayKart';
 import { Alan, Bos, Kpi, Modal, SayfaBaslik } from '../components/ui';
@@ -19,7 +19,10 @@ const TUR_AD: Record<TahsilatNot['tur'], string> = { not: 'Not', arama: 'Arandı
 type Form = { s: TahsilatSatir; tur: 'not' | 'arama' | 'soz' } | null;
 
 export default function Tahsilat() {
-  const { db, personel, calistir } = useStore();
+  const { db, personel, calistir, rol } = useStore();
+  const yonetici = rol === 'yonetici';
+  // kendi aracımız / iç hesap carisi: tahsilat listesinden ve alacak toplamından çıkar (Ayarlar > ic_cariler)
+  const icCariYap = (cari: string, ekle: boolean) => { const l = (db.ayarlar.ic_cariler ?? []).filter((x) => cariAnahtar(x) !== cariAnahtar(cari)); if (ekle) l.push(cari.replace(/[\s/]+$/, '')); return calistir(() => backend.ayarKaydet({ ic_cariler: l }), ekle ? 'Bizim hesap olarak işaretlendi; tahsilat listesinden çıkarıldı' : 'Tahsilat listesine geri alındı'); };
   const liste = useMemo(() => tahsilatListesi(db), [db]);
   const hafta = useMemo(() => haftalikTahsilat(db), [db]);
   const disi = useMemo(() => tahsilatDisiListe(db), [db]);
@@ -117,6 +120,7 @@ export default function Tahsilat() {
                       <div className="rounded-lg bg-slate-50 p-2 dark:bg-slate-800/60"><div className="text-slate-500">Son 90 gün ödemesi</div><b>{para(s.son90Tahsilat)}</b></div>
                     </div>
                     <button className="btn-ghost mt-3 text-xs" onClick={() => formAc(s, 'not')}><NotebookPen size={14} /> Not ekle</button>
+                    {yonetici && <button className="btn-ghost mt-3 ml-1.5 text-xs" title="Kendi aracımız / iç hesap: tahsilat listesine ve alacak toplamına girmez" onClick={() => icCariYap(s.cari, true)}>Bizim hesap — listeden çıkar</button>}
                   </div>
                   <div>
                     <div className="mb-2 text-sm font-semibold">Geçmiş</div>
@@ -142,7 +146,8 @@ export default function Tahsilat() {
       )}
       <div className="mt-4 flex items-start gap-2 rounded-xl bg-slate-100 p-3 text-xs text-slate-600 dark:bg-slate-800 dark:text-slate-300">
         <Info size={15} className="mt-0.5 shrink-0" />
-        <span>{disi.length > 0 && <>Araç alım/satım faturası olan {disi.map((v) => `${v.cari.replace(/\s*\/\s*$/, '')} (${para(v.tutar)})`).join(', ')} carisi proje hesabı olduğu için listeye ve toplama katılmadı. </>}Sıralama: borç tutarı × gecikme süresi; sözü geçenler ve bugün ödeyecekler en üstte, son 3 günde görüşülenler ve ileri tarihli söz verenler altta. Notlar ve sözler programın kendi veritabanında tutulur, BizimHesap'a yazılmaz. Ödeme gelince BizimHesap'ta tahsilatı girin; vadesi geçen listesi ve "Bu hafta tahsilat" "verileri güncelle" ile yenilenir.</span>
+        <span>{disi.filter((v) => !icCari(db, v.cari)).length > 0 && <>Araç alım/satım faturası olan {disi.filter((v) => !icCari(db, v.cari)).map((v) => `${v.cari.replace(/\s*\/\s*$/, '')} (${para(v.tutar)})`).join(', ')} carisi proje hesabı olduğu için listeye ve toplama katılmadı. </>}
+          {disi.some((v) => icCari(db, v.cari)) && <>Bizim hesap (kendi aracımız) olarak işaretli {disi.filter((v) => icCari(db, v.cari)).map((v) => <span key={v.cari}>{v.cari.replace(/\s*\/\s*$/, '')} ({para(v.tutar)}){yonetici && <button className="ml-1 text-marka-700 underline" onClick={() => icCariYap(v.cari, false)}>geri al</button>} </span>)} listeye ve toplama katılmadı. </>}Sıralama: borç tutarı × gecikme süresi; sözü geçenler ve bugün ödeyecekler en üstte, son 3 günde görüşülenler ve ileri tarihli söz verenler altta. Notlar ve sözler programın kendi veritabanında tutulur, BizimHesap'a yazılmaz. Ödeme gelince BizimHesap'ta tahsilatı girin; vadesi geçen listesi ve "Bu hafta tahsilat" "verileri güncelle" ile yenilenir.</span>
       </div>
 
       {form && (

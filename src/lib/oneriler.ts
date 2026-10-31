@@ -1,3 +1,4 @@
+import { icCari, tahsilatDisi } from './tahsilat';
 import { olc } from './hataKayit';
 import type { DB, ID, Urun } from './types';
 import type { Sayfa } from '../App';
@@ -240,8 +241,8 @@ function onerileriHesapla(db: DB): Oneri[] {
 
   // ---------- NAKİT ----------
   // araç alım/satım faturası olan cariler (ör. L200) tahsilat analizine katılmaz: işletmenin normal veresiye alacağı değil
-  const gecisAlacak = db.cariler.filter((c) => c.tur === 'musteri' && c.bakiye > 0 && (gecisCarisi(db, c.bh_id) || gecisCarisi(db, c.ad)));
-  const vg = db.vadesi_gecen.filter((v) => v.tutar > 0 && !gecisCarisi(db, v.cari)).sort((x, y) => y.tutar - x.tutar);
+  const gecisAlacak = db.cariler.filter((c) => c.tur === 'musteri' && c.bakiye > 0 && (gecisCarisi(db, c.bh_id) || gecisCarisi(db, c.ad)) && !icCari(db, c.ad));
+  const vg = db.vadesi_gecen.filter((v) => v.tutar > 0 && !tahsilatDisi(db, v.cari)).sort((x, y) => y.tutar - x.tutar);
   const vgToplam = vg.reduce((t, v) => t + v.tutar, 0);
   const aylar = aylikSeri(db); const buAy = gunu().slice(0, 7);
   const tamAylar = aylar.filter((x) => x.ay < buAy && x.ciro > 0).slice(-3);

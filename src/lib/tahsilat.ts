@@ -53,8 +53,12 @@ function tahsilatHesapla(db: DB): TahsilatSatir[] {
       sonTahsilat: t[0] ? { tarih: t[0].tarih, tutar: t[0].giris } : null, son90Tahsilat: t.filter((x) => x.tarih >= sinir90).reduce((s, x) => s + x.giris, 0), son14Satis, durum, puan, tutulmayanSoz };
   }).sort((a, b) => b.puan - a.puan);
 }
-/** Araç alım/satım (geçiş) carileri tahsilat listesine girmez: bu bir proje hesabı, müşteri borcu değil */
-export const tahsilatDisi = (db: DB, ad: string) => gecisCarisi(db, ad);
+/** Cari adı karşılaştırması: büyük harf, sondaki "/" ve boşluklar atılır ("L200 /" = "L200") */
+export const cariAnahtar = (s?: string | null) => buyuk(s).replace(/…$/, '').replace(/[\s/]+$/, '').replace(/\s*\/\s*/g, ' / ');
+/** Firmanın kendi araç / iç hesap carisi mi (Ayarlar > ic_cariler) */
+export const icCari = (db: DB, ad?: string | null) => !!ad && (db.ayarlar.ic_cariler ?? []).some((x) => cariAnahtar(x) === cariAnahtar(ad));
+/** Araç alım/satım (geçiş) carileri ve firmanın kendi araç carileri tahsilat listesine girmez: proje / iç hesap, müşteri borcu değil */
+export const tahsilatDisi = (db: DB, ad: string) => gecisCarisi(db, ad) || icCari(db, ad);
 export const tahsilatDisiListe = (db: DB) => db.vadesi_gecen.filter((v) => v.tutar > 0 && tahsilatDisi(db, v.cari));
 /** Bu haftaki cari tahsilatlar (kasa/banka "Tahsilat" hareketleri, perakende hariç) */
 export function haftalikTahsilat(db: DB) {
