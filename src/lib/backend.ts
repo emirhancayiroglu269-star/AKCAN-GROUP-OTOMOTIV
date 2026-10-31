@@ -88,7 +88,7 @@ export interface TySiparis { paket_id: string; siparis_no: string | null; tarih:
 export interface TyDurum { son_urun: string | null; son_siparis: string | null; son_hata: string | null; urun_sayisi: number | null; siparis_sayisi: number | null }
 export interface TyGonderim { id: number; zaman: string; barkod: string; baslik: string | null; eski: number | null; yeni: number; durum: string; hata: string | null; kaynak: string | null; fiyat_eski?: number | null; fiyat_yeni?: number | null }
 export interface TyFiyatSupheli { barkod: string; baslik: string | null; eski: number; hedef: number; neden: string }
-export interface TedarikciMaliyet { urun_id: string; tedarikci: 'otomarmara' | 'neko' | 'iron' | 'basbug'; kod: string | null; fiyat: number; stok_var: boolean | null; zaman: string }
+export interface TedarikciMaliyet { urun_id: string; tedarikci: 'otomarmara' | 'neko' | 'iron' | 'basbug' | 'ozas'; kod: string | null; fiyat: number; stok_var: boolean | null; zaman: string }
 export interface TyOzellikDeger { attributeId: number; attributeValueId?: number | null; customAttributeValue?: string | null; ad?: string; deger?: string }
 export interface TyKategoriEsleme { bh_kategori: string; ty_kategori_id: number; ty_kategori_ad: string | null; ozellikler: TyOzellikDeger[]; desi: number | null }
 export interface TyMarkaEsleme { bh_marka: string; ty_marka_id: number; ty_marka_ad: string | null }

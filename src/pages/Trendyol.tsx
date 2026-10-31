@@ -120,7 +120,7 @@ function Siparisler({ veri, v }: { veri: TyVeri; v: TyVarsayim }) {
 
 /* ───────── İlanlar & fiyat ───────── */
 type IlanFiltre = 'hepsi' | 'zarar' | 'hedefAlti' | 'tedZam' | 'stokFark' | 'eslesmeyen' | 'kapali';
-const TED_AD: Record<string, string> = { otomarmara: 'Otomarmara', neko: 'Neko', iron: 'Iron', basbug: 'Başbuğ' };
+const TED_AD: Record<string, string> = { otomarmara: 'Otomarmara', neko: 'Neko', iron: 'Iron', basbug: 'Başbuğ', ozas: 'Özaş' };
 function Ilanlar({ veri, v }: { veri: TyVeri; v: TyVarsayim }) {
   const { db, izin } = useStore();
   const [f, setF] = useState<IlanFiltre>('hepsi'); const [q, setQ] = useState('');

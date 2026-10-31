@@ -17,7 +17,7 @@ chrome.runtime.onMessage.addListener((m, _g, cevap) => {
     if (m.tur !== 'kaydet') return cevap(null);
     if (!anahtar) return cevap({ ok: false, anahtarYok: true });
     try {
-      const r = await gonder({ anahtar, tedarikci: m.tedarikci === 'basbug' ? 'basbug' : 'iron', urunler: m.urunler });
+      const r = await gonder({ anahtar, tedarikci: ['basbug', 'ozas'].includes(m.tedarikci) ? m.tedarikci : 'iron', urunler: m.urunler });
       if (r.ok) {
         const gun = new Date().toISOString().slice(0, 10);
         const { say = {} } = await chrome.storage.local.get('say');

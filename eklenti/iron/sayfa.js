@@ -1,7 +1,7 @@
 // Sayfanın kendi bağlamında çalışır: Iron / Başbuğ sitesinin (aynı B2B yazılımı) KENDİ yaptığı ürün arama isteklerinin yanıtlarını okur.
 // Hiçbir istek göndermez, hiçbir şeyi değiştirmez; yalnız gelen sonuçları içerik betiğine iletir.
 (() => {
-  const TED = /(^|\.)b2bbasbug\.com$/.test(location.hostname) ? 'basbug' : 'iron';
+  const TED = /(^|\.)b2bbasbug\.com$/.test(location.hostname) ? 'basbug' : /(^|\.)ozas\.com\.tr$/.test(location.hostname) ? 'ozas' : 'iron';
   // PurchasedProductList: site girişte "Aldıklarım" listesini (daha önce alınan tüm ürünler, güncel fiyat+stok) kendisi çeker
   const ARAMA = /\/Service\/(ProductSearch[A-Za-z]*|PurchasedProductList|SelectiveSearchItems|SearchProductBy[A-Za-z]*|ProductDetails)(\?|$)/;
   // Iron stok kodunu sayfada şifreli tutar: her onaltılık rakam (ASCII) 0x72 ile XOR'lanmış, sonra yine onaltılık yazılmış

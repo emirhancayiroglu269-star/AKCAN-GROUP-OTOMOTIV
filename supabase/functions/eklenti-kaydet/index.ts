@@ -14,7 +14,7 @@ const norm = (s: unknown) => String(s ?? '').toUpperCase().replace(/[^A-Z0-9]/g,
 // marka karşılaştırması Türkçe harfleri sadeleştirir ("FİLTRON" = "FILTRON")
 const markaNorm = (s: unknown) => String(s ?? '').toLocaleUpperCase('tr').replace(/İ/g, 'I').replace(/Ş/g, 'S').replace(/Ğ/g, 'G').replace(/Ü/g, 'U').replace(/Ö/g, 'O').replace(/Ç/g, 'C').replace(/[^A-Z0-9]/g, '');
 const sayi = (v: unknown) => (v === null || v === undefined || v === '' || !Number.isFinite(Number(v)) ? null : Number(v));
-const TEDARIKCILER = new Set(['iron', 'basbug']);
+const TEDARIKCILER = new Set(['iron', 'basbug', 'ozas']);
 
 // bizdeki aktif ürünlerin normalize stok kodları (fonksiyon sıcakken 10 dk saklanır)
 // tam: kodun tamamı (Iron, Otomarmara gibi bizimle aynı kodlayanlar); govde: marka öneki atılmış kod (Başbuğ "MANN HU 7032 Z" ↔ bizim "MAN-HU7032Z")
