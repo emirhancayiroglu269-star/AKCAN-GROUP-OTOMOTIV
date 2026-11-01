@@ -51,6 +51,23 @@ function eslestir(h: NonNullable<typeof kodHarita>, kod: string, marka: string |
 }
 
 /**
+ * Şüpheli fiyat: kart alışının 1,6 katından fazla ve başka hiçbir tedarikçide ±%20 yakın fiyat yok
+ * (ör. tedarikçi "2 ad." birim fiyatını göndermiş, yanlış eşleşme). Böyle fiyatlar BizimHesap'a yazılacaklar listesine girmez.
+ */
+async function tumFiyatlar(sinir: string) {
+  const m = new Map<string, { tedarikci: string; fiyat: number }[]>();
+  for (let i = 0; i < 50000; i += 1000) {
+    const { data, error } = await db.from('tedarikci_maliyet').select('urun_id,tedarikci,fiyat').not('fiyat', 'is', null).gt('zaman', sinir).order('urun_id').range(i, i + 999);
+    if (error) throw new Error(error.message);
+    for (const t of data ?? []) { const f = Number(t.fiyat); if (!(f > 0)) continue; const l = m.get(t.urun_id as string) ?? []; l.push({ tedarikci: String(t.tedarikci), fiyat: f }); m.set(t.urun_id as string, l); }
+    if (!data || data.length < 1000) break;
+  }
+  return m;
+}
+const supheliMi = (yeni: number, kart: number, tedarikci: string, hepsi: { tedarikci: string; fiyat: number }[] | undefined) =>
+  kart > 0 && yeni > kart * 1.6 && !(hepsi ?? []).some((o) => o.tedarikci !== tedarikci && Math.abs(o.fiyat - yeni) <= yeni * 0.2);
+
+/**
  * BizimHesap kartındaki alış fiyatı, tedarikçide STOKTA olan en ucuz güncel fiyatın (7 gün içinde okunmuş, KDV hariç) %3'ten fazla gerisinde kalan ürünler.
  * Fark %50'yi aşarsa ya da kartta alış yoksa "kontrol" işaretlenir (eklentide varsayılan seçili gelmez).
  */
@@ -67,6 +84,7 @@ async function bhListe() {
   const { data: son } = await db.from('bh_alis_log').select('urun_id').gt('zaman', new Date(Date.now() - 2 * 3600000).toISOString()).limit(5000);
   for (const x of son ?? []) en.delete(x.urun_id as string);
   const ids = [...en.keys()]; const { data: ay } = await db.from('ayarlar').select('alis_kdv_haric').eq('id', 1).maybeSingle(); const kdvHaric = ay?.alis_kdv_haric !== false;
+  const hepsi = await tumFiyatlar(sinir);
   const out: Obj[] = [];
   for (let i = 0; i < ids.length; i += 200) {
     const { data } = await db.from('urunler').select('id,kod,ad,alis_fiyati,kdv,aktif').in('id', ids.slice(i, i + 200));
@@ -75,6 +93,7 @@ async function bhListe() {
       const t = en.get(u.id as string)!; const kdv = Number(u.kdv) || 20; const alis = Number(u.alis_fiyati) || 0;
       const kart = kdvHaric ? alis : alis / (1 + kdv / 100); const yeni = Math.round(Number(t.fiyat) * 100) / 100;
       if (kart > 0 && yeni <= kart * 1.03) continue;
+      if (supheliMi(yeni, kart, String(t.tedarikci), hepsi.get(u.id as string))) continue; // şüpheli fiyat: yazılmaz (sitede işaretli)
       out.push({ urun_id: u.id, kod: u.kod, ad: u.ad, kart: Math.round(kart * 100) / 100, kart_ham: alis, yeni, tedarikci: t.tedarikci, ted_kod: t.kod, zaman: t.zaman, kontrol: kart <= 0 || yeni > kart * 1.5 });
     }
   }
@@ -100,6 +119,7 @@ async function bhStoksuz() {
   const { data: son } = await db.from('bh_alis_log').select('urun_id').gt('zaman', new Date(Date.now() - 2 * 3600000).toISOString()).limit(5000);
   for (const x of son ?? []) en.delete(x.urun_id as string);
   const ids = [...en.keys()]; const { data: ay } = await db.from('ayarlar').select('alis_kdv_haric').eq('id', 1).maybeSingle(); const kdvHaric = ay?.alis_kdv_haric !== false;
+  const hepsi = await tumFiyatlar(sinir);
   const out: Obj[] = [];
   for (let i = 0; i < ids.length; i += 200) {
     const { data } = await db.from('urunler').select('id,kod,ad,alis_fiyati,kdv,aktif,stok').in('id', ids.slice(i, i + 200));
@@ -108,6 +128,7 @@ async function bhStoksuz() {
       const t = en.get(u.id as string)!; const kdv = Number(u.kdv) || 20; const alis = Number(u.alis_fiyati) || 0;
       const kart = kdvHaric ? alis : alis / (1 + kdv / 100); const yeni = Math.round(Number(t.fiyat) * 100) / 100;
       if (!(kart > 0) || yeni <= kart * 1.03) continue;
+      if (supheliMi(yeni, kart, String(t.tedarikci), hepsi.get(u.id as string))) continue;
       out.push({ urun_id: u.id, kod: u.kod, ad: u.ad, kart: Math.round(kart * 100) / 100, kart_ham: alis, yeni, tedarikci: t.tedarikci, ted_kod: t.kod, zaman: t.zaman, stok: Number(u.stok) || 0, kontrol: yeni > kart * 1.5 });
     }
   }

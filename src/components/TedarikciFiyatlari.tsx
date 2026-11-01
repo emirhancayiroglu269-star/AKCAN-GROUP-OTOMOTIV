@@ -57,7 +57,12 @@ export function TedarikciFiyatlari({ u, kod, baslik = true }: { u?: Urun; kod?: 
       .sort((a, b) => Number(b.stok_var === true) - Number(a.stok_var === true) || a.fiyat - b.fiyat);
   }, [veri, urunId, kodla]);
 
-  const enUcuz = satirlar.find((x) => x.stok_var === true);
+  // şüpheli: kart alışının 1,6 katından fazla ve başka tedarikçide ±%20 yakın fiyat yok (BizimHesap'a yazılacaklar listesine de girmez)
+  const supheli = (x: (typeof satirlar)[number]) => {
+    const urun = x.bizde ?? u; if (!urun) return false; const kart = urun.kart_alis ?? urun.alis_fiyati;
+    return kart > 0 && x.fiyat > kart * 1.6 && !satirlar.some((o) => o !== x && o.tedarikci !== x.tedarikci && (o.bizde ?? u)?.id === urun.id && Math.abs(o.fiyat - x.fiyat) <= x.fiyat * 0.2);
+  };
+  const enUcuz = satirlar.find((x) => x.stok_var === true && !supheli(x));
   const kartAlis = u ? (u.kart_alis ?? u.alis_fiyati) : 0;
   if (veri && !satirlar.length && !hata) return baslik ? <p className="text-xs text-slate-500">Tedarikçilerde kayıtlı fiyat yok (son 30 gün). Eklenti açıkken tedarikçi sitesinde bu kodu arattığınızda burada görünür.</p> : null;
   return (
@@ -78,7 +83,7 @@ export function TedarikciFiyatlari({ u, kod, baslik = true }: { u?: Urun; kod?: 
             const marj = satis > 0 ? ((satis / (1 + kdv / 100) - x.fiyat) / (satis / (1 + kdv / 100))) * 100 : null;
             return (
               <tr key={i} className={x === enUcuz ? 'bg-emerald-50/60 dark:bg-emerald-500/5' : ''}>
-                <td className="whitespace-nowrap"><span className={`rozet ${TED_RENK[x.tedarikci] ?? 'bg-slate-100 text-slate-700'}`}>{TED_AD[x.tedarikci] ?? x.tedarikci}</span>{x === enUcuz && <div className="mt-0.5 text-[10px] font-semibold text-emerald-700">en ucuz stoklu</div>}</td>
+                <td className="whitespace-nowrap"><span className={`rozet ${TED_RENK[x.tedarikci] ?? 'bg-slate-100 text-slate-700'}`}>{TED_AD[x.tedarikci] ?? x.tedarikci}</span>{x === enUcuz && <div className="mt-0.5 text-[10px] font-semibold text-emerald-700">en ucuz stoklu</div>}{supheli(x) && <div className="mt-0.5 text-[10px] font-semibold text-red-600" title="Kart alışının 1,6 katından fazla ve başka tedarikçide yakın fiyat yok: birim (ör. 2 adet) ya da eşleşme hatası olabilir. BizimHesap'a yazılmaz.">şüpheli fiyat</div>}</td>
                 <td className="min-w-[13rem]">
                   <div className="text-xs"><b>{x.kod}</b>{x.marka && <span className="text-slate-500"> · {x.marka}</span>}{x.eslesme === 'oem' && <span className="ml-1 rozet bg-sky-50 text-sky-700" title={`OEM: ${x.oem ?? ''}`}>OEM muadili</span>}</div>
                   {x.ad && <div className="truncate text-[11px] text-slate-500" title={x.ad}>{x.ad}</div>}
