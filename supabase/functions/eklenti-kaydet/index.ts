@@ -167,6 +167,13 @@ async function bhSatisListe() {
   return out.sort((a, x) => Number(a.bekle) - Number(x.bekle) || Number(a.marj) - Number(x.marj));
 }
 
+/** Çoklu birim tespiti: net fiyat liste fiyatının %30+ üstündeyse, adet başına net/liste oranını 0,55–0,95 aralığına getiren en küçük adet */
+function birimBolen(f: number | null, l: number | null) {
+  if (!(f && f > 0 && l && l > 0) || f <= l * 1.3) return 1;
+  for (let k = 2; k <= 20; k++) { const r = f / k / l; if (r <= 0.95 && r >= 0.55) return k; }
+  return 1;
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
   const yanit = (b: Obj, status = 200) => new Response(JSON.stringify(b), { status, headers: { ...cors, 'Content-Type': 'application/json' } });
@@ -195,15 +202,21 @@ Deno.serve(async (req) => {
   const ted = String(b.tedarikci ?? ''); if (!TEDARIKCILER.has(ted)) return yanit({ ok: false, hata: 'Bilinmeyen tedarikçi' }, 400);
   if (b.islem === 'test') return yanit({ ok: true });
 
-  const gelen = (Array.isArray(b.urunler) ? b.urunler as Obj[] : []).slice(0, 500).map((x) => ({
-    kod: String(x.kod ?? '').trim().slice(0, 80), marka: x.marka ? String(x.marka).slice(0, 80) : null, ad: x.ad ? String(x.ad).slice(0, 250) : null,
-    oem: x.oem ? String(x.oem).slice(0, 500) : null, fiyat: sayi(x.fiyat), liste: sayi(x.liste), stok: sayi(x.stok),
-    depolar: Array.isArray(x.depolar) ? (x.depolar as Obj[]).slice(0, 10).map((d) => ({ ad: String(d.ad ?? '').slice(0, 30), adet: sayi(d.adet) })) : null,
-  })).filter((x) => norm(x.kod).length >= 3);
+  const gelen = (Array.isArray(b.urunler) ? b.urunler as Obj[] : []).slice(0, 500).map((x) => {
+    // Bazı ürünler "2 ad." gibi çoklu birimle satılır: net fiyat o birimin, liste fiyatı ise ADET başınadır.
+    // Net, listeden belirgin yüksekse (tek adette imkânsız) adete çevrilir; böylece takım çarpanı her üründe aynı çalışır.
+    const ham = sayi(x.fiyat), liste = sayi(x.liste); const bolen = birimBolen(ham, liste);
+    return {
+      kod: String(x.kod ?? '').trim().slice(0, 80), marka: x.marka ? String(x.marka).slice(0, 80) : null, ad: x.ad ? String(x.ad).slice(0, 250) : null,
+      oem: x.oem ? String(x.oem).slice(0, 500) : null, fiyat: ham && bolen > 1 ? Math.round((ham / bolen) * 100) / 100 : ham, liste, stok: sayi(x.stok),
+      depolar: Array.isArray(x.depolar) ? (x.depolar as Obj[]).slice(0, 10).map((d) => ({ ad: String(d.ad ?? '').slice(0, 30), adet: sayi(d.adet) })) : null,
+      bolen,
+    };
+  }).filter((x) => norm(x.kod).length >= 3);
   if (!gelen.length) return yanit({ ok: true, kaydedilen: 0, eslesen: [] });
   const zaman = new Date().toISOString();
   const tekil = [...new Map(gelen.map((x) => [x.kod, x])).values()];
-  const { error: e1 } = await db.from('tedarikci_katalog').upsert(tekil.map((x) => ({ tedarikci: ted, ...x, kod_norm: norm(x.kod), zaman })));
+  const { error: e1 } = await db.from('tedarikci_katalog').upsert(tekil.map(({ bolen: _b, ...x }) => ({ tedarikci: ted, ...x, kod_norm: norm(x.kod), zaman })));
   if (e1) return yanit({ ok: false, hata: e1.message }, 500);
 
   // bizdeki ürünle birebir aynı stok kodu → maliyet (aynı ürüne birden çok satır düşerse stokta olanların en ucuzu)
@@ -212,7 +225,7 @@ Deno.serve(async (req) => {
     const u = eslestir(h, x.kod, x.marka); if (!u || !(x.fiyat && x.fiyat > 0)) continue;
     bizimKod.set(u.id, u.kod);
     const stokta = (x.stok ?? 0) > 0; const e = sec.get(u.id);
-    if (!e || (stokta && !e.stok_var) || (stokta === e.stok_var && x.fiyat < Number(e.fiyat))) sec.set(u.id, { urun_id: u.id, tedarikci: ted, kod: x.kod, ad: x.ad, fiyat: Math.round(x.fiyat * 100) / 100, stok_var: stokta, ham: { liste: x.liste, stok: x.stok, depolar: x.depolar }, hata: null, zaman });
+    if (!e || (stokta && !e.stok_var) || (stokta === e.stok_var && x.fiyat < Number(e.fiyat))) sec.set(u.id, { urun_id: u.id, tedarikci: ted, kod: x.kod, ad: x.ad, fiyat: Math.round(x.fiyat * 100) / 100, stok_var: stokta, ham: { liste: x.liste, stok: x.stok, depolar: x.depolar, ...(x.bolen > 1 ? { birim_adet: x.bolen } : {}) }, hata: null, zaman });
   }
   if (sec.size) { const { error: e2 } = await db.from('tedarikci_maliyet').upsert([...sec.values()]); if (e2) return yanit({ ok: false, hata: e2.message }, 500); }
   for (const s of sec.values()) eslesen.push({ kod: String(s.kod), bizim: bizimKod.get(String(s.urun_id)) ?? String(s.kod), fiyat: Number(s.fiyat) });
