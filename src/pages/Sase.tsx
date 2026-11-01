@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Camera, Car, Loader2, Save, Search, X } from 'lucide-react';
 import { useStore, toast } from '../lib/store';
 import { backend, type FiyatTeklifi, type SaseArac } from '../lib/backend';
-import { markaArama, vinCoz, vinTemizle, type VinCozum } from '../lib/vin';
+import { markaArama, ogrenilmisModel, vinCoz, vinTemizle, type OgrenilmisModel, type VinCozum } from '../lib/vin';
 import { para, tarih, tarihSaat } from '../lib/format';
 
 /** Ürün Ara sekmesine geçerken arama kutusunu ve teklifin araç bilgisini doldurmak için */
@@ -44,6 +44,7 @@ export default function SaseSayfa() {
   const [ocr, setOcr] = useState<'yok' | 'okuyor' | string[]>('yok');
   const [teklifler, setTeklifler] = useState<FiyatTeklifi[] | null>(null);
   const [yeni, setYeni] = useState(false);
+  const [ogrenilen, setOgrenilen] = useState<OgrenilmisModel | null>(null);
   const dosyaRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => { backend.araclarOku().then(setAraclar, (e) => { setAraclar([]); toast(`Araçlar okunamadı: ${(e as Error).message}`, 'hata'); }); }, []);
@@ -58,7 +59,7 @@ export default function SaseSayfa() {
   }, [araclar, girdi, temiz]);
 
   const ac = (a: SaseArac | null, c: VinCozum | null) => {
-    setYeni(false); setSecili(a); setCozum(c); setNhtsa(a?.kaynak && typeof a.kaynak === 'object' ? (a.kaynak as { nhtsa?: Record<string, string> }).nhtsa ?? null : null); setNhtsaHata(''); setTeklifler(null);
+    setYeni(false); setOgrenilen(null); setSecili(a); setCozum(c); setNhtsa(a?.kaynak && typeof a.kaynak === 'object' ? (a.kaynak as { nhtsa?: Record<string, string> }).nhtsa ?? null : null); setNhtsaHata(''); setTeklifler(null);
     setForm(a ? { plaka: a.plaka ?? '', marka: a.marka ?? '', model: a.model ?? '', yil: a.yil ? String(a.yil) : '', motor: a.motor ?? '', yakit: a.yakit ?? '', musteri: a.musteri ?? '', telefon: a.telefon ?? '', notlar: a.notlar ?? '' }
       : { ...BOS_FORM, marka: c?.marka?.replace(/\s*\(.*\)/, '') ?? '', model: c?.model ?? '', yil: c?.yil && c.yilKesin ? String(c.yil) : '' });
   };
@@ -71,6 +72,11 @@ export default function SaseSayfa() {
     const c = vinCoz(temiz);
     if (kayitli) { ac(kayitli, c); return; }
     ac(null, c);
+    // model tablomuzda yoksa daha önce kaydedilen aynı şase koduna sahip araçlardan öğren
+    if (c.gecerli && !c.model) {
+      const o = ogrenilmisModel(c.vin, araclar);
+      if (o) { setOgrenilen(o); setForm((f) => ({ ...f, model: f.model || o.model, motor: f.motor || o.motor || '' })); }
+    }
     if (!c.gecerli || mode !== 'bulut') return;
     setNhtsaBekle(true);
     backend.saseCoz(temiz).then((r) => {
@@ -167,7 +173,8 @@ export default function SaseSayfa() {
             <input className="inp py-1.5 text-sm sm:col-span-3" placeholder="Not (ör. km, yapılan işler)" value={form.notlar} onChange={(e) => setForm({ ...form, notlar: e.target.value })} />
             <button className="btn-primary py-1.5 text-sm" onClick={kaydet}><Save size={15} /> {secili ? 'Güncelle' : 'Aracı kaydet'}</button>
           </div>
-          {cozum && !cozum.model && <p className="mt-2 text-xs text-amber-700">Model şaseden kesin çıkarılamadı{cozum.marka ? ` (${cozum.marka} için model tablosu yok)` : ''}; ruhsattaki ticari adı Model kutusuna yazın.</p>}
+          {cozum && !cozum.model && ogrenilen && <p className="mt-2 text-xs text-sky-700">Model kayıtlı araçlardan öğrenildi: şasesinin ilk {ogrenilen.hane} hanesi aynı {ogrenilen.toplam} araçtan {ogrenilen.destek} tanesi “{ogrenilen.model}”{ogrenilen.motor ? ` (${ogrenilen.motor})` : ''}. Ruhsatla kontrol edin; yanlışsa düzeltip kaydedin, sistem düzeltmeyi de öğrenir.</p>}
+          {cozum && !cozum.model && !ogrenilen && <p className="mt-2 text-xs text-amber-700">Model şaseden kesin çıkarılamadı{cozum.marka ? ` (${cozum.marka} için model tablosu yok)` : ''}; ruhsattaki ticari adı Model kutusuna yazın. Kaydettiğinizde sistem bu şase kodunu öğrenir; aynı koddaki sonraki araçlarda modeli kendisi önerir.</p>}
 
           <div className="mt-4 border-t border-slate-100 pt-3 dark:border-slate-800">
             <div className="mb-1.5 text-xs font-semibold">Bu araç için bizde ara</div>

@@ -141,3 +141,32 @@ export function markaArama(marka: string | null): string | null {
   if (m.startsWith('AUDI')) return 'AUDI';
   return m.split(/[\s-]/)[0];
 }
+
+/**
+ * Kaydedilmiş araçlardan öğrenilen model: aynı üreticinin aynı şase bölümüyle (4–8. haneler) daha önce kaydedilmiş
+ * araçlar hangi model olarak yazıldıysa o önerilir. Önce en uzun eşleşme (ilk 8 hane), yoksa ilk 6 / ilk 5 hane denenir;
+ * kısa eşleşmede daha çok araç ve %75 uyum aranır. Kesin değildir; "öğrenildi" diye gösterilir.
+ */
+export interface OgrenilmisModel { model: string; motor: string | null; destek: number; toplam: number; hane: number }
+const OGRENME: [hane: number, enAz: number][] = [[8, 1], [6, 2], [5, 3]];
+export function ogrenilmisModel(vin: string, kayitlar: { vin: string | null; model: string | null; motor: string | null }[]): OgrenilmisModel | null {
+  if (vin.length !== 17) return null;
+  for (const [hane, enAz] of OGRENME) {
+    const on = vin.slice(0, hane);
+    const eslesen = kayitlar.filter((k) => k.vin && k.vin !== vin && k.model?.trim() && k.vin.startsWith(on));
+    if (eslesen.length < enAz) continue;
+    const say = new Map<string, { ad: string; n: number; motorlar: Map<string, number> }>();
+    for (const k of eslesen) {
+      const anahtar = k.model!.trim().toLocaleUpperCase('tr');
+      const x = say.get(anahtar) ?? { ad: k.model!.trim(), n: 0, motorlar: new Map() }; x.n++;
+      if (k.motor?.trim()) x.motorlar.set(k.motor.trim(), (x.motorlar.get(k.motor.trim()) ?? 0) + 1);
+      say.set(anahtar, x);
+    }
+    const en = [...say.values()].sort((a, b) => b.n - a.n)[0];
+    if (en.n < enAz || en.n / eslesen.length < 0.75) continue;
+    // motor yalnız ilk 8 hane eşleşiyor ve hepsinde aynıysa önerilir
+    const motor = hane === 8 && en.motorlar.size === 1 && [...en.motorlar.values()][0] === en.n ? [...en.motorlar.keys()][0] : null;
+    return { model: en.ad, motor, destek: en.n, toplam: eslesen.length, hane };
+  }
+  return null;
+}
