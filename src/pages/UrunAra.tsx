@@ -11,6 +11,7 @@ import { birimKar } from '../lib/analiz';
 import { muadilDetay, depoKisa, MUADIL_ESIK } from '../lib/muadil';
 import { ESLESME_AD, dizin, genelArama, koddanBizdeki, type AramaSatiri } from '../lib/arama';
 import { detayAc } from '../components/DetayKart';
+import { TedarikciFiyatlari } from '../components/TedarikciFiyatlari';
 import type { Urun } from '../lib/types';
 
 const TUR_RENK: Record<AramaSatiri['tur'], string> = {
@@ -44,6 +45,8 @@ export default function UrunAra() {
   const tum = useMemo(() => genelArama(db, q, 300), [db, q]);
   const liste = tum.filter((x) => (!stokta || (depo ? depoStok(x.u, depo) > 0 : x.u.stok > 0)));
   const kodGibi = /\d/.test(q) && q.replace(/\s/g, '').length >= 4;
+  // kod / barkod birebir bulunduysa tedarikçi fiyatları o ürünün kartında açılır; bulunamadıysa üstte kodla (OEM dahil) gösterilir
+  const kesinBulundu = kodGibi && (liste[0]?.tur === 'kod' || liste[0]?.tur === 'barkod');
   // kodla aranıp stokta karşılığı çıkmayan parça otomatik "soruldu, yok" kaydı olur (aynı kod oturumda bir kez; yazım sürerken kaydedilmez)
   const otoKayit = useRef<Set<string>>(new Set());
   const stoktaVar = tum.some((x) => x.u.stok > 0);
@@ -85,9 +88,10 @@ export default function UrunAra() {
         </ul>
       </div>}
 
+      {maliyet && mode === 'bulut' && kodGibi && !kesinBulundu && <div className="card p-3"><TedarikciFiyatlari kod={q} /></div>}
       {q && liste.length === 0 && <div className="card p-4 text-sm text-slate-500">Bizde “{q}” ile eşleşen {stokta ? 'stoklu ' : ''}ürün bulunamadı.</div>}
       {liste.length > 0 && <div className="space-y-2">
-        {liste.slice(0, goster).map((x) => <SonucKart key={x.u.id} x={x} maliyet={maliyet} depolar={depolar} depoStok={depoStok} teklifEkle={teklifEkle} soruldu={(u) => sorulanEkle(q, u)} teklifte={teklif.some((k) => k.u.id === x.u.id)} />)}
+        {liste.slice(0, goster).map((x, i) => <SonucKart key={x.u.id} x={x} tedAcik={maliyet && mode === 'bulut' && i === 0 && kesinBulundu} maliyet={maliyet} depolar={depolar} depoStok={depoStok} teklifEkle={teklifEkle} soruldu={(u) => sorulanEkle(q, u)} teklifte={teklif.some((k) => k.u.id === x.u.id)} />)}
         {liste.length > goster && <button className="btn-ghost w-full" onClick={() => setGoster((g) => g + 40)}>Daha fazla göster ({liste.length - goster})</button>}
       </div>}
 
@@ -97,9 +101,9 @@ export default function UrunAra() {
   );
 }
 
-function SonucKart({ x, maliyet, depolar, depoStok, teklifEkle, soruldu, teklifte }: { x: AramaSatiri; maliyet: boolean; depolar: { id: string; ad: string }[]; depoStok: (u: Urun, d: string) => number;
+function SonucKart({ x, tedAcik, maliyet, depolar, depoStok, teklifEkle, soruldu, teklifte }: { x: AramaSatiri; tedAcik?: boolean; maliyet: boolean; depolar: { id: string; ad: string }[]; depoStok: (u: Urun, d: string) => number;
   teklifEkle: (u: Urun, ekonomik?: boolean) => void; soruldu: (u: Urun) => void; teklifte: boolean }) {
-  const { db } = useStore(); const u = x.u; const [ac, setAc] = useState(false);
+  const { db, mode } = useStore(); const u = x.u; const [ac, setAc] = useState(false); const [ted, setTed] = useState(!!tedAcik);
   const yaninda = useMemo(() => birlikteSatilanlar(db).get(u.id) ?? [], [db, u.id]);
   const muadilD = useMemo(() => muadilDetay(db)(u), [db, u]);
   const muadil = muadilD.map((x) => x.v); const ortak = new Map(muadilD.map((x) => [x.v.id, x.ortak]));
@@ -130,6 +134,9 @@ function SonucKart({ x, maliyet, depolar, depoStok, teklifEkle, soruldu, teklift
         <span className="font-medium text-amber-700">Yanında sorun:</span>
         {yaninda.slice(0, 4).map((y) => <button key={y.u.id} className="rounded-full bg-amber-50 px-2 py-0.5 text-amber-900 hover:bg-amber-100 dark:bg-amber-500/10 dark:text-amber-200" title={`Bu ürünle aynı faturada ${y.n} kez satıldı · stok ${sayi(y.u.stok)}`} onClick={() => detayAc({ tur: 'urun', id: y.u.id })}>
           {y.u.ad.length > 34 ? y.u.ad.slice(0, 32) + '…' : y.u.ad} <span className={y.u.stok > 0 ? 'text-emerald-700' : 'text-red-500'}>({sayi(y.u.stok)})</span></button>)}
+      </div>}
+      {maliyet && mode === 'bulut' && <div className="mt-2 border-t border-slate-100 pt-2 dark:border-slate-800">
+        {ted ? <TedarikciFiyatlari u={u} /> : <button className="inline-flex items-center gap-1 text-xs font-medium text-marka-700 dark:text-marka-500" onClick={() => setTed(true)}><ChevronDown size={14} /> Tedarikçi fiyatları (5 tedarikçi, muadiller dahil)</button>}
       </div>}
       {muadil.length > 0 && <div className="mt-2 border-t border-slate-100 pt-2 dark:border-slate-800">
         <button className="inline-flex items-center gap-1 text-xs font-medium text-marka-700 dark:text-marka-500" onClick={() => setAc(!ac)}>
