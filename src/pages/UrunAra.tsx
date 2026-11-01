@@ -12,6 +12,7 @@ import { muadilDetay, depoKisa, MUADIL_ESIK } from '../lib/muadil';
 import { ESLESME_AD, dizin, genelArama, koddanBizdeki, type AramaSatiri } from '../lib/arama';
 import { detayAc } from '../components/DetayKart';
 import { TedarikciFiyatlari } from '../components/TedarikciFiyatlari';
+import { ON_DOLDUR, type OnDoldur } from './Sase';
 import type { Urun } from '../lib/types';
 
 const TUR_RENK: Record<AramaSatiri['tur'], string> = {
@@ -31,7 +32,10 @@ export default function UrunAra() {
     backend.sorulanEkle({ metin: m, urun_id: u?.id ?? null, kullanici: personel || eposta || null, adet: 1 })
       .then(() => toast('Kaydedildi: soruldu, stokta yok'), (e) => toast(`Kaydedilemedi: ${(e as Error).message}`, 'hata'));
   };
-  const [yazi, setYazi] = useState(''); const [q, setQ] = useState('');
+  // Şase / Araç sekmesinden gelindiyse arama ve teklifin araç bilgisi dolu gelir
+  const [onDoldur] = useState<OnDoldur | null>(() => { try { const v = sessionStorage.getItem(ON_DOLDUR); return v ? JSON.parse(v) as OnDoldur : null; } catch { return null; } });
+  useEffect(() => { try { sessionStorage.removeItem(ON_DOLDUR); } catch { /* yok */ } }, []);
+  const [yazi, setYazi] = useState(onDoldur?.q ?? ''); const [q, setQ] = useState(onDoldur?.q ?? '');
   const [stokta, setStokta] = useState(false); const [depo, setDepo] = useState('');
   const [goster, setGoster] = useState(30);
   const ref = useRef<HTMLInputElement>(null);
@@ -44,7 +48,8 @@ export default function UrunAra() {
   const depoStok = (u: Urun, id: string) => harita.get(u.id)?.get(id) ?? 0;
   const tum = useMemo(() => genelArama(db, q, 300), [db, q]);
   const liste = tum.filter((x) => (!stokta || (depo ? depoStok(x.u, depo) > 0 : x.u.stok > 0)));
-  const kodGibi = /\d/.test(q) && q.replace(/\s/g, '').length >= 4;
+  // parça kodu gibi mi ("GOLF 5 BALATA" gibi 3+ kelimelik araç aramaları kod sayılmaz: otomatik "soruldu" kaydı ve tedarikçi araması yapılmaz)
+  const kodGibi = /\d/.test(q) && q.replace(/\s/g, '').length >= 4 && q.trim().split(/\s+/).length <= 2;
   // kod / barkod birebir bulunduysa tedarikçi fiyatları o ürünün kartında açılır; bulunamadıysa üstte kodla (OEM dahil) gösterilir
   const kesinBulundu = kodGibi && (liste[0]?.tur === 'kod' || liste[0]?.tur === 'barkod');
   // kodla aranıp stokta karşılığı çıkmayan parça otomatik "soruldu, yok" kaydı olur (aynı kod oturumda bir kez; yazım sürerken kaydedilmez)
@@ -96,7 +101,8 @@ export default function UrunAra() {
       </div>}
 
       {q && mode === 'bulut' && <TedarikciArama q={q} oto={kodGibi && tum.length === 0} maliyet={maliyet} />}
-      {teklif.length > 0 && <TeklifPanel teklif={teklif} setTeklif={setTeklif} firma={db.ayarlar.firma_adi} />}
+      {onDoldur?.arac && <div className="fixed bottom-2 right-2 z-20 hidden rounded-full bg-slate-900 px-3 py-1 text-xs text-white shadow lg:block print:hidden">Araç: {onDoldur.arac}</div>}
+      {teklif.length > 0 && <TeklifPanel teklif={teklif} setTeklif={setTeklif} firma={db.ayarlar.firma_adi} aracBas={onDoldur?.arac ?? ''} aracId={onDoldur?.arac_id ?? null} />}
     </div>
   );
 }
@@ -372,9 +378,9 @@ function linkKodu() { const h = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxy
 export const teklifLinki = (kod: string) => `${location.origin}${location.pathname}#t/${kod}`;
 
 /** Müşteriye fiyat teklifi: seçilen parçalar, adet ve fiyat (KDV dahil); WhatsApp / yazdır / kopyala */
-function TeklifPanel({ teklif, setTeklif, firma }: { teklif: TeklifKalem[]; setTeklif: (f: (t: TeklifKalem[]) => TeklifKalem[]) => void; firma: string }) {
+function TeklifPanel({ teklif, setTeklif, firma, aracBas = '', aracId = null }: { teklif: TeklifKalem[]; setTeklif: (f: (t: TeklifKalem[]) => TeklifKalem[]) => void; firma: string; aracBas?: string; aracId?: number | null }) {
   const { personel, eposta } = useStore();
-  const [musteri, setMusteri] = useState(''); const [arac, setArac] = useState(''); const [kucuk, setKucuk] = useState(false);
+  const [musteri, setMusteri] = useState(''); const [arac, setArac] = useState(aracBas); const [kucuk, setKucuk] = useState(false);
   const toplam = teklif.reduce((t, k) => t + k.adet * k.fiyat, 0);
   const [gecerlilikGun, setGecerlilikGun] = useState(7);
   // aynı içerik iki kez kaydedilmesin (WhatsApp + yazdır gibi); her kayıt müşteri linki için benzersiz bir kod alır
@@ -387,7 +393,7 @@ function TeklifPanel({ teklif, setTeklif, firma }: { teklif: TeklifKalem[]; setT
     const kod = linkKodu();
     const gecerlilik = new Date(Date.now() + gecerlilikGun * 864e5).toISOString().slice(0, 10);
     try {
-      await backend.teklifKaydet({ musteri: musteri.trim() || null, arac: arac.trim() || null, toplam, kullanici: personel || eposta || null, kod, gecerlilik,
+      await backend.teklifKaydet({ musteri: musteri.trim() || null, arac: arac.trim() || null, toplam, kullanici: personel || eposta || null, kod, gecerlilik, arac_id: aracId && arac === aracBas ? aracId : null,
         kalemler: teklif.map((k) => ({ urun_id: k.u.id, ad: k.u.ad, marka: k.u.marka ?? null, adet: k.adet, fiyat: k.fiyat, ekonomik: !!k.ekonomik, stokta: k.u.stok > 0 })) });
       setKayit({ imza, kod }); toast(sessiz ? 'Teklif kaydedildi (Teklif Takibi\'nden müşteri yanıtını görebilirsiniz)' : 'Teklif kaydedildi');
       return kod;

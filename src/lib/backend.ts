@@ -71,6 +71,10 @@ export interface Backend {
   tyFiyatSupheli(): Promise<TyFiyatSupheli[]>;
   /** Tedarikçi (Otomarmara / Neko) güncel alış fiyatları — yalnız yönetici okuyabilir */
   tedarikciMaliyet(): Promise<TedarikciMaliyet[]>;
+  /** Şase / Araç sekmesi */
+  saseCoz(vin: string): Promise<{ vin: string; nhtsa: Record<string, string> }>;
+  araclarOku(): Promise<SaseArac[]>;
+  aracKaydet(r: Omit<SaseArac, 'id' | 'olusturma' | 'son_islem'> & { id?: number }): Promise<SaseArac>;
   /** Ürün Ara: kod/OEM ve ürünler için tüm tedarikçilerin kayıtlı fiyatları (yalnız yönetici) */
   tedarikciFiyatAra(kodlar: string[], urunler: string[]): Promise<TedarikciFiyat[]>;
   /** Tarayıcı eklentisinin (Iron) kayıt anahtarı — yalnız yönetici */
@@ -90,6 +94,8 @@ export interface TySiparis { paket_id: string; siparis_no: string | null; tarih:
 export interface TyDurum { son_urun: string | null; son_siparis: string | null; son_hata: string | null; urun_sayisi: number | null; siparis_sayisi: number | null }
 export interface TyGonderim { id: number; zaman: string; barkod: string; baslik: string | null; eski: number | null; yeni: number; durum: string; hata: string | null; kaynak: string | null; fiyat_eski?: number | null; fiyat_yeni?: number | null }
 export interface TyFiyatSupheli { barkod: string; baslik: string | null; eski: number; hedef: number; neden: string }
+export interface SaseArac { id: number; vin: string | null; plaka: string | null; marka: string | null; model: string | null; model_kod: string | null; yil: number | null; motor: string | null; yakit: string | null; kasa: string | null;
+  musteri: string | null; telefon: string | null; notlar: string | null; kaynak?: Record<string, unknown> | null; kullanici: string | null; olusturma: string; son_islem: string }
 export interface TedarikciFiyat { kaynak: 'kart' | 'katalog'; tedarikci: string; urun_id: string | null; kod: string | null; marka: string | null; ad: string | null; oem: string | null; fiyat: number; stok: number | null; stok_var: boolean | null; zaman: string; eslesme: 'kart' | 'kod' | 'oem' }
 export interface TedarikciMaliyet { urun_id: string; tedarikci: 'otomarmara' | 'neko' | 'iron' | 'basbug' | 'ozas'; kod: string | null; fiyat: number; stok_var: boolean | null; zaman: string }
 export interface TyOzellikDeger { attributeId: number; attributeValueId?: number | null; customAttributeValue?: string | null; ad?: string; deger?: string }
@@ -101,7 +107,7 @@ export interface TyOtoOzet { aday: number; duzenli: number; bugun: number; esles
 export interface TyYukleme { id: number; zaman: string; urun_id: ID | null; barkod: string; baslik: string | null; fiyat: number | null; stok: number | null; durum: string; hata: string | null }
 export interface TyVeri { urunler: TyUrun[]; siparisler: TySiparis[]; durum: TyDurum | null }
 export interface TeklifSatiri { urun_id: ID; ad: string; marka?: string | null; adet: number; fiyat: number; ekonomik?: boolean; stokta?: boolean }
-export interface FiyatTeklifi { id: number; zaman: string; musteri: string | null; arac: string | null; kalemler: TeklifSatiri[]; toplam: number; kullanici: string | null; durum: 'acik' | 'satildi' | 'kaybedildi'; durum_zaman: string | null; notlar?: string | null;
+export interface FiyatTeklifi { id: number; zaman: string; musteri: string | null; arac: string | null; kalemler: TeklifSatiri[]; toplam: number; kullanici: string | null; durum: 'acik' | 'satildi' | 'kaybedildi'; durum_zaman: string | null; notlar?: string | null; arac_id?: number | null;
   /** müşteri linki (#t/kod) ve müşterinin yanıtı */
   kod?: string | null; gecerlilik?: string | null; musteri_yanit?: 'onay' | 'red' | 'revizyon' | null; musteri_not?: string | null; yanit_zaman?: string | null;
   goruntulenme?: number; ilk_goruntu?: string | null; son_goruntu?: string | null }
@@ -313,6 +319,19 @@ function supabaseBackend(sb: SupabaseClient): Backend {
     },
     async tyGonderimOku(tur = 'stok') { return (ok(await sb.from('ty_gonderim').select('id,zaman,barkod,baslik,eski,yeni,durum,hata,kaynak,fiyat_eski,fiyat_yeni').eq('tur', tur).order('id', { ascending: false }).limit(100)) as TyGonderim[]).map((x) => ({ ...x, eski: x.eski === null ? null : Number(x.eski), yeni: Number(x.yeni), fiyat_eski: x.fiyat_eski == null ? null : Number(x.fiyat_eski), fiyat_yeni: x.fiyat_yeni == null ? null : Number(x.fiyat_yeni) })); },
     async eklentiAnahtar() { const d = ok(await sb.from('eklenti_anahtar').select('anahtar').eq('id', 1).maybeSingle()) as { anahtar: string } | null; return d?.anahtar ?? null; },
+    async saseCoz(vin) {
+      const { data, error } = await sb.functions.invoke('sase-coz', { body: { vin } });
+      if (error) { let m = error.message; try { const j = await (error as { context?: Response }).context?.json(); if (j?.hata) m = j.hata; } catch { /* yok */ } throw new Error(m); }
+      if (!data?.ok) throw new Error(data?.hata || 'Çözülemedi');
+      return data as { vin: string; nhtsa: Record<string, string> };
+    },
+    async araclarOku() { return ok(await sb.from('sase_araclar').select('*').order('son_islem', { ascending: false }).limit(2000)) as SaseArac[]; },
+    async aracKaydet(r) {
+      const { id, ...v } = r; const z = { ...v, son_islem: new Date().toISOString() };
+      if (id) return ok(await sb.from('sase_araclar').update(z).eq('id', id).select('*').single()) as SaseArac;
+      if (v.vin) return ok(await sb.from('sase_araclar').upsert(z, { onConflict: 'vin' }).select('*').single()) as SaseArac;
+      return ok(await sb.from('sase_araclar').insert(z).select('*').single()) as SaseArac;
+    },
     async tedarikciFiyatAra(kodlar, urunler) {
       const d = ok(await sb.rpc('tedarikci_fiyat_ara', { p_kodlar: kodlar, p_urunler: urunler })) as TedarikciFiyat[];
       return (d ?? []).map((x) => ({ ...x, fiyat: Number(x.fiyat), stok: x.stok == null ? null : Number(x.stok) }));
@@ -530,6 +549,7 @@ function demoSeed(): DB {
 let demoSayim: SayimSatir[] = [];
 let demoSorulan: Sorulan[] = [];
 let demoTeklif: FiyatTeklifi[] = [];
+let demoArac: SaseArac[] = [];
 function demoBackend(): Backend {
   let db: DB;
   try { db = JSON.parse(localStorage.getItem(LS) || 'null') || demoSeed(); } catch { db = demoSeed(); }
@@ -573,6 +593,9 @@ function demoBackend(): Backend {
     async tyGonderimOku() { return []; },
     async tyFiyatSupheli() { return []; },
     async tedarikciMaliyet() { return []; },
+    async saseCoz(vin) { return { vin, nhtsa: {} }; },
+    async araclarOku() { return [...demoArac]; },
+    async aracKaydet(r) { const x = { ...r, id: r.id ?? demoArac.length + 1, olusturma: new Date().toISOString(), son_islem: new Date().toISOString() } as SaseArac; demoArac = [x, ...demoArac.filter((a) => a.id !== x.id)]; return x; },
     async tedarikciFiyatAra() { return []; },
     async eklentiAnahtar() { return null; },
     async tyIslem() { throw new Error('Demo modunda Trendyol yok'); },

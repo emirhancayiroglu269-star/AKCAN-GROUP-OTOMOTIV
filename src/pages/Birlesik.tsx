@@ -18,6 +18,7 @@ import { FiyatUyarilari, StokSayimi, TransferOnerisi } from './UrunlerEk';
 import Tedarikciler from './Tedarikciler';
 import { PahaliAlimlar, SorulanParcalar, TeklifTakip } from './Ekler';
 import UrunAra from './UrunAra';
+import SaseSayfa from './Sase';
 import { PersonelPerformans, UstaKarlilik } from './Performans';
 
 type Sekme = { id: string; ad: string; bilesen: () => ReactNode; izin?: boolean };
@@ -86,5 +87,6 @@ export const PerformansSayfa = (p: P) => <Sekmeli {...p} sayfa="performans" sekm
 ]} />;
 export const AramaSayfa = (p: P) => <Sekmeli {...p} sayfa="arama" sekmeler={[
   { id: 'ara', ad: 'Ürün ara', bilesen: UrunAra },
+  { id: 'sase', ad: 'Şase / Araç', bilesen: SaseSayfa },
   { id: 'teklifler', ad: 'Teklifler', bilesen: TeklifTakip },
 ]} />;
