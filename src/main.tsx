@@ -1,9 +1,13 @@
 import './lib/hizliYerel';
-import { Component, StrictMode, type ReactNode } from 'react';
+import { Component, StrictMode, Suspense, lazy, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import './index.css';
 import App from './App';
 import { hataKaydet } from './lib/hataKayit';
+
+const TeklifMusteri = lazy(() => import('./pages/TeklifMusteri'));
+/** #t/KOD → müşterinin teklif sayfası (giriş yok, ana uygulama verisi yüklenmez) */
+const teklifKod = /^#t\/([A-Za-z0-9]{10,32})$/.exec(location.hash)?.[1];
 
 try { if (localStorage.getItem('tema') === 'koyu') document.documentElement.classList.add('dark'); } catch { /* yok */ }
 window.addEventListener('error', (e) => hataKaydet(e.error ?? e.message, 'window'));
@@ -26,4 +30,6 @@ class HataSiniri extends Component<{ children: ReactNode }, { hata: Error | null
   }
 }
 
-createRoot(document.getElementById('root')!).render(<StrictMode><HataSiniri><App /></HataSiniri></StrictMode>);
+createRoot(document.getElementById('root')!).render(<StrictMode><HataSiniri>{teklifKod
+  ? <Suspense fallback={<div style={{ padding: 24, textAlign: 'center', color: '#64748b' }}>Teklif yükleniyor…</div>}><TeklifMusteri kod={teklifKod} /></Suspense>
+  : <App />}</HataSiniri></StrictMode>);

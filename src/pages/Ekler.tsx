@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Download, Info, MessageCircle, RefreshCw, Search, Trash2 } from 'lucide-react';
+import { Download, ExternalLink, Info, Link2, MessageCircle, RefreshCw, Search, Trash2 } from 'lucide-react';
 import { useStore, toast } from '../lib/store';
 import { backend, type FiyatTeklifi, type Sorulan } from '../lib/backend';
-import { OtomarmaraArama } from './UrunAra';
+import { OtomarmaraArama, teklifLinki } from './UrunAra';
 import { pahaliAlimlar } from '../lib/analiz5';
 import { ara, gunu, para, sayi, tarih, tarihSaat } from '../lib/format';
 import { DonemSecici, useDonem } from '../components/DonemSecici';
@@ -156,7 +156,8 @@ export function SorulanParcalar() {
 
 /* ───────────────────────── Teklif takibi ───────────────────────── */
 
-type TeklifFiltre = 'acik' | 'satildi' | 'kaybedildi' | 'hepsi';
+type TeklifFiltre = 'acik' | 'yanit' | 'satildi' | 'kaybedildi' | 'hepsi';
+const YANIT_ROZET = { onay: ['bg-emerald-600 text-white', 'Müşteri onayladı'], revizyon: ['bg-amber-500 text-white', 'Müşteri değişiklik istedi'], red: ['bg-slate-500 text-white', 'Müşteri istemedi'] } as const;
 
 export function TeklifTakip() {
   const { db, calistir } = useStore();
@@ -184,7 +185,8 @@ export function TeklifTakip() {
     await backend.teklifGuncelle(t.id, { durum, durum_zaman: new Date().toISOString() }); setKayit((k) => (k ?? []).map((x) => (x.id === t.id ? { ...x, durum, durum_zaman: new Date().toISOString() } : x)));
   }, durum === 'satildi' ? 'Satışa döndü olarak işaretlendi' : durum === 'kaybedildi' ? 'Kaybedildi olarak işaretlendi' : 'Açık olarak işaretlendi');
   const tum = kayit ?? [];
-  const liste = tum.filter((t) => (f === 'hepsi' || t.durum === f) && ara(q, t.musteri, t.arac, t.kullanici, ...t.kalemler.map((k) => k.ad)));
+  const yanitBekleyen = tum.filter((t) => t.durum === 'acik' && t.musteri_yanit);
+  const liste = tum.filter((t) => (f === 'hepsi' || (f === 'yanit' ? t.durum === 'acik' && !!t.musteri_yanit : t.durum === f)) && ara(q, t.musteri, t.arac, t.kullanici, ...t.kalemler.map((k) => k.ad)));
   const say = (d: FiyatTeklifi['durum']) => tum.filter((t) => t.durum === d).length;
   const kapanan = say('satildi') + say('kaybedildi');
   const tekrarMetin = (t: FiyatTeklifi) => [`*${db.ayarlar.firma_adi}* — Fiyat teklifi (${tarih(t.zaman)})`, ...(t.musteri ? [`Sayın ${t.musteri}`] : []), ...(t.arac ? [`Araç: ${t.arac}`] : []), '',
@@ -203,7 +205,7 @@ export function TeklifTakip() {
         <Kpi etiket="Açık teklif" deger={sayi(say('acik'))} alt={`${tum.filter((t) => t.durum === 'acik' && tespit.has(t.id)).length} tanesi satılmış görünüyor`} renk="amber" />
       </div>
       <div className="mb-3 flex flex-wrap items-center gap-1.5">
-        {fBtn('acik', 'Açık', say('acik'))}{fBtn('satildi', 'Satışa döndü', say('satildi'))}{fBtn('kaybedildi', 'Kaybedildi', say('kaybedildi'))}{fBtn('hepsi', 'Tümü', tum.length)}
+        {fBtn('acik', 'Açık', say('acik'))}{yanitBekleyen.length > 0 && fBtn('yanit', 'Müşteri yanıtladı', yanitBekleyen.length)}{fBtn('satildi', 'Satışa döndü', say('satildi'))}{fBtn('kaybedildi', 'Kaybedildi', say('kaybedildi'))}{fBtn('hepsi', 'Tümü', tum.length)}
         <input className="inp ml-auto max-w-xs" placeholder="Müşteri, araç, parça…" value={q} onChange={(e) => setQ(e.target.value)} />
       </div>
       {kayit === null ? <div className="card p-6 text-center text-sm text-slate-500">Yükleniyor…</div> : liste.length === 0 ? <div className="card"><Bos metin="Teklif yok. Ürün Ara'da “+ Teklif” ile parça ekleyip gönderdiğinizde burada görünür." /></div> : (
@@ -218,15 +220,20 @@ export function TeklifTakip() {
                 <span className={`rozet ${t.durum === 'satildi' ? 'bg-emerald-100 text-emerald-800' : t.durum === 'kaybedildi' ? 'bg-slate-200 text-slate-600' : 'bg-amber-100 text-amber-800'}`}>{t.durum === 'satildi' ? 'satışa döndü' : t.durum === 'kaybedildi' ? 'kaybedildi' : 'açık'}</span></div>
             </div>
             <ul className="mt-2 space-y-0.5 text-sm">{t.kalemler.map((k, i) => <li key={i} className="flex justify-between gap-2"><span className="truncate">{k.ad}{k.marka ? <span className="text-slate-400"> · {k.marka}</span> : ''}{k.ekonomik ? <span className="ml-1 rozet bg-sky-50 text-sky-700">ekonomik</span> : ''}</span><span className="shrink-0">{k.adet > 1 ? `${sayi(k.adet)} × ` : ''}{para(k.fiyat)}</span></li>)}</ul>
+            {t.musteri_yanit && <div className="mt-2 flex flex-wrap items-start gap-2 text-xs"><span className={`rozet ${YANIT_ROZET[t.musteri_yanit][0]}`}>{YANIT_ROZET[t.musteri_yanit][1]}</span>
+              {t.yanit_zaman && <span className="text-slate-500">{tarihSaat(t.yanit_zaman)}</span>}{t.musteri_not && <span className="w-full whitespace-pre-wrap rounded-lg bg-slate-50 px-2 py-1.5 text-slate-700 dark:bg-slate-800 dark:text-slate-200">“{t.musteri_not}”</span>}</div>}
+            {t.kod && !t.musteri_yanit && <div className="mt-1 text-xs text-slate-500">{t.goruntulenme ? `Müşteri linki açtı (${t.goruntulenme} kez, son: ${tarihSaat(t.son_goruntu)}), henüz yanıt yok` : 'Müşteri linki henüz açmadı'}{t.gecerlilik ? ` · ${tarih(t.gecerlilik)} tarihine kadar geçerli` : ''}</div>}
             {t.durum === 'acik' && z && <div className="mt-2 rounded-lg bg-emerald-50 px-2 py-1.5 text-xs text-emerald-800 dark:bg-emerald-500/10 dark:text-emerald-200">Satılmış görünüyor: {z.adet}/{t.kalemler.length} parça {tarih(z.tarih)} tarihinde satıldı{z.cari ? ` (${z.cari})` : ''}.</div>}
             <div className="mt-2 flex flex-wrap justify-end gap-1.5">
               {t.durum !== 'satildi' && <button className="btn-ghost px-2 py-1 text-xs text-emerald-700" onClick={() => durumAyarla(t, 'satildi')}>Satışa döndü</button>}
               {t.durum !== 'kaybedildi' && <button className="btn-ghost px-2 py-1 text-xs text-slate-500" onClick={() => durumAyarla(t, 'kaybedildi')}>Kaybedildi</button>}
               {t.durum !== 'acik' && <button className="btn-ghost px-2 py-1 text-xs" onClick={() => durumAyarla(t, 'acik')}>Açığa al</button>}
-              <a className="btn-ghost px-2 py-1 text-xs" target="_blank" rel="noreferrer" href={`https://wa.me/?text=${encodeURIComponent(tekrarMetin(t))}`}><MessageCircle size={13} /> Tekrar gönder</a>
+              {t.kod && <button className="btn-ghost px-2 py-1 text-xs" onClick={() => navigator.clipboard?.writeText(teklifLinki(t.kod!)).then(() => toast('Müşteri linki kopyalandı'), () => toast('Kopyalanamadı', 'hata'))}><Link2 size={13} /> Linki kopyala</button>}
+              {t.kod && <a className="btn-ghost px-2 py-1 text-xs" target="_blank" rel="noreferrer" href={teklifLinki(t.kod)}><ExternalLink size={13} /> Müşteri görünümü</a>}
+              <a className="btn-ghost px-2 py-1 text-xs" target="_blank" rel="noreferrer" href={`https://wa.me/?text=${encodeURIComponent(t.kod ? `${tekrarMetin(t)}\n\nTeklifi görmek ve onaylamak için:\n${teklifLinki(t.kod)}` : tekrarMetin(t))}`}><MessageCircle size={13} /> Tekrar gönder</a>
             </div>
           </div>); })}</div>)}
-      <p className="mt-3 flex items-start gap-1.5 text-xs text-slate-500"><Info size={14} className="mt-0.5 shrink-0" />Teklif; Ürün Ara'daki teklif kutusunda Kaydet, Yazdır veya WhatsApp'a basınca kaydedilir. Teklifteki parçalardan biri sonraki 14 gün içinde satıldıysa "satılmış görünüyor" yazar (kime satıldığı kontrol edilmeli); kesinleştirmek için "Satışa döndü" deyin.</p>
+      <p className="mt-3 flex items-start gap-1.5 text-xs text-slate-500"><Info size={14} className="mt-0.5 shrink-0" />Teklif; Ürün Ara'daki teklif kutusunda Kaydet, Yazdır veya WhatsApp'a basınca kaydedilir. Linkle gönderilen teklifte müşterinin açıp açmadığı ve yanıtı (onay / değişiklik / istemiyorum) burada görünür; müşteri onaylasa da satış BizimHesap'ta kesilince "Satışa döndü" deyin. Teklifteki parçalardan biri sonraki 14 gün içinde satıldıysa "satılmış görünüyor" yazar (kime satıldığı kontrol edilmeli); kesinleştirmek için "Satışa döndü" deyin.</p>
     </div>
   );
 }

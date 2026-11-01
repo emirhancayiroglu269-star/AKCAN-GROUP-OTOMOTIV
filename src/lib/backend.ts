@@ -60,7 +60,7 @@ export interface Backend {
   sorulanOku(sonGun: number): Promise<Sorulan[]>;
   sorulanSil(id: number): Promise<void>;
   /** Ürün Ara'dan verilen fiyat teklifleri */
-  teklifKaydet(r: Omit<FiyatTeklifi, 'id' | 'zaman' | 'durum' | 'durum_zaman'>): Promise<number | null>;
+  teklifKaydet(r: Omit<FiyatTeklifi, 'id' | 'zaman' | 'durum' | 'durum_zaman' | 'goruntulenme'>): Promise<number | null>;
   teklifOku(sonGun: number): Promise<FiyatTeklifi[]>;
   teklifGuncelle(id: number, p: Partial<FiyatTeklifi>): Promise<void>;
   /** Trendyol: ilanlar, son N günün sipariş paketleri ve durum (yalnız sayfa açılınca okunur) */
@@ -97,8 +97,11 @@ export interface RakipUrun { url: string; ad: string | null; uretici: string | n
 export interface TyOtoOzet { aday: number; duzenli: number; bugun: number; eslesmemis: { tur: 'marka' | 'kategori'; ad: string; adet: number }[]; atlanan: { urun_id: ID; ad: string; neden: string; zaman: string }[] }
 export interface TyYukleme { id: number; zaman: string; urun_id: ID | null; barkod: string; baslik: string | null; fiyat: number | null; stok: number | null; durum: string; hata: string | null }
 export interface TyVeri { urunler: TyUrun[]; siparisler: TySiparis[]; durum: TyDurum | null }
-export interface TeklifSatiri { urun_id: ID; ad: string; marka?: string | null; adet: number; fiyat: number; ekonomik?: boolean }
-export interface FiyatTeklifi { id: number; zaman: string; musteri: string | null; arac: string | null; kalemler: TeklifSatiri[]; toplam: number; kullanici: string | null; durum: 'acik' | 'satildi' | 'kaybedildi'; durum_zaman: string | null; notlar?: string | null }
+export interface TeklifSatiri { urun_id: ID; ad: string; marka?: string | null; adet: number; fiyat: number; ekonomik?: boolean; stokta?: boolean }
+export interface FiyatTeklifi { id: number; zaman: string; musteri: string | null; arac: string | null; kalemler: TeklifSatiri[]; toplam: number; kullanici: string | null; durum: 'acik' | 'satildi' | 'kaybedildi'; durum_zaman: string | null; notlar?: string | null;
+  /** müşteri linki (#t/kod) ve müşterinin yanıtı */
+  kod?: string | null; gecerlilik?: string | null; musteri_yanit?: 'onay' | 'red' | 'revizyon' | null; musteri_not?: string | null; yanit_zaman?: string | null;
+  goruntulenme?: number; ilk_goruntu?: string | null; son_goruntu?: string | null }
 export interface Sorulan { id: number; zaman: string; metin: string; urun_id: ID | null; kullanici: string | null; adet: number }
 export interface SayimSatir { depo_id: ID; urun_id: ID; sayilan: number; sistem: number | null; kullanici: string | null; zaman?: string }
 
