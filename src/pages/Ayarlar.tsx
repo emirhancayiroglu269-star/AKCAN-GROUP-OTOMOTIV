@@ -5,6 +5,7 @@ import { backend, demoSifirla } from '../lib/backend';
 import type { Ayarlar } from '../lib/types';
 import { Alan, SayfaBaslik, onayla } from '../components/ui';
 import { BizimHesapPanel } from '../components/BizimHesapPanel';
+import { DegisiklikAkisi } from '../components/DegisiklikAkisi';
 import { KullaniciPanel } from '../components/KullaniciPanel';
 import { AktarimYerImi } from '../components/AktarimYerImi';
 import { OtomarmaraDurum } from '../components/OtomarmaraDurum';
@@ -45,6 +46,7 @@ export default function AyarlarSayfa() {
       </div>
 
       <BizimHesapPanel />
+      <DegisiklikAkisi />
       {mode === 'bulut' && <AktarimYerImi />}
       {mode === 'bulut' && <OtomarmaraDurum />}
       <KullaniciPanel />

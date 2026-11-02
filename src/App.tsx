@@ -178,7 +178,7 @@ function Kabuk() {
         </nav>
         <div className="border-t border-slate-800 p-3 text-xs">
           {mode === 'demo' && <div className="mb-2 rounded-md bg-amber-500/15 px-2 py-1.5 text-amber-300">Demo modu — örnek verilerle</div>}
-          {bh?.son_esitleme && <div className={`mb-2 flex items-center gap-1.5 ${bh.son_hata ? 'text-red-300' : 'text-slate-400'}`}><span className={`h-1.5 w-1.5 rounded-full ${bh.son_hata ? 'bg-red-400' : Date.now() - new Date(bh.son_esitleme).getTime() > 10 * 60 * 1000 ? 'bg-amber-400' : 'bg-emerald-400'}`} />BizimHesap: {tarihSaat(bh.son_esitleme)}
+          {bh?.son_esitleme && <div className={`mb-2 flex items-center gap-1.5 ${bh.son_hata ? 'text-red-300' : 'text-slate-400'}`}><span className={`h-1.5 w-1.5 rounded-full ${bh.son_hata ? 'bg-red-400' : Date.now() - new Date(bh.son_esitleme).getTime() > 10 * 60 * 1000 ? 'bg-amber-400' : 'bg-emerald-400'}`} />{menu.some((m) => m.id === 'ayarlar') ? <button className="hover:text-white hover:underline" title="BizimHesap'ta neler değişti" onClick={() => git('ayarlar')}>BizimHesap: {tarihSaat(bh.son_esitleme)}</button> : <>BizimHesap: {tarihSaat(bh.son_esitleme)}</>}
             <button className="ml-auto rounded p-1 hover:bg-slate-800" title="Verileri şimdi yeniden yükle" onClick={async () => { setYenileniyor(true); await yenile(); setYenileniyor(false); }}><RefreshCw size={13} className={yenileniyor ? 'animate-spin' : ''} /></button></div>}
           {menu.some((m) => m.id === 'ayarlar') && <div className="mb-2 -mx-3"><MenuDugme m={MENU.find((m) => m.id === 'ayarlar')!} secili={gecerli === 'ayarlar'} sayi={rozet.ayarlar} git={git} /></div>}
           <div className="flex items-center justify-between">
