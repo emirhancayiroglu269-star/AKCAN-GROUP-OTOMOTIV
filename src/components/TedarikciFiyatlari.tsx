@@ -7,10 +7,10 @@ import { muadilDetay, omGuvenilir } from '../lib/muadil';
 import { detayAc } from './DetayKart';
 import type { Urun } from '../lib/types';
 
-export const TED_AD: Record<string, string> = { otomarmara: 'Otomarmara', neko: 'Neko', iron: 'Iron', basbug: 'Başbuğ', ozas: 'Özaş' };
+export const TED_AD: Record<string, string> = { otomarmara: 'Otomarmara', neko: 'Neko', iron: 'Iron', basbug: 'Başbuğ', ozas: 'Özaş', dinamik: 'Dinamik' };
 const TED_RENK: Record<string, string> = {
   otomarmara: 'bg-orange-100 text-orange-800', neko: 'bg-violet-100 text-violet-800', iron: 'bg-slate-200 text-slate-800',
-  basbug: 'bg-sky-100 text-sky-800', ozas: 'bg-emerald-100 text-emerald-800',
+  basbug: 'bg-sky-100 text-sky-800', ozas: 'bg-emerald-100 text-emerald-800', dinamik: 'bg-rose-100 text-rose-800',
 };
 /** "MAN-HU7020Z" → "HU7020Z" (tedarikçi önekini at) */
 const govde = (k?: string | null) => kodNorm((k ?? '').replace(/^[A-Za-zÇĞİÖŞÜçğıöşü]{2,6}-/, ''));

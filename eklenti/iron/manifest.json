@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Akcan — tedarikçi fiyat yardımcısı",
-  "version": "1.7.0",
-  "description": "Iron Otomotiv, Başbuğ ve Özaş B2B'de (aynı B2B yazılımı) yaptığınız aramaların fiyatlarını Akcan'a kaydeder; BizimHesap'ta tedarikçide zamlanan ürünlerin kart alış fiyatını, sizin onayınızla BizimHesap'ın kendi Toplu Ürün Güncelleme özelliğiyle günceller. Sepete eklemez, sipariş vermez.",
+  "version": "1.8.0",
+  "description": "Iron Otomotiv, Başbuğ, Özaş ve Dinamik (Ada Oto) B2B'de (aynı B2B yazılımı) yaptığınız aramaların fiyatlarını Akcan'a kaydeder; BizimHesap'ta tedarikçide zamlanan ürünlerin kart alış fiyatını, sizin onayınızla BizimHesap'ın kendi Toplu Ürün Güncelleme özelliğiyle günceller. Sepete eklemez, sipariş vermez.",
   "permissions": [
     "storage"
   ],
@@ -31,7 +31,8 @@
       "matches": [
         "https://b2b.ironotomotiv.com/*",
         "https://b2bbasbug.com/*",
-        "https://program.ozas.com.tr/*"
+        "https://program.ozas.com.tr/*",
+        "https://bayi.adaoto.com.tr/*"
       ],
       "js": [
         "sayfa.js"
@@ -43,7 +44,8 @@
       "matches": [
         "https://b2b.ironotomotiv.com/*",
         "https://b2bbasbug.com/*",
-        "https://program.ozas.com.tr/*"
+        "https://program.ozas.com.tr/*",
+        "https://bayi.adaoto.com.tr/*"
       ],
       "js": [
         "icerik.js"
