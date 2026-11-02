@@ -73,6 +73,16 @@ const VAG_MODEL: Record<string, Record<string, [string, string[]]>> = {
     KH: ['Ateca', ['ATECA']], '7N': ['Alhambra', ['ALHAMBRA']],
   },
 };
+/** Aynı model kodu iki nesli kapsıyorsa model yılına göre ayrım (yıl VW grubunda şaseden güvenilir okunur) */
+const VAG_YIL: Record<string, Record<string, [ilk: number, son: number, ad: string, arama: string[]][]>> = {
+  VW: {
+    '1K': [[2003, 2008, 'Golf 5 / Jetta', ['GOLF 5', 'JETTA']], [2009, 2013, 'Golf 6', ['GOLF 6']]],
+    '2K': [[2004, 2015, 'Caddy 3', ['CADDY 3', 'CADDY']], [2016, 2021, 'Caddy 4', ['CADDY 4', 'CADDY']]],
+    '3C': [[2005, 2010, 'Passat B6', ['PASSAT B6', 'PASSAT']], [2011, 2015, 'Passat B7', ['PASSAT B7', 'PASSAT']]],
+    '7E': [[2010, 2015, 'Transporter T5', ['TRANSPORTER', 'T5']], [2016, 2021, 'Transporter T6', ['TRANSPORTER', 'T6']]],
+  },
+  AUDI: { '8E': [[2001, 2004, 'A4 B6', ['A4']], [2005, 2008, 'A4 B7', ['A4']]] },
+};
 const VAG_GRUP: Record<string, keyof typeof VAG_MODEL> = { WVW: 'VW', WV1: 'VW', WV2: 'VW', WV3: 'VW', WVG: 'VW', '3VW': 'VW', '9BW': 'VW', VWV: 'VW', AAV: 'VW', XW8: 'VW', WAU: 'AUDI', WA1: 'AUDI', TRU: 'AUDI', TMB: 'SKODA', VSS: 'SEAT' };
 
 /** Mercedes-Benz: 4–6. hane kasa kodu (W205 = C serisi). Dükkanda parçalar bu kodla aranır. */
@@ -124,7 +134,11 @@ export function vinCoz(girdi: string): VinCozum {
   const yilKesin = (kuzeyAmerika && kontrolHanesi(vin)) || !!VAG_GRUP[wmi];
   let model: string | null = null, modelKod: string | null = null, arama: string[] = [];
   const grup = VAG_GRUP[wmi];
-  if (grup) { modelKod = vin.slice(6, 8); const m = VAG_MODEL[grup][modelKod]; if (m) { model = m[0]; arama = m[1]; } }
+  if (grup) {
+    modelKod = vin.slice(6, 8); const m = VAG_MODEL[grup][modelKod]; if (m) { model = m[0]; arama = m[1]; }
+    const y = yil ? VAG_YIL[grup]?.[modelKod]?.find(([a, b]) => yil >= a && yil <= b) : undefined;
+    if (y) { model = y[2]; arama = y[3]; }
+  }
   else if (MB_WMI.has(wmi)) {
     modelKod = vin.slice(3, 6); const m = MB_KASA[modelKod];
     if (m) { model = m; const w = /\(([A-Z]?)(\d{3})\)/.exec(m); arama = [`W${modelKod}`, ...(w && w[1] && w[1] !== 'W' ? [`${w[1]}${w[2]}`] : []), ...(/sprinter/i.test(m) ? ['SPRINTER'] : /vito/i.test(m) ? ['VITO'] : [])]; }
