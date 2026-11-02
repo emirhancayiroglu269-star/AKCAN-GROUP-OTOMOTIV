@@ -174,7 +174,7 @@ export function RafaCek() {
       <div className="mb-3 flex flex-wrap items-center gap-1.5">
         <span className="mr-1 text-sm font-medium text-slate-600 dark:text-slate-300">Araç markası:</span>
         <button onClick={() => setArac('')} className={`rounded-full px-3 py-1.5 text-sm ${!arac ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900' : 'bg-white text-slate-600 dark:bg-slate-900 dark:text-slate-300'}`}>Tümü</button>
-        {markaOzet.map((m) => <button key={m.marka} onClick={() => setArac(m.marka)} className={`rounded-full px-3 py-1.5 text-sm ${arac === m.marka ? 'bg-marka-600 text-white' : 'bg-white text-slate-600 dark:bg-slate-900 dark:text-slate-300'}`}>{aracAd(m.marka)} <span className="opacity-60">{sayi(m.eksik)}</span></button>)}
+        {markaOzet.map((m) => <button key={m.marka} onClick={() => setArac(m.marka)} className={`rounded-full px-3 py-1.5 text-sm ${arac === m.marka ? 'bg-slate-900 text-white dark:bg-marka-500 dark:text-slate-900' : 'bg-white text-slate-600 dark:bg-slate-900 dark:text-slate-300'}`}>{aracAd(m.marka)} <span className="opacity-60">{sayi(m.eksik)}</span></button>)}
       </div>
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <div className="flex flex-wrap gap-1 rounded-xl bg-slate-100 p-1 dark:bg-slate-800/60">{sb('oneri', 'Rafa alınacaklar (hızlı gidebilecek)', oneri.reduce((t, g) => t + Math.min(8, g.eksikler.length), 0))}{sb('hizli', 'Bizde hızlı gidenler (marka × kategori)')}{sb('sorulan', 'Tezgâhta sorulan', sorulanEksik.length)}{sb('kategori', 'Kategoriye göre (hızlı gidenler)', katOzet.length)}{sb('cek', 'Tüm eksik parçalar', cek.length)}{sb('fiyat', 'Fiyat karşılaştırma', bizde.length)}</div>

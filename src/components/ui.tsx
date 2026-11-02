@@ -13,9 +13,9 @@ export function Modal({ acik, kapat, baslik, children, genis, alt }: {
   const w = genis === 'xl' ? 'max-w-5xl' : genis === 'lg' ? 'max-w-3xl' : 'max-w-lg';
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-900/50 p-3 pt-[6vh] print:hidden" onMouseDown={kapat}>
-      <div className={`card w-full ${w} flex max-h-[88vh] flex-col`} onMouseDown={(e) => e.stopPropagation()}>
+      <div className={`card w-full ${w} flex max-h-[88vh] flex-col shadow-xl`} onMouseDown={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between border-b border-slate-200 px-5 py-3 dark:border-slate-800">
-          <h3 className="font-semibold">{baslik}</h3>
+          <h3 className="font-dar text-xl font-semibold">{baslik}</h3>
           <button onClick={kapat} className="rounded p-1 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800" aria-label="Kapat"><X size={18} /></button>
         </div>
         <div className="overflow-y-auto p-5">{children}</div>
@@ -33,7 +33,7 @@ export function SayfaBaslik({ baslik, alt, children }: { baslik: string; alt?: s
   return (
     <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
       <div>
-        <h1 className="text-xl font-bold tracking-tight">{baslik}</h1>
+        <h1 className="text-[28px] font-semibold leading-tight">{baslik}</h1>
         {alt && <p className="text-sm text-slate-500">{alt}</p>}
       </div>
       {children && <div className="flex flex-wrap items-center gap-2">{children}</div>}
@@ -47,9 +47,9 @@ export function Kpi({ etiket, deger, alt, renk = 'slate', ikon }: { etiket: stri
     <div className="card p-4">
       <div className="flex items-center justify-between">
         <span className="text-xs font-medium text-slate-500">{etiket}</span>
-        {ikon && <span className={`rounded-lg p-1.5 ${r} dark:bg-slate-800`}>{ikon}</span>}
+        {ikon && <span className={`rounded-md p-1.5 ${r} dark:bg-slate-800`}>{ikon}</span>}
       </div>
-      <div className="mt-2 text-2xl font-bold tracking-tight">{deger}</div>
+      <div className="mt-1 font-dar text-[32px] font-semibold leading-none">{deger}</div>
       {alt && <div className="mt-1 text-xs text-slate-500">{alt}</div>}
     </div>
   );

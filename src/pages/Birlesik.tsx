@@ -31,10 +31,10 @@ function Sekmeli({ sayfa, sekmeler, alt, git }: P & { sayfa: string; sekmeler: S
   const Bilesen = aktif.bilesen;
   return (
     <div>
-      <div className="mb-4 flex flex-wrap gap-1 rounded-xl bg-slate-100 p-1 dark:bg-slate-800/60 print:hidden" role="tablist">
+      <div className="mb-5 flex flex-wrap gap-x-1 border-b border-slate-300 dark:border-slate-700 print:hidden" role="tablist">
         {gorunen.map((s) => (
           <button key={s.id} role="tab" aria-selected={s.id === aktif.id} onClick={() => git(`${sayfa}/${s.id}` as Sayfa)}
-            className={`rounded-lg px-4 py-1.5 text-sm font-medium transition ${s.id === aktif.id ? 'bg-white text-slate-900 shadow-sm dark:bg-slate-900 dark:text-white' : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'}`}>
+            className={`-mb-px border-b-[3px] px-3 py-2 text-sm font-medium transition ${s.id === aktif.id ? 'border-marka-500 text-slate-900 dark:text-white' : 'border-transparent text-slate-500 hover:border-slate-300 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'}`}>
             {s.ad}
           </button>
         ))}

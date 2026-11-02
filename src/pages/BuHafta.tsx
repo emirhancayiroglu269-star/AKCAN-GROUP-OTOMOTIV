@@ -211,7 +211,7 @@ export default function BuHafta() {
 
       <div className="mb-3 flex flex-wrap items-center gap-1.5">
         <span className="mr-1 text-sm font-medium text-slate-600 dark:text-slate-300">Müşterilerimizin araçları:</span>
-        {markaSecenek.slice(0, 14).map((m) => <button key={m.marka} onClick={() => markaDegis(m.marka)} className={`rounded-full px-3 py-1.5 text-sm ${markalar.includes(m.marka) ? 'bg-marka-600 text-white' : 'bg-white text-slate-600 dark:bg-slate-900 dark:text-slate-300'}`}>{m.ad} <span className="opacity-60">%{Math.round(m.pay * 100)}</span></button>)}
+        {markaSecenek.slice(0, 14).map((m) => <button key={m.marka} onClick={() => markaDegis(m.marka)} className={`rounded-full px-3 py-1.5 text-sm ${markalar.includes(m.marka) ? 'bg-slate-900 text-white dark:bg-marka-500 dark:text-slate-900' : 'bg-white text-slate-600 dark:bg-slate-900 dark:text-slate-300'}`}>{m.ad} <span className="opacity-60">%{Math.round(m.pay * 100)}</span></button>)}
         {secMarka && <button className="text-xs text-slate-500 hover:underline" onClick={() => setSecMarka(null)}>varsayılana dön</button>}
         <span className="ml-auto flex items-center gap-1.5 text-sm">Pazardan en fazla
           <select className="inp w-20 py-1" value={pazarSay} onChange={(e) => { setPazarSay(Number(e.target.value)); yerel.yaz('buhafta_pazar', e.target.value); }}>{[20, 40, 80, 150].map((n) => <option key={n} value={n}>{n}</option>)}</select> kalem</span>

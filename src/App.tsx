@@ -137,19 +137,20 @@ function Kabuk() {
   return (
     <div className="flex h-full print:hidden">
       {menuAcik && <div className="fixed inset-0 z-30 bg-black/40 lg:hidden" onClick={() => setMenuAcik(false)} />}
-      <aside className={`fixed inset-y-0 left-0 z-40 flex w-64 flex-col bg-slate-900 text-slate-300 transition-transform lg:static lg:translate-x-0 ${menuAcik ? 'translate-x-0' : '-translate-x-full'}`}>
+      <aside className={`fixed inset-y-0 left-0 z-40 flex w-64 flex-col bg-slate-900 text-slate-300 dark:bg-slate-950 dark:border-r dark:border-slate-800 transition-transform lg:static lg:translate-x-0 ${menuAcik ? 'translate-x-0' : '-translate-x-full'}`}>
         <div className="flex items-center justify-between px-5 py-5">
-          <div>
-            <div className="text-[11px] font-semibold uppercase tracking-widest text-marka-500">BizimHesap Analiz</div>
-            <div className="truncate text-base font-bold text-white">{db.ayarlar.firma_adi}</div>
+          <div className="min-w-0 border-l-4 border-marka-500 pl-3">
+            <div className="truncate font-dar text-xl font-semibold leading-tight text-white">{db.ayarlar.firma_adi}</div>
+            <div className="text-xs text-slate-400">BizimHesap analiz</div>
           </div>
           <button className="lg:hidden" onClick={() => setMenuAcik(false)}><X size={20} /></button>
         </div>
         <nav className="flex-1 space-y-0.5 overflow-y-auto px-3">
           {menu.map((m) => (<div key={m.id}>
-            {m.grup && <div className="mb-1 mt-3 px-3 text-[10px] font-semibold uppercase tracking-wider text-slate-500">{m.grup}</div>}
-            <button onClick={() => git(m.id)}
-              className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm transition ${gecerli === m.id ? 'bg-marka-600 text-white' : 'hover:bg-slate-800 hover:text-white'}`}>
+            {m.grup && <div className="mb-1 mt-4 border-t border-slate-800 px-3 pt-3 text-xs font-medium text-slate-500">{m.grup.charAt(0) + m.grup.slice(1).toLocaleLowerCase('tr')}</div>}
+            {/* seçili sayfa: raf etiketi gibi solda sarı şerit */}
+            <button onClick={() => git(m.id)} aria-current={gecerli === m.id ? 'page' : undefined}
+              className={`relative flex w-full items-center gap-3 rounded-r-md px-3 py-2 text-sm transition ${gecerli === m.id ? 'bg-slate-800 font-medium text-white before:absolute before:inset-y-1 before:left-0 before:w-1 before:rounded-full before:bg-marka-500' : 'text-slate-300 hover:bg-slate-800/60 hover:text-white'}`}>
               <m.ikon size={18} /><span className="flex-1 text-left">{m.ad}</span>
               {!!rozet[m.id] && <span className={`rozet ${m.id === 'ayarlar' ? 'bg-red-500/25 text-red-300' : 'bg-amber-500/20 text-amber-300'}`}>{m.id === 'ayarlar' ? '!' : rozet[m.id]}</span>}
             </button>
@@ -169,9 +170,9 @@ function Kabuk() {
         </div>
       </aside>
       <main className="flex min-w-0 flex-1 flex-col">
-        <div className="flex items-center gap-3 border-b border-slate-200 bg-white px-4 py-3 lg:hidden dark:border-slate-800 dark:bg-slate-900">
+        <div className="flex items-center gap-3 border-b-2 border-marka-500 bg-slate-900 px-4 py-3 text-white lg:hidden">
           <button onClick={() => setMenuAcik(true)}><Menu size={22} /></button>
-          <span className="font-semibold">{MENU.find((m) => m.id === gecerli)?.ad}</span>
+          <span className="font-dar text-lg font-semibold">{MENU.find((m) => m.id === gecerli)?.ad}</span>
         </div>
         <div className="flex-1 overflow-y-auto p-4 lg:p-6"><Icerik git={git} alt={gecerli === konum.ana ? konum.alt : undefined} /></div>
         <DetayKartlari />
