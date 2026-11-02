@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Download, ExternalLink, Info, Link2, MessageCircle, RefreshCw, Search, Trash2 } from 'lucide-react';
+import { ClipboardList, Download, ExternalLink, Info, Link2, MessageCircle, RefreshCw, Search, Trash2 } from 'lucide-react';
 import { useStore, toast } from '../lib/store';
 import { backend, type FiyatTeklifi, type Sorulan } from '../lib/backend';
 import { OtomarmaraArama, teklifLinki } from './UrunAra';
+import { HazirlikPanel } from '../components/HazirlikFisi';
 import { pahaliAlimlar } from '../lib/analiz5';
 import { ara, gunu, para, sayi, tarih, tarihSaat } from '../lib/format';
 import { DonemSecici, useDonem } from '../components/DonemSecici';
@@ -165,7 +166,7 @@ export function TeklifTakip() {
   const [kayit, setKayit] = useState<FiyatTeklifi[] | null>(null);
   const [yuk, setYuk] = useState(false);
   const [f, setF] = useState<TeklifFiltre>('acik');
-  const [q, setQ] = useState('');
+  const [q, setQ] = useState(''); const [hazir, setHazir] = useState<FiyatTeklifi | null>(null);
   const oku = async () => { setYuk(true); try { setKayit(await backend.teklifOku(gun)); } catch (e) { toast(`Okunamadı: ${(e as Error).message}`, 'hata'); } finally { setYuk(false); } };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { oku(); }, [gun]);
@@ -225,6 +226,7 @@ export function TeklifTakip() {
             {t.kod && !t.musteri_yanit && <div className="mt-1 text-xs text-slate-500">{t.goruntulenme ? `Müşteri linki açtı (${t.goruntulenme} kez, son: ${tarihSaat(t.son_goruntu)}), henüz yanıt yok` : 'Müşteri linki henüz açmadı'}{t.gecerlilik ? ` · ${tarih(t.gecerlilik)} tarihine kadar geçerli` : ''}</div>}
             {t.durum === 'acik' && z && <div className="mt-2 rounded-lg bg-emerald-50 px-2 py-1.5 text-xs text-emerald-800 dark:bg-emerald-500/10 dark:text-emerald-200">Satılmış görünüyor: {z.adet}/{t.kalemler.length} parça {tarih(z.tarih)} tarihinde satıldı{z.cari ? ` (${z.cari})` : ''}.</div>}
             <div className="mt-2 flex flex-wrap justify-end gap-1.5">
+              <button className={`btn-ghost px-2 py-1 text-xs ${t.musteri_yanit === 'onay' && t.durum === 'acik' ? 'font-semibold text-marka-700' : ''}`} onClick={() => setHazir(t)}><ClipboardList size={13} /> Hazırla</button>
               {t.durum !== 'satildi' && <button className="btn-ghost px-2 py-1 text-xs text-emerald-700" onClick={() => durumAyarla(t, 'satildi')}>Satışa döndü</button>}
               {t.durum !== 'kaybedildi' && <button className="btn-ghost px-2 py-1 text-xs text-slate-500" onClick={() => durumAyarla(t, 'kaybedildi')}>Kaybedildi</button>}
               {t.durum !== 'acik' && <button className="btn-ghost px-2 py-1 text-xs" onClick={() => durumAyarla(t, 'acik')}>Açığa al</button>}
@@ -233,6 +235,7 @@ export function TeklifTakip() {
               <a className="btn-ghost px-2 py-1 text-xs" target="_blank" rel="noreferrer" href={`https://wa.me/?text=${encodeURIComponent(t.kod ? `${tekrarMetin(t)}\n\nTeklifi görmek ve onaylamak için:\n${teklifLinki(t.kod)}` : tekrarMetin(t))}`}><MessageCircle size={13} /> Tekrar gönder</a>
             </div>
           </div>); })}</div>)}
+      {hazir && <HazirlikPanel acik kapat={() => setHazir(null)} kalemler={hazir.kalemler.map((k) => ({ urun_id: String(k.urun_id), ad: k.ad, marka: k.marka, adet: k.adet }))} bilgi={{ no: hazir.id, musteri: hazir.musteri, arac: hazir.arac, zaman: hazir.zaman }} />}
       <p className="mt-3 flex items-start gap-1.5 text-xs text-slate-500"><Info size={14} className="mt-0.5 shrink-0" />Teklif; Ürün Ara'daki teklif kutusunda Kaydet, Yazdır veya WhatsApp'a basınca kaydedilir. Linkle gönderilen teklifte müşterinin açıp açmadığı ve yanıtı (onay / değişiklik / istemiyorum) burada görünür; müşteri onaylasa da satış BizimHesap'ta kesilince "Satışa döndü" deyin. Teklifteki parçalardan biri sonraki 14 gün içinde satıldıysa "satılmış görünüyor" yazar (kime satıldığı kontrol edilmeli); kesinleştirmek için "Satışa döndü" deyin.</p>
     </div>
   );

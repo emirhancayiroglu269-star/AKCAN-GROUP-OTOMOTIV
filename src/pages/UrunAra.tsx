@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronDown, ChevronUp, Copy, ExternalLink, FileText, HelpCircle, Link2, Loader2, MessageCircle, Plus, Printer, Save, Search, Trash2, X } from 'lucide-react';
+import { ChevronDown, ChevronUp, ClipboardList, Copy, ExternalLink, FileText, HelpCircle, Link2, Loader2, MessageCircle, Plus, Printer, Save, Search, Trash2, X } from 'lucide-react';
 import { useStore, toast } from '../lib/store';
 import { birlikteSatilanlar } from '../lib/analiz5';
 import { yazdir } from '../components/Yazdir';
@@ -13,6 +13,7 @@ import { ESLESME_AD, dizin, genelArama, koddanBizdeki, type AramaSatiri } from '
 import { detayAc } from '../components/DetayKart';
 import { TedarikciFiyatlari } from '../components/TedarikciFiyatlari';
 import { ON_DOLDUR, type OnDoldur } from './Sase';
+import { HazirlikPanel } from '../components/HazirlikFisi';
 import type { Urun } from '../lib/types';
 
 const TUR_RENK: Record<AramaSatiri['tur'], string> = {
@@ -380,7 +381,7 @@ export const teklifLinki = (kod: string) => `${location.origin}${location.pathna
 /** Müşteriye fiyat teklifi: seçilen parçalar, adet ve fiyat (KDV dahil); WhatsApp / yazdır / kopyala */
 function TeklifPanel({ teklif, setTeklif, firma, aracBas = '', aracId = null }: { teklif: TeklifKalem[]; setTeklif: (f: (t: TeklifKalem[]) => TeklifKalem[]) => void; firma: string; aracBas?: string; aracId?: number | null }) {
   const { personel, eposta } = useStore();
-  const [musteri, setMusteri] = useState(''); const [arac, setArac] = useState(aracBas); const [kucuk, setKucuk] = useState(false);
+  const [musteri, setMusteri] = useState(''); const [arac, setArac] = useState(aracBas); const [hazirla, setHazirla] = useState(false); const [kucuk, setKucuk] = useState(false);
   const toplam = teklif.reduce((t, k) => t + k.adet * k.fiyat, 0);
   const [gecerlilikGun, setGecerlilikGun] = useState(7);
   // aynı içerik iki kez kaydedilmesin (WhatsApp + yazdır gibi); her kayıt müşteri linki için benzersiz bir kod alır
@@ -422,7 +423,7 @@ function TeklifPanel({ teklif, setTeklif, firma, aracBas = '', aracId = null }: 
       <div className="mt-2 text-right text-base font-bold">Toplam: {para(toplam)} <span className="text-xs font-normal">(KDV dahil)</span></div>
       <div className="mt-6 text-[10px] text-slate-500">Fiyatlar stok durumuna göre değişebilir.</div>
     </div>);
-  return (
+  return (<>
     <div className="fixed inset-x-2 bottom-2 z-30 mx-auto max-w-4xl rounded-2xl lg:left-[17rem] border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900 print:hidden">
       <div className="flex items-center gap-2 border-b border-slate-100 px-3 py-2 dark:border-slate-800">
         <FileText size={16} className="text-marka-600" /><b className="text-sm">Fiyat teklifi</b><span className="text-xs text-slate-500">{teklif.length} kalem · {para(toplam)}</span>
@@ -436,7 +437,7 @@ function TeklifPanel({ teklif, setTeklif, firma, aracBas = '', aracId = null }: 
           <span>· müşteriye giden linkte alış fiyatı, tedarikçi ve personel bilgisi görünmez</span></div>
         <div className="space-y-1">{teklif.map((k) => (
           <div key={k.u.id} className="flex items-center gap-2 text-sm">
-            <div className="min-w-0 flex-1"><div className="truncate">{k.u.ad}</div><div className="text-[11px] text-slate-500">{[k.u.marka, k.u.stok > 0 ? 'stokta' : 'stokta yok'].filter(Boolean).join(' · ')}
+            <div className="min-w-0 flex-1"><div className="truncate">{k.u.ad}</div><div className="text-[11px] text-slate-500"><span className="font-mono font-semibold text-slate-700 dark:text-slate-300">{k.u.kod}</span>{' · '}{[k.u.marka, k.u.raf && `Raf ${k.u.raf}`, k.u.stok > 0 ? `stok ${sayi(k.u.stok)}` : 'stokta yok'].filter(Boolean).join(' · ')}
               <label className="ml-2 inline-flex items-center gap-1"><input type="checkbox" checked={!!k.ekonomik} onChange={(e) => guncelle(k.u.id, { ekonomik: e.target.checked })} /> ekonomik seçenek</label></div></div>
             <input className="inp w-14 py-1 text-right" inputMode="decimal" value={String(k.adet)} onChange={(e) => guncelle(k.u.id, { adet: Math.max(0, parse(e.target.value)) })} />
             <input className="inp w-24 py-1 text-right" inputMode="decimal" value={String(k.fiyat)} onChange={(e) => guncelle(k.u.id, { fiyat: Math.max(0, parse(e.target.value)) })} title="Birim fiyat (KDV dahil)" />
@@ -445,6 +446,7 @@ function TeklifPanel({ teklif, setTeklif, firma, aracBas = '', aracId = null }: 
           </div>))}</div>
         <div className="mt-3 flex flex-wrap justify-end gap-2">
           <button className="btn-ghost px-2 py-1 text-sm" onClick={() => navigator.clipboard?.writeText(metin()).then(() => toast('Teklif kopyalandı'), () => toast('Kopyalanamadı', 'hata'))}><Copy size={15} /> Kopyala</button>
+          <button className="btn-ghost px-2 py-1 text-sm" onClick={() => setHazirla(true)} title="Stok kodu ve raf bilgisiyle toplama listesi (iç belge)"><ClipboardList size={15} /> Hazırlık fişi</button>
           <button className="btn-ghost px-2 py-1 text-sm" onClick={() => kaydet()} disabled={kayitli}><Save size={15} /> {kayitli ? 'Kaydedildi' : 'Kaydet'}</button>
           <button className="btn-ghost px-2 py-1 text-sm" onClick={() => { kaydet(true); bas(); }}><Printer size={15} /> Yazdır / PDF</button>
           <a className="btn-ghost px-2 py-1 text-sm" target="_blank" rel="noreferrer" onClick={() => kaydet(true)} href={`https://wa.me/?text=${encodeURIComponent(metin())}`} title="Linksiz, düz metin olarak"><MessageCircle size={15} /> Düz metin</a>
@@ -453,5 +455,6 @@ function TeklifPanel({ teklif, setTeklif, firma, aracBas = '', aracId = null }: 
         </div>
       </div>}
     </div>
-  );
+    <HazirlikPanel acik={hazirla} kapat={() => setHazirla(false)} kalemler={teklif.map((k) => ({ urun_id: k.u.id, ad: k.u.ad, marka: k.u.marka, adet: k.adet }))} bilgi={{ musteri, arac }} />
+  </>);
 }
