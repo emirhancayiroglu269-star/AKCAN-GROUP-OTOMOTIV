@@ -3,7 +3,7 @@ import TrendyolSayfa from './pages/Trendyol';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import {
-  Activity, ArrowLeftRight, Search, ShieldAlert, ShoppingBasket, RefreshCw, Wrench, HandCoins, PackageMinus, Warehouse, Lightbulb, Medal, Store, BarChart3, Boxes, LayoutDashboard, LogOut, Menu, Moon, PieChart, Settings, Sun, Tag, Truck, UserCheck, Users, Wallet, X,
+  Activity, ArrowLeftRight, ChevronDown, Search, ShieldAlert, ShoppingBasket, RefreshCw, Wrench, HandCoins, PackageMinus, Warehouse, Lightbulb, Medal, Store, BarChart3, Boxes, LayoutDashboard, LogOut, Menu, Moon, PieChart, Settings, Sun, Tag, Truck, UserCheck, Users, Wallet, X,
 } from 'lucide-react';
 import { supabase, MODE, onbellekTemizle } from './lib/backend';
 import { StoreProvider, Toasts, useStore } from './lib/store';
@@ -45,30 +45,33 @@ export function cozumle(h: string): { ana: AnaSayfa; alt?: string } {
   return { ana: (ana in SAYFALAR ? ana : 'panel') as AnaSayfa, alt };
 }
 
-const MENU: { id: AnaSayfa; ad: string; ikon: typeof LayoutDashboard; grup?: string }[] = [
+/** Sol menü: günlük iş akışına göre gruplu; "Raporlar" gibi seyrek kullanılanlar kapatılabilir. Ayarlar alt bölümde. */
+type MenuGrup = 'Tezgâh' | 'Stok & sipariş' | 'Fiyat' | 'Raporlar';
+const MENU: { id: AnaSayfa; ad: string; ikon: typeof LayoutDashboard; grup?: MenuGrup }[] = [
   { id: 'panel', ad: 'Genel Bakış', ikon: LayoutDashboard },
   { id: 'arama', ad: 'Ürün Ara', ikon: Search },
   { id: 'oneriler', ad: 'Öneriler', ikon: Lightbulb },
-  { id: 'hareketler', ad: 'Satışlar & Alışlar', ikon: ArrowLeftRight, grup: 'Satış' },
-  { id: 'satisanaliz', ad: 'Satış Analizi', ikon: Activity },
-  { id: 'musteri', ad: 'Müşteri Analizi', ikon: UserCheck },
-  { id: 'sepet', ad: 'Birlikte Satılanlar', ikon: ShoppingBasket },
-  { id: 'performans', ad: 'Personel & Usta', ikon: Medal },
-  { id: 'karzarar', ad: 'Kâr / Zarar', ikon: BarChart3, grup: 'Para' },
-  { id: 'tahsilat', ad: 'Tahsilat Takip', ikon: HandCoins },
-  { id: 'nakit', ad: 'Nakit Akışı', ikon: Wallet },
-  { id: 'cariler', ad: 'Cariler', ikon: Users },
-  { id: 'analiz', ad: 'Ürün Analizi (ABC)', ikon: PieChart, grup: 'Stok' },
-  { id: 'fiyat', ad: 'Fiyat & Marj', ikon: Tag },
-  { id: 'usta', ad: 'Usta Fiyat Listesi', ikon: Wrench },
-  { id: 'eritme', ad: 'Ölü Stok Eritme', ikon: PackageMinus },
-  { id: 'kayip', ad: 'Kayıp-Kaçak Kontrolü', ikon: ShieldAlert },
-  { id: 'depolar', ad: 'Depolar & Sipariş', ikon: Warehouse },
-  { id: 'tedarikci', ad: 'Tedarikçiler', ikon: Truck },
-  { id: 'urunler', ad: 'Ürünler & Stok', ikon: Boxes },
-  { id: 'trendyol', ad: 'Trendyol', ikon: Store, grup: 'E-Ticaret' },
-  { id: 'ayarlar', ad: 'Ayarlar', ikon: Settings, grup: ' ' },
+  { id: 'hareketler', ad: 'Satışlar & Alışlar', ikon: ArrowLeftRight, grup: 'Tezgâh' },
+  { id: 'tahsilat', ad: 'Tahsilat Takip', ikon: HandCoins, grup: 'Tezgâh' },
+  { id: 'cariler', ad: 'Cariler', ikon: Users, grup: 'Tezgâh' },
+  { id: 'urunler', ad: 'Ürünler & Stok', ikon: Boxes, grup: 'Stok & sipariş' },
+  { id: 'depolar', ad: 'Depolar & Sipariş', ikon: Warehouse, grup: 'Stok & sipariş' },
+  { id: 'tedarikci', ad: 'Tedarikçiler', ikon: Truck, grup: 'Stok & sipariş' },
+  { id: 'eritme', ad: 'Ölü Stok Eritme', ikon: PackageMinus, grup: 'Stok & sipariş' },
+  { id: 'kayip', ad: 'Kayıp-Kaçak Kontrolü', ikon: ShieldAlert, grup: 'Stok & sipariş' },
+  { id: 'fiyat', ad: 'Fiyat & Marj', ikon: Tag, grup: 'Fiyat' },
+  { id: 'usta', ad: 'Usta Fiyat Listesi', ikon: Wrench, grup: 'Fiyat' },
+  { id: 'trendyol', ad: 'Trendyol', ikon: Store, grup: 'Fiyat' },
+  { id: 'karzarar', ad: 'Kâr / Zarar', ikon: BarChart3, grup: 'Raporlar' },
+  { id: 'nakit', ad: 'Nakit Akışı', ikon: Wallet, grup: 'Raporlar' },
+  { id: 'satisanaliz', ad: 'Satış Analizi', ikon: Activity, grup: 'Raporlar' },
+  { id: 'musteri', ad: 'Müşteri Analizi', ikon: UserCheck, grup: 'Raporlar' },
+  { id: 'sepet', ad: 'Birlikte Satılanlar', ikon: ShoppingBasket, grup: 'Raporlar' },
+  { id: 'analiz', ad: 'Ürün Analizi (ABC)', ikon: PieChart, grup: 'Raporlar' },
+  { id: 'performans', ad: 'Personel & Usta', ikon: Medal, grup: 'Raporlar' },
+  { id: 'ayarlar', ad: 'Ayarlar', ikon: Settings },
 ];
+const KAPALI_ANAHTAR = 'menuKapali';
 type Props = { git: (s: Sayfa) => void; alt?: string };
 const SAYFALAR: Record<AnaSayfa, (p: Props) => React.ReactNode> = {
   panel: Panel, arama: AramaSayfa, oneriler: Oneriler, hareketler: Hareketler, satisanaliz: SatisAnalizi, musteri: MusteriAnalizi, sepet: BirlikteSatilan, kayip: KayipKacak, karzarar: KarZararSayfa, tahsilat: Tahsilat, nakit: NakitAkisi, cariler: Cariler,
@@ -103,6 +106,9 @@ function Kabuk() {
   const [yenileniyor, setYenileniyor] = useState(false);
   const [konum, setKonum] = useState(() => cozumle(location.hash.slice(1) || 'panel'));
   const [menuAcik, setMenuAcik] = useState(false);
+  // kapatılan menü grupları (kişiye özel, tarayıcıda hatırlanır)
+  const [kapali, setKapali] = useState<Set<string>>(() => { try { return new Set(JSON.parse(localStorage.getItem(KAPALI_ANAHTAR) ?? '["Raporlar"]')); } catch { return new Set(['Raporlar']); } });
+  const grupDegis = (g: string) => setKapali((k) => { const y = new Set(k); if (y.has(g)) y.delete(g); else y.add(g); try { localStorage.setItem(KAPALI_ANAHTAR, JSON.stringify([...y])); } catch { /* yok */ } return y; });
   const [koyu, setKoyu] = useState(() => document.documentElement.classList.contains('dark'));
   const rolRef = useRef(rol); rolRef.current = rol;
   const git = (s: Sayfa) => { const k = cozumle(s); setKonum(k); location.hash = k.alt ? `${k.ana}/${k.alt}` : k.ana; setMenuAcik(false); };
@@ -138,28 +144,34 @@ function Kabuk() {
     <div className="flex h-full print:hidden">
       {menuAcik && <div className="fixed inset-0 z-30 bg-black/40 lg:hidden" onClick={() => setMenuAcik(false)} />}
       <aside className={`fixed inset-y-0 left-0 z-40 flex w-64 flex-col bg-slate-900 text-slate-300 dark:bg-slate-950 dark:border-r dark:border-slate-800 transition-transform lg:static lg:translate-x-0 ${menuAcik ? 'translate-x-0' : '-translate-x-full'}`}>
-        <div className="flex items-center justify-between px-5 py-5">
+        <div className="flex items-center justify-between px-5 pb-4 pt-5">
           <div className="min-w-0 border-l-4 border-marka-500 pl-3">
             <div className="truncate font-dar text-xl font-semibold leading-tight text-white">{db.ayarlar.firma_adi}</div>
             <div className="text-xs text-slate-400">BizimHesap analiz</div>
           </div>
           <button className="lg:hidden" onClick={() => setMenuAcik(false)}><X size={20} /></button>
         </div>
-        <nav className="flex-1 space-y-0.5 overflow-y-auto px-3">
-          {menu.map((m) => (<div key={m.id}>
-            {m.grup && <div className="mb-1 mt-4 border-t border-slate-800 px-3 pt-3 text-xs font-medium text-slate-500">{m.grup.charAt(0) + m.grup.slice(1).toLocaleLowerCase('tr')}</div>}
-            {/* seçili sayfa: solda yeşil şerit */}
-            <button onClick={() => git(m.id)} aria-current={gecerli === m.id ? 'page' : undefined}
-              className={`relative flex w-full items-center gap-3 rounded-r-md px-3 py-2 text-sm transition ${gecerli === m.id ? 'bg-slate-800 font-medium text-white before:absolute before:inset-y-1 before:left-0 before:w-1 before:rounded-full before:bg-marka-500' : 'text-slate-300 hover:bg-slate-800/60 hover:text-white'}`}>
-              <m.ikon size={18} /><span className="flex-1 text-left">{m.ad}</span>
-              {!!rozet[m.id] && <span className={`rozet ${m.id === 'ayarlar' ? 'bg-red-500/25 text-red-300' : 'bg-amber-500/20 text-amber-300'}`}>{m.id === 'ayarlar' ? '!' : rozet[m.id]}</span>}
-            </button>
-          </div>))}
+        <nav className="flex-1 space-y-0.5 overflow-y-auto px-3 pb-2">
+          {menu.filter((m) => m.id !== 'ayarlar').map((m, i, l) => {
+            const yeniGrup = m.grup && m.grup !== l[i - 1]?.grup;
+            const gizli = !!m.grup && kapali.has(m.grup) && MENU.find((x) => x.id === gecerli)?.grup !== m.grup;
+            const grupRozet = m.grup ? l.filter((x) => x.grup === m.grup).reduce((t, x) => t + (rozet[x.id] ?? 0), 0) : 0;
+            return (<div key={m.id}>
+              {yeniGrup && <button onClick={() => grupDegis(m.grup!)} aria-expanded={!gizli}
+                className="mt-2 flex w-full items-center gap-2 border-t border-slate-800 px-3 pb-1 pt-2.5 text-left text-xs font-medium text-slate-500 hover:text-slate-300">
+                <span className="flex-1">{m.grup}</span>
+                {gizli && grupRozet > 0 && <span className="rozet bg-amber-500/20 text-amber-300">{grupRozet}</span>}
+                <ChevronDown size={14} className={`transition-transform ${gizli ? '-rotate-90' : ''}`} />
+              </button>}
+              {!gizli && <MenuDugme m={m} secili={gecerli === m.id} sayi={rozet[m.id]} git={git} />}
+            </div>);
+          })}
         </nav>
         <div className="border-t border-slate-800 p-3 text-xs">
           {mode === 'demo' && <div className="mb-2 rounded-md bg-amber-500/15 px-2 py-1.5 text-amber-300">Demo modu — örnek verilerle</div>}
           {bh?.son_esitleme && <div className={`mb-2 flex items-center gap-1.5 ${bh.son_hata ? 'text-red-300' : 'text-slate-400'}`}><span className={`h-1.5 w-1.5 rounded-full ${bh.son_hata ? 'bg-red-400' : Date.now() - new Date(bh.son_esitleme).getTime() > 10 * 60 * 1000 ? 'bg-amber-400' : 'bg-emerald-400'}`} />BizimHesap: {tarihSaat(bh.son_esitleme)}
             <button className="ml-auto rounded p-1 hover:bg-slate-800" title="Verileri şimdi yeniden yükle" onClick={async () => { setYenileniyor(true); await yenile(); setYenileniyor(false); }}><RefreshCw size={13} className={yenileniyor ? 'animate-spin' : ''} /></button></div>}
+          {menu.some((m) => m.id === 'ayarlar') && <div className="mb-2 -mx-3"><MenuDugme m={MENU.find((m) => m.id === 'ayarlar')!} secili={gecerli === 'ayarlar'} sayi={rozet.ayarlar} git={git} /></div>}
           <div className="flex items-center justify-between">
             <span className="min-w-0 truncate">{personel}{mode === 'bulut' && rol !== 'yonetici' && <span className="ml-1 text-slate-500">· {ROL_AD[rol]}</span>}</span>
             <div className="flex gap-1">
@@ -178,5 +190,16 @@ function Kabuk() {
         <DetayKartlari />
       </main>
     </div>
+  );
+}
+
+/** Sol menü düğmesi: seçili sayfada solda yeşil şerit */
+function MenuDugme({ m, secili, sayi, git }: { m: (typeof MENU)[number]; secili: boolean; sayi?: number; git: (s: Sayfa) => void }) {
+  return (
+    <button onClick={() => git(m.id)} aria-current={secili ? 'page' : undefined}
+      className={`relative flex w-full items-center gap-3 rounded-r-md px-3 py-[7px] text-sm transition ${secili ? 'bg-slate-800 font-medium text-white before:absolute before:inset-y-1 before:left-0 before:w-1 before:rounded-full before:bg-marka-500' : 'text-slate-300 hover:bg-slate-800/60 hover:text-white'}`}>
+      <m.ikon size={18} /><span className="flex-1 text-left">{m.ad}</span>
+      {!!sayi && <span className={`rozet ${m.id === 'ayarlar' ? 'bg-red-500/25 text-red-300' : 'bg-amber-500/20 text-amber-300'}`}>{m.id === 'ayarlar' ? '!' : sayi}</span>}
+    </button>
   );
 }
