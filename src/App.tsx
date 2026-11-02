@@ -148,7 +148,7 @@ function Kabuk() {
         <nav className="flex-1 space-y-0.5 overflow-y-auto px-3">
           {menu.map((m) => (<div key={m.id}>
             {m.grup && <div className="mb-1 mt-4 border-t border-slate-800 px-3 pt-3 text-xs font-medium text-slate-500">{m.grup.charAt(0) + m.grup.slice(1).toLocaleLowerCase('tr')}</div>}
-            {/* seçili sayfa: raf etiketi gibi solda sarı şerit */}
+            {/* seçili sayfa: solda yeşil şerit */}
             <button onClick={() => git(m.id)} aria-current={gecerli === m.id ? 'page' : undefined}
               className={`relative flex w-full items-center gap-3 rounded-r-md px-3 py-2 text-sm transition ${gecerli === m.id ? 'bg-slate-800 font-medium text-white before:absolute before:inset-y-1 before:left-0 before:w-1 before:rounded-full before:bg-marka-500' : 'text-slate-300 hover:bg-slate-800/60 hover:text-white'}`}>
               <m.ikon size={18} /><span className="flex-1 text-left">{m.ad}</span>
