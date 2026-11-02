@@ -15,17 +15,8 @@
     try { out = decodeURIComponent(out); } catch { /* kodlanmamış */ } // Başbuğ kodu URL kodlu tutar ("MANN%20HU%207032%20Z")
     return /^[\x20-\x7EÀ-ſ]+$/.test(out) ? out.trim() : null;
   };
-  // GEÇİCİ TANILAMA (yalnız Dinamik): sayfada çalışıyor mu, arama yanıtı hangi biçimde geliyor (alan adları; değer göstermez)
-  const tani = (metin) => {
-    if (TED !== 'dinamik') return;
-    const yaz = () => {
-      let k = document.getElementById('akcan-tani');
-      if (!k) { k = document.createElement('div'); k.id = 'akcan-tani'; k.style.cssText = 'position:fixed;left:8px;bottom:8px;z-index:2147483647;max-width:560px;background:#111827;color:#fff;font:11px/1.4 monospace;padding:8px;border-radius:8px;white-space:pre-wrap;opacity:.92'; document.documentElement.appendChild(k); }
-      k.textContent = 'AKCAN TANI\n' + metin;
-    };
-    if (document.documentElement) yaz(); else document.addEventListener('DOMContentLoaded', yaz);
-  };
-  tani('eklenti sayfada çalışıyor, arama bekleniyor');
+  // tanılama kapalı (Dinamik bağlantısı doğrulandı, 2 Kasım 2026); açmak için gövdeyi sayfaya kutu yazan sürümle değiştirin
+  const tani = () => {};
   const sayi = (v) => (v === null || v === undefined || v === '' || !Number.isFinite(Number(v)) ? null : Number(v));
   const isle = (metin, url = '') => {
     let dis; try { dis = JSON.parse(metin); } catch { tani(url.split('/').pop() + ': JSON değil, ilk 80: ' + String(metin).slice(0, 80).replace(/[0-9]/g, '#')); return; }

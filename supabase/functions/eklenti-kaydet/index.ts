@@ -22,7 +22,8 @@ const GIZLE_MS = 15 * 60000;
 // tam: kodun tamamı (Iron, Otomarmara gibi bizimle aynı kodlayanlar); govde: marka öneki atılmış kod (Başbuğ "MANN HU 7032 Z" ↔ bizim "MAN-HU7032Z")
 type HU = { id: string; kod: string; marka: string; onek: string };
 let kodHarita: { tam: Map<string, HU>; govde: Map<string, HU[]> } | null = null; let haritaZaman = 0;
-const onekAt = (k: string) => { const t = k.trim(); const m = t.match(/^([A-Za-zÇĞİÖŞÜçğıöşü]{2,6})[\s-]+(.+)$/); return m ? { onek: norm(m[1]), govde: norm(m[2]) } : { onek: '', govde: norm(t) }; };
+// 2–6 harfli kısaltma ("MAN-", "BSG ") ya da boşlukla ayrılmış 7–12 harfli tam marka adı (Dinamik: "FILTRON OE667/6", "PURFLUX L1125")
+const onekAt = (k: string) => { const t = k.trim(); const m = t.match(/^([A-Za-zÇĞİÖŞÜçğıöşü]{2,6})[\s-]+(.+)$/) ?? t.match(/^([A-Za-zÇĞİÖŞÜçğıöşü]{7,12})\s+(.+)$/); return m ? { onek: norm(m[1]), govde: norm(m[2]) } : { onek: '', govde: norm(t) }; };
 async function harita() {
   if (kodHarita && Date.now() - haritaZaman < 600_000) return kodHarita;
   const tam = new Map<string, HU>(); const govde = new Map<string, HU[]>();
