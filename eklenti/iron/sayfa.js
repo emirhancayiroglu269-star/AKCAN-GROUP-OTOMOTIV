@@ -26,12 +26,24 @@
     // "Yolda" gibi sepete eklenemeyen depolar stok sayılmaz
     const yolda = new Set((ic.WarehouseList || []).filter((w) => w.ShowCartSummary === false || /^YOL/i.test(String(w.ColumnName || ''))).map((w) => w.WarehouseID));
     const urunler = liste.map((x) => {
-      const kod = kodCoz(x.ProductCode); if (!kod) return null;
+      // Iron / Başbuğ / Özaş kodu şifreli tutar; Dinamik (Ada Oto) düz yazar ("MANN HU7032Z")
+      const duz = (v) => (typeof v === 'string' && /^[\x20-\x7EÀ-ſ]{3,80}$/.test(v.trim()) && !/^[0-9A-Fa-f]{16,}$/.test(v.trim()) ? v.trim() : null);
+      const kod = kodCoz(x.ProductCode) || duz(x.ProductCode) || duz(x.StockCode) || duz(x.Code); if (!kod) return null;
       const dep = (x.Availability || []).filter((a) => !yolda.has(a.WarehouseID)).map((a) => ({ ad: depoAd.get(a.WarehouseID) || String(a.WarehouseID), adet: sayi(a.Amount) }));
       const stok = dep.reduce((t, d) => t + (d.adet > 0 ? d.adet : 0), 0) || (sayi(x.StockAmount) > 0 ? sayi(x.StockAmount) : 0);
       return { kod, marka: x.Brand || null, ad: x.Name_PType || null, oem: x.OemNr || null, fiyat: sayi(x.NetPriceWoVat), liste: sayi(x.LocalListPriceWoVat ?? x.ListPriceWoVAT), stok, depolar: dep };
     }).filter(Boolean);
     if (urunler.length) window.postMessage({ kaynak: 'akcan-iron', tedarikci: TED, urunler }, location.origin);
+  };
+  // fetch ile gelen yanıtlar da okunur (yanıtın kopyası; sayfanın kendi isteğine dokunulmaz)
+  const asilFetch = window.fetch;
+  if (typeof asilFetch === 'function') window.fetch = function (girdi, ayar) {
+    const p = asilFetch.apply(this, arguments);
+    try {
+      const url = String(typeof girdi === 'string' ? girdi : girdi && girdi.url || '');
+      if (ARAMA.test(url)) p.then((r) => { if (r && r.ok) r.clone().text().then(isle, () => {}); }, () => {});
+    } catch { /* yok say */ }
+    return p;
   };
   const ac = XMLHttpRequest.prototype.open, gonder = XMLHttpRequest.prototype.send;
   XMLHttpRequest.prototype.open = function (m, u) { this.__akcanUrl = String(u || ''); return ac.apply(this, arguments); };
