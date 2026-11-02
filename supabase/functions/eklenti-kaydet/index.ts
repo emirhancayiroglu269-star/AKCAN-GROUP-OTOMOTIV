@@ -15,6 +15,8 @@ const norm = (s: unknown) => String(s ?? '').toUpperCase().replace(/[^A-Z0-9]/g,
 const markaNorm = (s: unknown) => String(s ?? '').toLocaleUpperCase('tr').replace(/İ/g, 'I').replace(/Ş/g, 'S').replace(/Ğ/g, 'G').replace(/Ü/g, 'U').replace(/Ö/g, 'O').replace(/Ç/g, 'C').replace(/[^A-Z0-9]/g, '');
 const sayi = (v: unknown) => (v === null || v === undefined || v === '' || !Number.isFinite(Number(v)) ? null : Number(v));
 const TEDARIKCILER = new Set(['iron', 'basbug', 'ozas']);
+/** Eklentiyle BizimHesap'a yüklenen ürün, eşitleme kartı getirene kadar bu süre listede gizlenir */
+const GIZLE_MS = 15 * 60000;
 
 // bizdeki aktif ürünlerin normalize stok kodları (fonksiyon sıcakken 10 dk saklanır)
 // tam: kodun tamamı (Iron, Otomarmara gibi bizimle aynı kodlayanlar); govde: marka öneki atılmış kod (Başbuğ "MANN HU 7032 Z" ↔ bizim "MAN-HU7032Z")
@@ -80,8 +82,8 @@ async function bhListe() {
   }
   const en = new Map<string, Obj>();
   for (const t of ted) { const f = Number(t.fiyat); if (!(f > 0)) continue; const e = en.get(t.urun_id as string); if (!e || f < Number(e.fiyat)) en.set(t.urun_id as string, t); }
-  // son 2 saatte eklentiyle BizimHesap'a yüklenmiş ürünler, BizimHesap eşitlemesi kart fiyatını getirene kadar listede tekrar görünmesin
-  const { data: son } = await db.from('bh_alis_log').select('urun_id').gt('zaman', new Date(Date.now() - 2 * 3600000).toISOString()).limit(5000);
+  // son 15 dakikada yüklenmiş ürünler, BizimHesap eşitlemesi (2 dk) kart fiyatını getirene kadar listede tekrar görünmesin; BizimHesap yüklemeyi işlemediyse (ör. 524 zaman aşımı) sonra listeye geri döner
+  const { data: son } = await db.from('bh_alis_log').select('urun_id').eq('alan', 'alis').gt('zaman', new Date(Date.now() - GIZLE_MS).toISOString()).limit(5000);
   for (const x of son ?? []) en.delete(x.urun_id as string);
   const ids = [...en.keys()]; const { data: ay } = await db.from('ayarlar').select('alis_kdv_haric').eq('id', 1).maybeSingle(); const kdvHaric = ay?.alis_kdv_haric !== false;
   const hepsi = await tumFiyatlar(sinir);
@@ -116,7 +118,7 @@ async function bhStoksuz() {
     if (!data || data.length < 1000) break;
   }
   for (const id of stoklu) en.delete(id); // stokta olan tedarikçisi varsa ana listede (bh_liste) değerlendirilir
-  const { data: son } = await db.from('bh_alis_log').select('urun_id').gt('zaman', new Date(Date.now() - 2 * 3600000).toISOString()).limit(5000);
+  const { data: son } = await db.from('bh_alis_log').select('urun_id').eq('alan', 'alis').gt('zaman', new Date(Date.now() - GIZLE_MS).toISOString()).limit(5000);
   for (const x of son ?? []) en.delete(x.urun_id as string);
   const ids = [...en.keys()]; const { data: ay } = await db.from('ayarlar').select('alis_kdv_haric').eq('id', 1).maybeSingle(); const kdvHaric = ay?.alis_kdv_haric !== false;
   const hepsi = await tumFiyatlar(sinir);
@@ -170,7 +172,7 @@ async function bhSatisListe() {
   const { data: log } = await db.from('bh_alis_log').select('urun_id,eski,yeni,alan,zaman,tedarikci').gt('zaman', new Date(Date.now() - 48 * 3600000).toISOString()).order('zaman', { ascending: false }).limit(5000);
   const sonAlis = new Map<string, Obj>(); const sonSatis = new Set<string>();
   for (const x of log ?? []) { const id = x.urun_id as string; if (!id) continue;
-    if (x.alan === 'satis') { if (Date.now() - new Date(x.zaman as string).getTime() < 2 * 3600000) sonSatis.add(id); }
+    if (x.alan === 'satis') { if (Date.now() - new Date(x.zaman as string).getTime() < GIZLE_MS) sonSatis.add(id); }
     else if (!sonAlis.has(id)) sonAlis.set(id, x); }
   const out: Obj[] = [];
   for (const u of urunler) {
