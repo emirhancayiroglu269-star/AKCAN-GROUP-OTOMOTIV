@@ -71,6 +71,14 @@ export interface Backend {
   tyFiyatSupheli(): Promise<TyFiyatSupheli[]>;
   /** Tedarikçi (Otomarmara / Neko) güncel alış fiyatları — yalnız yönetici okuyabilir */
   tedarikciMaliyet(): Promise<TedarikciMaliyet[]>;
+  /** Asistan (Claude API; yalnız yönetici) */
+  asistan(govde: { islem: 'durum' | 'sor' | 'sabah' | 'sohbet_temizle'; mesaj?: string }): Promise<AsistanYanit>;
+  asistanMesajlar(): Promise<{ rol: 'user' | 'assistant'; metin: string; zaman: string }[]>;
+  asistanOneriler(): Promise<AsistanOneri[]>;
+  asistanOneriKarar(id: number, durum: 'onaylandi' | 'reddedildi', not?: string | null): Promise<void>;
+  asistanHafiza(): Promise<AsistanHafiza[]>;
+  asistanHafizaEkle(metin: string, kaynak?: 'kullanici' | 'karar'): Promise<void>;
+  asistanHafizaKapat(id: number): Promise<void>;
   /** Şase / Araç sekmesi */
   saseCoz(vin: string): Promise<{ vin: string; nhtsa: Record<string, string> }>;
   araclarOku(): Promise<SaseArac[]>;
@@ -94,6 +102,9 @@ export interface TySiparis { paket_id: string; siparis_no: string | null; tarih:
 export interface TyDurum { son_urun: string | null; son_siparis: string | null; son_hata: string | null; urun_sayisi: number | null; siparis_sayisi: number | null }
 export interface TyGonderim { id: number; zaman: string; barkod: string; baslik: string | null; eski: number | null; yeni: number; durum: string; hata: string | null; kaynak: string | null; fiyat_eski?: number | null; fiyat_yeni?: number | null }
 export interface TyFiyatSupheli { barkod: string; baslik: string | null; eski: number; hedef: number; neden: string }
+export interface AsistanYanit { ok: boolean; hata?: string; anahtar_yok?: boolean; anahtar?: boolean; model?: string; cevap?: string; ozet?: string; oneri?: number }
+export interface AsistanOneri { id: number; zaman: string; kaynak: string; baslik: string; aciklama: string | null; oncelik: number; aksiyon: { tip: 'siparis' | 'alma' | 'kampanya' | 'iade' | 'beklet' | 'tahsilat_notu'; urun_kod?: string | null; cari?: string | null; not?: string | null } | null; durum: 'yeni' | 'onaylandi' | 'reddedildi'; karar_notu: string | null; karar_zaman: string | null }
+export interface AsistanHafiza { id: number; metin: string; kaynak: 'kullanici' | 'asistan' | 'karar'; aktif: boolean; olusturma: string }
 export interface SaseArac { id: number; vin: string | null; plaka: string | null; marka: string | null; model: string | null; model_kod: string | null; yil: number | null; motor: string | null; yakit: string | null; kasa: string | null;
   musteri: string | null; telefon: string | null; notlar: string | null; kaynak?: Record<string, unknown> | null; kullanici: string | null; olusturma: string; son_islem: string }
 export interface TedarikciFiyat { kaynak: 'kart' | 'katalog'; tedarikci: string; urun_id: string | null; kod: string | null; marka: string | null; ad: string | null; oem: string | null; fiyat: number; stok: number | null; stok_var: boolean | null; zaman: string; eslesme: 'kart' | 'kod' | 'oem' }
@@ -319,6 +330,17 @@ function supabaseBackend(sb: SupabaseClient): Backend {
     },
     async tyGonderimOku(tur = 'stok') { return (ok(await sb.from('ty_gonderim').select('id,zaman,barkod,baslik,eski,yeni,durum,hata,kaynak,fiyat_eski,fiyat_yeni').eq('tur', tur).order('id', { ascending: false }).limit(100)) as TyGonderim[]).map((x) => ({ ...x, eski: x.eski === null ? null : Number(x.eski), yeni: Number(x.yeni), fiyat_eski: x.fiyat_eski == null ? null : Number(x.fiyat_eski), fiyat_yeni: x.fiyat_yeni == null ? null : Number(x.fiyat_yeni) })); },
     async eklentiAnahtar() { const d = ok(await sb.from('eklenti_anahtar').select('anahtar').eq('id', 1).maybeSingle()) as { anahtar: string } | null; return d?.anahtar ?? null; },
+    async asistan(govde) {
+      const { data, error } = await sb.functions.invoke('asistan', { body: govde });
+      if (error) { let m = error.message; try { const j = await (error as { context?: Response }).context?.json(); if (j?.hata) m = j.hata; } catch { /* yok */ } return { ok: false, hata: m }; }
+      return data as AsistanYanit;
+    },
+    async asistanMesajlar() { return (ok(await sb.from('asistan_mesaj').select('rol,metin,zaman').order('zaman', { ascending: false }).limit(40)) as { rol: 'user' | 'assistant'; metin: string; zaman: string }[]).reverse(); },
+    async asistanOneriler() { return ok(await sb.from('asistan_oneri').select('*').order('zaman', { ascending: false }).limit(200)) as AsistanOneri[]; },
+    async asistanOneriKarar(id, durum, not) { ok(await sb.from('asistan_oneri').update({ durum, karar_notu: not ?? null, karar_zaman: new Date().toISOString() }).eq('id', id)); },
+    async asistanHafiza() { return ok(await sb.from('asistan_hafiza').select('*').eq('aktif', true).order('olusturma', { ascending: false }).limit(300)) as AsistanHafiza[]; },
+    async asistanHafizaEkle(metin, kaynak = 'kullanici') { ok(await sb.from('asistan_hafiza').insert({ metin: metin.slice(0, 500), kaynak })); },
+    async asistanHafizaKapat(id) { ok(await sb.from('asistan_hafiza').update({ aktif: false }).eq('id', id)); },
     async saseCoz(vin) {
       const { data, error } = await sb.functions.invoke('sase-coz', { body: { vin } });
       if (error) { let m = error.message; try { const j = await (error as { context?: Response }).context?.json(); if (j?.hata) m = j.hata; } catch { /* yok */ } throw new Error(m); }
@@ -550,6 +572,11 @@ let demoSayim: SayimSatir[] = [];
 let demoSorulan: Sorulan[] = [];
 let demoTeklif: FiyatTeklifi[] = [];
 let demoArac: SaseArac[] = [];
+let demoOneri: AsistanOneri[] = [
+  { id: 1, zaman: new Date().toISOString(), kaynak: 'sabah', baslik: 'Fren balata spreyi stokta kalmadı', aciklama: 'WBG-BS3001 kritik seviye 9, stok 0. Son 30 günde 14 adet satıldı; haftada ortalama 3–4 adet gidiyor.', oncelik: 1, aksiyon: { tip: 'siparis', urun_kod: 'P1000', not: '10 adet sipariş' }, durum: 'yeni', karar_notu: null, karar_zaman: null },
+  { id: 2, zaman: new Date().toISOString(), kaynak: 'sabah', baslik: 'Lucca Teks ödeme sözü bugün', aciklama: 'Salı günü ödeme sözü vardı; 42.500 ₺ vadesi geçmiş bakiye görünüyor. Öğleden sonra hatırlatma iyi olur.', oncelik: 2, aksiyon: { tip: 'tahsilat_notu', cari: 'LUCCA TEKS', not: 'Asistan: söz günü, hatırlat' }, durum: 'yeni', karar_notu: null, karar_zaman: null },
+];
+let demoHafiza: AsistanHafiza[] = [{ id: 1, metin: 'Areon koku artık alınmayacak, bitince listeden çıkar', kaynak: 'kullanici', aktif: true, olusturma: new Date().toISOString() }];
 function demoBackend(): Backend {
   let db: DB;
   try { db = JSON.parse(localStorage.getItem(LS) || 'null') || demoSeed(); } catch { db = demoSeed(); }
@@ -593,6 +620,13 @@ function demoBackend(): Backend {
     async tyGonderimOku() { return []; },
     async tyFiyatSupheli() { return []; },
     async tedarikciMaliyet() { return []; },
+    async asistan(g) { return g.islem === 'durum' ? { ok: true, anahtar: false } : { ok: false, anahtar_yok: true, hata: 'Demo modunda asistan yok' }; },
+    async asistanMesajlar() { return []; },
+    async asistanOneriler() { return [...demoOneri]; },
+    async asistanOneriKarar(id, durum, not) { demoOneri = demoOneri.map((x) => (x.id === id ? { ...x, durum, karar_notu: not ?? null, karar_zaman: new Date().toISOString() } : x)); },
+    async asistanHafiza() { return demoHafiza.filter((x) => x.aktif); },
+    async asistanHafizaEkle(metin, kaynak = 'kullanici') { demoHafiza = [{ id: demoHafiza.length + 1, metin, kaynak, aktif: true, olusturma: new Date().toISOString() }, ...demoHafiza]; },
+    async asistanHafizaKapat(id) { demoHafiza = demoHafiza.map((x) => (x.id === id ? { ...x, aktif: false } : x)); },
     async saseCoz(vin) { return { vin, nhtsa: {} }; },
     async araclarOku() { return [...demoArac]; },
     async aracKaydet(r) { const x = { ...r, id: r.id ?? demoArac.length + 1, olusturma: new Date().toISOString(), son_islem: new Date().toISOString() } as SaseArac; demoArac = [x, ...demoArac.filter((a) => a.id !== x.id)]; return x; },

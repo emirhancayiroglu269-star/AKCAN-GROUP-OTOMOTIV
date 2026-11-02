@@ -26,3 +26,8 @@ do $$ declare t text; begin
     execute format('revoke all on public.%I from anon', t);
   end loop;
 end $$;
+
+-- Her sabah 08:46 (İstanbul) inceleme: önerileri onaya sunar. Anahtar yoksa fonksiyon hemen "anahtar yok" döner (maliyet yok).
+-- select cron.schedule('asistan-sabah', '46 5 * * *', $c$ select net.http_post(url := 'https://qmafuyuocmcobrstnmbx.supabase.co/functions/v1/asistan',
+--   headers := jsonb_build_object('Content-Type','application/json','x-zamanlayici',(select anahtar from public.ty_gizli where id = 1)),
+--   body := '{"islem":"sabah"}'::jsonb, timeout_milliseconds := 150000) $c$);

@@ -1,11 +1,12 @@
 import { asama } from './lib/hataKayit';
 import TrendyolSayfa from './pages/Trendyol';
+import AsistanSayfa from './pages/Asistan';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import {
-  Activity, ArrowLeftRight, ChevronDown, Search, ShieldAlert, ShoppingBasket, RefreshCw, Wrench, HandCoins, PackageMinus, Warehouse, Lightbulb, Medal, Store, BarChart3, Boxes, LayoutDashboard, LogOut, Menu, Moon, PieChart, Settings, Sun, Tag, Truck, UserCheck, Users, Wallet, X,
+  Activity, ArrowLeftRight, Bot, ChevronDown, Search, ShieldAlert, ShoppingBasket, RefreshCw, Wrench, HandCoins, PackageMinus, Warehouse, Lightbulb, Medal, Store, BarChart3, Boxes, LayoutDashboard, LogOut, Menu, Moon, PieChart, Settings, Sun, Tag, Truck, UserCheck, Users, Wallet, X,
 } from 'lucide-react';
-import { supabase, MODE, onbellekTemizle } from './lib/backend';
+import { backend, supabase, MODE, onbellekTemizle } from './lib/backend';
 import { StoreProvider, Toasts, useStore } from './lib/store';
 import { YazdirmaAlani } from './components/Yazdir';
 import Giris from './pages/Giris';
@@ -30,7 +31,7 @@ import { tahsilatListesi } from './lib/tahsilat';
 import { ROL_AD } from './lib/types';
 import { tarihSaat } from './lib/format';
 
-export type AnaSayfa = 'panel' | 'arama' | 'oneriler' | 'hareketler' | 'satisanaliz' | 'musteri' | 'sepet' | 'kayip' | 'karzarar' | 'tahsilat' | 'nakit' | 'cariler' | 'analiz' | 'fiyat' | 'usta' | 'eritme' | 'depolar' | 'tedarikci' | 'urunler' | 'performans' | 'trendyol' | 'ayarlar';
+export type AnaSayfa = 'panel' | 'arama' | 'oneriler' | 'asistan' | 'hareketler' | 'satisanaliz' | 'musteri' | 'sepet' | 'kayip' | 'karzarar' | 'tahsilat' | 'nakit' | 'cariler' | 'analiz' | 'fiyat' | 'usta' | 'eritme' | 'depolar' | 'tedarikci' | 'urunler' | 'performans' | 'trendyol' | 'ayarlar';
 /** Eski sayfa adları (birleştirilen/kaldırılan) — eski bağlantılar ve öneriler çalışmaya devam etsin diye */
 type EskiSayfa = 'aysonu' | 'arac' | 'indirim' | 'deposiparis' | 'katfiyat' | 'stoksagligi' | 'alinacaklar';
 export type Sayfa = AnaSayfa | EskiSayfa | `${AnaSayfa}/${string}`;
@@ -51,6 +52,7 @@ const MENU: { id: AnaSayfa; ad: string; ikon: typeof LayoutDashboard; grup?: Men
   { id: 'panel', ad: 'Genel Bakış', ikon: LayoutDashboard },
   { id: 'arama', ad: 'Ürün Ara', ikon: Search },
   { id: 'oneriler', ad: 'Öneriler', ikon: Lightbulb },
+  { id: 'asistan', ad: 'Asistan', ikon: Bot },
   { id: 'hareketler', ad: 'Satışlar & Alışlar', ikon: ArrowLeftRight, grup: 'Tezgâh' },
   { id: 'tahsilat', ad: 'Tahsilat Takip', ikon: HandCoins, grup: 'Tezgâh' },
   { id: 'cariler', ad: 'Cariler', ikon: Users, grup: 'Tezgâh' },
@@ -74,7 +76,7 @@ const MENU: { id: AnaSayfa; ad: string; ikon: typeof LayoutDashboard; grup?: Men
 const KAPALI_ANAHTAR = 'menuKapali';
 type Props = { git: (s: Sayfa) => void; alt?: string };
 const SAYFALAR: Record<AnaSayfa, (p: Props) => React.ReactNode> = {
-  panel: Panel, arama: AramaSayfa, oneriler: Oneriler, hareketler: Hareketler, satisanaliz: SatisAnalizi, musteri: MusteriAnalizi, sepet: BirlikteSatilan, kayip: KayipKacak, karzarar: KarZararSayfa, tahsilat: Tahsilat, nakit: NakitAkisi, cariler: Cariler,
+  panel: Panel, arama: AramaSayfa, oneriler: Oneriler, asistan: AsistanSayfa, hareketler: Hareketler, satisanaliz: SatisAnalizi, musteri: MusteriAnalizi, sepet: BirlikteSatilan, kayip: KayipKacak, karzarar: KarZararSayfa, tahsilat: Tahsilat, nakit: NakitAkisi, cariler: Cariler,
   analiz: UrunAnalizi, fiyat: FiyatSayfa, usta: UstaFiyat, eritme: EritmeSayfa, depolar: DepolarSayfa, tedarikci: TedarikciSayfa, urunler: UrunlerSayfa, performans: PerformansSayfa, trendyol: TrendyolSayfa, ayarlar: AyarlarSayfa,
 };
 
@@ -108,6 +110,13 @@ function Kabuk() {
   const [menuAcik, setMenuAcik] = useState(false);
   // kapatılan menü grupları (kişiye özel, tarayıcıda hatırlanır)
   const [kapali, setKapali] = useState<Set<string>>(() => { try { return new Set(JSON.parse(localStorage.getItem(KAPALI_ANAHTAR) ?? '["Raporlar"]')); } catch { return new Set(['Raporlar']); } });
+  // asistanın onay bekleyen önerileri (menü rozeti; yalnız yönetici, 10 dakikada bir)
+  const [asistanBekleyen, setAsistanBekleyen] = useState(0);
+  useEffect(() => {
+    if (mode !== 'bulut' || rol !== 'yonetici') return;
+    const oku = () => backend.asistanOneriler().then((l) => setAsistanBekleyen(l.filter((o) => o.durum === 'yeni').length), () => undefined);
+    oku(); const t = setInterval(oku, 600000); return () => clearInterval(t);
+  }, [mode, rol]);
   const grupDegis = (g: string) => setKapali((k) => { const y = new Set(k); if (y.has(g)) y.delete(g); else y.add(g); try { localStorage.setItem(KAPALI_ANAHTAR, JSON.stringify([...y])); } catch { /* yok */ } return y; });
   const [koyu, setKoyu] = useState(() => document.documentElement.classList.contains('dark'));
   const rolRef = useRef(rol); rolRef.current = rol;
@@ -137,7 +146,7 @@ function Kabuk() {
   const gecerli: AnaSayfa = sayfaIzni(rol, konum.ana) ? konum.ana : menu[0].id;
   const Icerik = SAYFALAR[gecerli];
   const kritik = db.urunler.filter((u) => u.aktif && u.kritik_stok > 0 && u.stok <= u.kritik_stok).length;
-  const rozet: Partial<Record<AnaSayfa, number>> = { oneriler: onemliOneri, tahsilat: tahsilatSay, depolar: kritik, ayarlar: db.bh_durum?.son_hata ? 1 : 0 };
+  const rozet: Partial<Record<AnaSayfa, number>> = { asistan: asistanBekleyen, oneriler: onemliOneri, tahsilat: tahsilatSay, depolar: kritik, ayarlar: db.bh_durum?.son_hata ? 1 : 0 };
   const bh = db.bh_durum;
 
   return (
