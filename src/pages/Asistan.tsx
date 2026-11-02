@@ -85,12 +85,13 @@ export default function AsistanSayfa() {
 
   return (
     <div>
-      <SayfaBaslik baslik="Asistan" alt="Verilerinize bakarak cevap verir, her sabah inceleme yapar. Değişiklikleri onayınıza sunar, kendi başına hiçbir şeyi değiştirmez.">
+      <SayfaBaslik baslik="Asistan" alt="Her sabah 08:37'de verilerinizi inceler, sorularınızı cevaplar. Değişiklikleri onayınıza sunar, kendi başına hiçbir şeyi değiştirmez.">
         <button className="btn-ghost" onClick={sabahCalistir} disabled={sabah || anahtar === false}>{sabah ? <Loader2 size={16} className="animate-spin" /> : <Play size={16} />} {sabah ? 'İnceleniyor…' : 'İncelemeyi şimdi yap'}</button>
       </SayfaBaslik>
 
       {anahtar === false && <div className="card mb-4 border-l-4 border-l-marka-500 p-4 text-sm">
-        <div className="mb-1 flex items-center gap-2 font-semibold"><KeyRound size={16} /> Asistanı çalıştırmak için API anahtarı gerekli</div>
+        <div className="mb-1 flex items-center gap-2 font-semibold"><KeyRound size={16} /> Sohbet için API anahtarı gerekli</div>
+        <p className="mb-1.5 text-slate-600 dark:text-slate-300">Sabah incelemesi anahtarsız çalışıyor: Claude her sabah 08:37'de verileri inceleyip önerilerini sağdaki "Onay bekleyenler" listesine yazar. Onaylama, reddetme ve hafıza bugünden kullanılabilir. Sayfadaki sohbet kutusu için anahtar gerekir:</p>
         <ol className="ml-5 list-decimal space-y-0.5 text-slate-600 dark:text-slate-300">
           <li>console.anthropic.com adresinde hesap açın, Billing bölümünden ödeme yöntemi ve isterseniz aylık harcama limiti girin.</li>
           <li>API Keys bölümünden yeni bir anahtar oluşturup kopyalayın.</li>
