@@ -21,6 +21,7 @@ window.addEventListener('message', (e) => {
     if (r.anahtarYok) goster('Akcan: eklenti anahtarı girilmemiş (eklenti simgesine tıklayın)', '#b45309');
     else if (!r.ok) goster('Akcan: kaydedilemedi — ' + (r.hata || 'bağlantı hatası'), '#b91c1c');
     else goster(`Akcan: ${r.kaydedilen} ürün okundu` + (r.eslesen?.length ? ` · ${r.eslesen.length} tanesi bizde var, maliyeti güncellendi` : ''), '#047857');
+    if (r.ok && Array.isArray(r.eslesen) && r.eslesen.length) bizdeEkle(r.eslesen);
   }); } catch { goster('Akcan: eklenti yenilendi — sayfayı yenileyin (F5)', '#b45309'); }
 });
 
@@ -28,4 +29,43 @@ window.addEventListener('message', (e) => {
 if (/(^|\.)otoismail\.com\.tr$/.test(location.hostname)) {
   const hazir = () => goster('Akcan eklentisi bu sayfada açık — arama yaptıkça fiyatlar okunur', '#334155');
   if (document.body) hazir(); else document.addEventListener('DOMContentLoaded', hazir);
+}
+
+// "Bizde var" rozeti: tedarikçi sayfasındaki ürün kodunun yanına bizdeki stok ve kart alışını yazar (yalnız görüntü; siteye hiçbir şey göndermez)
+const bizdeHarita = new Map(); let bizdeZaman = null, gozcu = null;
+const kn = (x) => String(x || '').toLocaleUpperCase('tr').replace(/İ/g, 'I').replace(/[^A-Z0-9]/g, '');
+const govdeAl = (k) => { const t = String(k || '').trim(); const m = t.match(/^([A-Za-zÇĞİÖŞÜçğıöşü]{2,12})[\s-]+(.+)$/); return m ? kn(m[2]) : ''; };
+const tl = (n) => Number(n || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+function bizdeEkle(liste) {
+  for (const e of liste) { const a = kn(e.kod); if (a.length >= 5) bizdeHarita.set(a, e); const g = govdeAl(e.kod); if (g.length >= 5 && !bizdeHarita.has(g)) bizdeHarita.set(g, e); }
+  bizdeUygula(); [600, 1500, 3000].forEach((ms) => setTimeout(bizdeUygula, ms));
+  if (!gozcu && document.body) { gozcu = new MutationObserver((ml) => { if (ml.every((m) => [...m.addedNodes].every((n) => n.nodeType === 1 && n.hasAttribute?.('data-akcan')))) return; clearTimeout(bizdeZaman); bizdeZaman = setTimeout(bizdeUygula, 400); }); gozcu.observe(document.body, { childList: true, subtree: true }); }
+}
+function rozetYap(e) {
+  const b = document.createElement('span'); b.setAttribute('data-akcan', '1');
+  const stok = Number(e.stok) || 0; const kart = Number(e.kart) || 0; const f = Number(e.fiyat) || 0;
+  let fark = '';
+  if (kart > 0 && f > 0) { const y = ((f - kart) / kart) * 100; if (y <= -3) fark = ` ▼%${Math.round(-y)}`; else if (y >= 3) fark = ` ▲%${Math.round(y)}`; }
+  b.textContent = `Bizde ${stok > 0 ? stok + ' adet' : 'stok yok'}${kart > 0 ? ' · alış ' + tl(kart) : ''}${fark}`;
+  b.title = `Akcan: ${e.bizim}\nBizdeki stok: ${stok}\nKart alışı (KDV hariç): ${tl(kart)} ₺\nSatış fiyatımız: ${tl(e.satis)} ₺\nBu tedarikçide: ${tl(f)} ₺`;
+  b.style.cssText = `display:inline-block;margin-left:6px;padding:1px 6px;border-radius:4px;font:600 11px/1.5 system-ui,sans-serif;white-space:nowrap;vertical-align:middle;color:#fff;background:${stok > 0 ? '#15803d' : '#64748b'}`;
+  if (fark.includes('▲')) b.style.boxShadow = 'inset 0 0 0 2px #fca5a5';
+  return b;
+}
+function bizdeUygula() {
+  if (!bizdeHarita.size || !document.body) return;
+  const anahtarlar = [...bizdeHarita.keys()];
+  const w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, { acceptNode: (n) => (n.parentElement && !n.parentElement.closest('[data-akcan],script,style,textarea,select,option') ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT) });
+  const bulunan = []; let n;
+  while ((n = w.nextNode())) {
+    const t = kn(n.textContent); if (t.length < 5 || t.length > 40) continue;
+    const a = anahtarlar.find((k) => t === k || (t.includes(k) && t.length <= k.length + 15));
+    if (a) bulunan.push([n, bizdeHarita.get(a)]);
+  }
+  for (const [node, e] of bulunan) {
+    // aynı satırda (ya da aynı kapta) bir kez
+    const kap = node.parentElement.closest('tr,li,[role=row]') || node.parentElement;
+    if (kap.querySelector('[data-akcan]')) continue;
+    try { node.parentElement.appendChild(rozetYap(e)); } catch { /* yok say */ }
+  }
 }
