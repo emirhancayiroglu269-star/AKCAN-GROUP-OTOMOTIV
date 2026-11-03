@@ -39,7 +39,7 @@ const tl = (n) => Number(n || 0).toLocaleString('tr-TR', { minimumFractionDigits
 function bizdeEkle(liste) {
   for (const e of liste) { const a = kn(e.kod); if (a.length >= 5) bizdeHarita.set(a, e); const g = govdeAl(e.kod); if (g.length >= 5 && !bizdeHarita.has(g)) bizdeHarita.set(g, e); }
   bizdeUygula(); [600, 1500, 3000].forEach((ms) => setTimeout(bizdeUygula, ms));
-  if (!gozcu && document.body) { gozcu = new MutationObserver((ml) => { if (ml.every((m) => [...m.addedNodes].every((n) => n.nodeType === 1 && n.hasAttribute?.('data-akcan')))) return; clearTimeout(bizdeZaman); bizdeZaman = setTimeout(bizdeUygula, 400); }); gozcu.observe(document.body, { childList: true, subtree: true }); }
+  if (!gozcu && document.body) { gozcu = new MutationObserver((ml) => { if (ml.every((m) => m.type === 'childList' && [...m.addedNodes, ...m.removedNodes].every((n) => n.nodeType === 1 && n.hasAttribute?.('data-akcan')))) return; clearTimeout(bizdeZaman); bizdeZaman = setTimeout(bizdeUygula, 400); }); gozcu.observe(document.body, { childList: true, subtree: true, characterData: true }); }
 }
 function rozetYap(e) {
   const b = document.createElement('span'); b.setAttribute('data-akcan', '1');
@@ -55,6 +55,8 @@ const metinRozetsiz = (el) => { let x = ''; const w = document.createTreeWalker(
 function bizdeUygula() {
   if (!bizdeHarita.size || !document.body) return;
   const anahtarlar = [...bizdeHarita.keys()];
+  // tablo satırları yeniden kullanılabilir (Angular sanal kaydırma): satırında artık o kod yoksa rozeti kaldır
+  for (const b of document.querySelectorAll('[data-akcan-anahtar]')) { const r = b.closest('tr,li,[role=row]') || b.parentElement; if (!r || !kn(metinRozetsiz(r)).includes(b.getAttribute('data-akcan-anahtar'))) b.remove(); }
   const w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, { acceptNode: (n) => (n.parentElement && !n.parentElement.closest('[data-akcan],script,style,textarea,select,option') ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT) });
   const adaylar = new Set(); let n;
   while ((n = w.nextNode())) {
@@ -66,6 +68,16 @@ function bizdeUygula() {
     if (satir.querySelector('[data-akcan]')) continue;
     const t = kn(metinRozetsiz(hucre)); if (t.length > 60) continue;
     const k = anahtarlar.find((x) => kodUyar(t, x)); if (!k) continue;
-    try { hucre.appendChild(rozetYap(bizdeHarita.get(k))); } catch { /* yok say */ }
+    const b = rozetYap(bizdeHarita.get(k)); b.setAttribute('data-akcan-anahtar', k);
+    try {
+      hucre.appendChild(b);
+      // dar sütunda (Özçete/Martaş tablosu) rozet görünmüyorsa satırın en geniş hücresinin (ürün adı) başına taşı
+      const hb = hucre.getBoundingClientRect(), bb = b.getBoundingClientRect();
+      if (satir !== hucre && (bb.right > hb.right + 2 || bb.bottom > hb.bottom + 2)) {
+        const hucreler = [...satir.querySelectorAll('td,[role=cell],[role=gridcell]')].filter((h) => h !== hucre && !h.contains(hucre));
+        const genis = hucreler.sort((x, y) => y.getBoundingClientRect().width - x.getBoundingClientRect().width)[0];
+        if (genis) { const tw = document.createTreeWalker(genis, NodeFilter.SHOW_TEXT, { acceptNode: (x) => (x.textContent.trim() ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP) }); const ilk = tw.nextNode(); const yer = ilk ? ilk.parentElement : genis; b.style.marginLeft = '0'; b.style.marginRight = '6px'; const e = bizdeHarita.get(k); const st = Number(e.stok) || 0; b.textContent = `Bizde ${e.bizim} · ${st > 0 ? st + ' ad' : 'yok'}${Number(e.satis) > 0 ? ' · ' + Math.round(Number(e.satis)).toLocaleString('tr-TR') + ' ₺' : ''}`; yer.insertBefore(b, yer.firstChild); }
+      }
+    } catch { /* yok say */ }
   }
 }
