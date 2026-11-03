@@ -11,6 +11,7 @@ function goster(metin, renk) {
   clearTimeout(sure); sure = setTimeout(() => { rozet.style.display = 'none'; }, 6000);
 }
 window.addEventListener('message', (e) => {
+  if (e.source === window && e.origin === location.origin && e.data?.kaynak === 'akcan-iron' && typeof e.data.tani === 'string') { goster('Akcan: ' + e.data.tani.slice(0, 200), '#b45309'); return; }
   if (e.source !== window || e.origin !== location.origin || e.data?.kaynak !== 'akcan-iron' || !Array.isArray(e.data.urunler)) return;
   let canli = false; try { canli = !!chrome.runtime?.id; } catch { /* eklenti yenilendi */ }
   if (!canli) { goster('Akcan: eklenti yenilendi — sayfayı yenileyin (F5)', '#b45309'); return; }

@@ -8,15 +8,17 @@
   const OI_ARAMA = /\/Arama\/UrunArama(\?|$)/;
   const trSayi = (t) => { const m = String(t ?? '').replace(/[^\d,.-]/g, ''); if (!m) return null; const n = Number(m.replace(/\./g, '').replace(',', '.')); return Number.isFinite(n) ? n : null; };
   const isleOI = (metin) => {
-    let j; try { j = JSON.parse(metin); } catch { return; }
-    if (!j || typeof j.data !== 'string' || !j.data.includes('<tr')) return;
+    const t = (m) => window.postMessage({ kaynak: 'akcan-iron', tani: m }, location.origin);
+    let j; try { j = JSON.parse(metin); } catch { t('Oto İsmail yanıtı okunamadı (JSON değil)'); return; }
+    if (!j || typeof j.data !== 'string' || !j.data.includes('<tr')) { t('Oto İsmail yanıtında ürün satırı yok'); return; }
     const doc = new DOMParser().parseFromString('<table><tbody>' + j.data + '</tbody></table>', 'text/html');
-    // depo sütun adları sayfanın tablo başlığından (yoksa bilinen sıra)
-    const bas = [...document.querySelectorAll('thead th')].map((th) => th.textContent.trim());
-    const i0 = bas.indexOf('KDV DAHİL'); const i1 = bas.indexOf('İşlem');
-    const depoAd = i0 >= 0 && i1 > i0 ? bas.slice(i0 + 1, i1) : ['Gebze', 'İkitelli', 'Ankara', 'İzmir', 'Samsun', 'Gaziantep', 'D999'];
-    const urunler = [...doc.querySelectorAll('tr')].map((tr) => {
-      const td = tr.children; if (td.length < 10 + depoAd.length) return null;
+    // depo sütunları: "KDV DAHİL" ile "İşlem" arası (satırın son 3 hücresi İşlem/Resim/Sepet). Adlar arama tablosunun başlığından, yoksa bilinen sıra.
+    const bas = [...document.querySelectorAll('#aramaSonuc thead th')].map((th) => th.textContent.trim());
+    const VARS = ['Gebze', 'İkitelli', 'Ankara', 'İzmir', 'Samsun', 'Gaziantep', 'D999'];
+    const adlar = (n) => { const i0 = bas.indexOf('KDV DAHİL'); const b = i0 >= 0 ? bas.slice(i0 + 1, i0 + 1 + n) : []; return b.length === n ? b : Array.from({ length: n }, (_, k) => VARS[k] || 'Depo ' + (k + 1)); };
+    const trs = [...doc.querySelectorAll('tr')];
+    const urunler = trs.map((tr) => {
+      const td = tr.children; const nDep = td.length - 13; if (nDep < 1) return null; const depoAd = adlar(nDep);
       const kod = td[3].textContent.replace(/\s+/g, ' ').trim(); if (kod.length < 3) return null;
       const adEl = td[4].querySelector('[data-content]');
       const ad = (adEl ? adEl.getAttribute('data-content') : td[4].textContent).replace(/\s+/g, ' ').trim() || null;
@@ -33,6 +35,7 @@
       return { kod, marka: tr.getAttribute('Tedarikci') || null, ad, oem: td[5].textContent.trim() || null, fiyat, liste, stok, depolar };
     }).filter((x) => x && x.fiyat > 0);
     if (urunler.length) window.postMessage({ kaynak: 'akcan-iron', tedarikci: TED, urunler }, location.origin);
+    else window.postMessage({ kaynak: 'akcan-iron', tani: 'Oto İsmail yanıtı geldi ama ürün çıkmadı (' + trs.length + ' satır, ' + (trs[0] ? trs[0].children.length : 0) + ' sütun)' }, location.origin);
   };
   // Iron stok kodunu sayfada şifreli tutar: her onaltılık rakam (ASCII) 0x72 ile XOR'lanmış, sonra yine onaltılık yazılmış
   const kodCoz = (s) => {
@@ -89,7 +92,7 @@
     return ac.apply(this, arguments);
   };
   XMLHttpRequest.prototype.send = function () {
-    if (TED === 'otoismail' && OI_ARAMA.test(this.__akcanUrl)) this.addEventListener('load', () => { try { if (this.status === 200 && (this.responseType === '' || this.responseType === 'text')) isleOI(this.responseText); } catch { /* yok say */ } });
+    if (TED === 'otoismail' && OI_ARAMA.test(this.__akcanUrl)) this.addEventListener('load', () => { try { if (this.status === 200 && (this.responseType === '' || this.responseType === 'text')) isleOI(this.responseText); else window.postMessage({ kaynak: 'akcan-iron', tani: 'Oto İsmail arama yanıtı: durum ' + this.status + ' tür ' + this.responseType }, location.origin); } catch (e) { window.postMessage({ kaynak: 'akcan-iron', tani: 'Oto İsmail okuma hatası: ' + e.message }, location.origin); } });
     if (ARAMA.test(this.__akcanUrl)) this.addEventListener('load', () => { try { if (this.status === 200 && (this.responseType === '' || this.responseType === 'text')) isle(this.responseText, this.__akcanUrl); else tani('xhr ' + this.__akcanUrl.split('/').pop() + ' durum ' + this.status + ' tür ' + this.responseType); } catch { /* yok say */ } });
     return gonder.apply(this, arguments);
   };
