@@ -252,12 +252,11 @@ Deno.serve(async (req) => {
     if (!e || (stokta && !e.stok_var) || (stokta === e.stok_var && x.fiyat < Number(e.fiyat))) sec.set(u.id, { urun_id: u.id, tedarikci: ted, kod: x.kod, ad: x.ad, fiyat: Math.round(x.fiyat * 100) / 100, stok_var: stokta, ham: { liste: x.liste, stok: x.stok, depolar: x.depolar, ...(x.bolen > 1 ? { birim_adet: x.bolen } : {}) }, hata: null, zaman });
   }
   if (sec.size) { const { error: e2 } = await db.from('tedarikci_maliyet').upsert([...sec.values()]); if (e2) return yanit({ ok: false, hata: e2.message }, 500); }
-  // eklenti tedarikçi sayfasında "bizde var" rozeti gösterir: bizim stok, kart alışı (KDV hariç), satış fiyatı
+  // eklenti tedarikçi sayfasında "bizde var" rozeti gösterir: bizim stok kodu, stok ve satış fiyatı (maliyet gönderilmez)
   const bizde = new Map<string, Obj>();
   if (sec.size) {
-    const { data: ay } = await db.from('ayarlar').select('alis_kdv_haric').eq('id', 1).maybeSingle(); const kdvHaric = ay?.alis_kdv_haric !== false;
-    const { data: ul } = await db.from('urunler').select('id,stok,alis_fiyati,satis_fiyati,kdv').in('id', [...sec.keys()]);
-    for (const u of ul ?? []) { const kdv = Number(u.kdv) || 20; const a = Number(u.alis_fiyati) || 0; bizde.set(u.id as string, { stok: Number(u.stok) || 0, kart: Math.round((kdvHaric ? a : a / (1 + kdv / 100)) * 100) / 100, satis: Number(u.satis_fiyati) || 0 }); }
+    const { data: ul } = await db.from('urunler').select('id,stok,satis_fiyati').in('id', [...sec.keys()]);
+    for (const u of ul ?? []) bizde.set(u.id as string, { stok: Number(u.stok) || 0, satis: Number(u.satis_fiyati) || 0 });
   }
   for (const s of sec.values()) eslesen.push({ kod: String(s.kod), bizim: bizimKod.get(String(s.urun_id)) ?? String(s.kod), fiyat: Number(s.fiyat), ...(bizde.get(String(s.urun_id)) ?? {}) });
   return yanit({ ok: true, kaydedilen: tekil.length, eslesen });

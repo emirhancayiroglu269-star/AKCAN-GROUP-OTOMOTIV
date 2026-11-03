@@ -31,7 +31,7 @@ if (/(^|\.)otoismail\.com\.tr$/.test(location.hostname)) {
   if (document.body) hazir(); else document.addEventListener('DOMContentLoaded', hazir);
 }
 
-// "Bizde var" rozeti: tedarikçi sayfasındaki ürün kodunun yanına bizdeki stok ve kart alışını yazar (yalnız görüntü; siteye hiçbir şey göndermez)
+// "Bizde var" rozeti: tedarikçi sayfasındaki ürün kodunun yanına bizdeki stok kodu, stok ve satış fiyatını yazar (maliyet yazmaz) (yalnız görüntü; siteye hiçbir şey göndermez)
 const bizdeHarita = new Map(); let bizdeZaman = null, gozcu = null;
 const kn = (x) => String(x || '').toLocaleUpperCase('tr').replace(/İ/g, 'I').replace(/[^A-Z0-9]/g, '');
 const govdeAl = (k) => { const t = String(k || '').trim(); const m = t.match(/^([A-Za-zÇĞİÖŞÜçğıöşü]{2,12})[\s-]+(.+)$/); return m ? kn(m[2]) : ''; };
@@ -43,13 +43,10 @@ function bizdeEkle(liste) {
 }
 function rozetYap(e) {
   const b = document.createElement('span'); b.setAttribute('data-akcan', '1');
-  const stok = Number(e.stok) || 0; const kart = Number(e.kart) || 0; const f = Number(e.fiyat) || 0;
-  let fark = '';
-  if (kart > 0 && f > 0) { const y = ((f - kart) / kart) * 100; if (y <= -3) fark = ` ▼%${Math.round(-y)}`; else if (y >= 3) fark = ` ▲%${Math.round(y)}`; }
-  b.textContent = `Bizde ${stok > 0 ? stok + ' adet' : 'stok yok'}${kart > 0 ? ' · alış ' + tl(kart) : ''}${fark}`;
-  b.title = `Akcan: ${e.bizim}\nBizdeki stok: ${stok}\nKart alışı (KDV hariç): ${tl(kart)} ₺\nSatış fiyatımız: ${tl(e.satis)} ₺\nBu tedarikçide: ${tl(f)} ₺`;
+  const stok = Number(e.stok) || 0; const satis = Number(e.satis) || 0;
+  b.textContent = `Bizde: ${e.bizim} · ${stok > 0 ? stok + ' adet' : 'stok yok'}${satis > 0 ? ' · satış ' + tl(satis) + ' ₺' : ''}`;
+  b.title = `Akcan stok kodu: ${e.bizim}\nBizdeki stok: ${stok}\nSatış fiyatımız (KDV dahil): ${tl(satis)} ₺`;
   b.style.cssText = `display:inline-block;margin-left:6px;padding:1px 6px;border-radius:4px;font:600 11px/1.5 system-ui,sans-serif;white-space:nowrap;vertical-align:middle;color:#fff;background:${stok > 0 ? '#15803d' : '#64748b'}`;
-  if (fark.includes('▲')) b.style.boxShadow = 'inset 0 0 0 2px #fca5a5';
   return b;
 }
 function bizdeUygula() {
