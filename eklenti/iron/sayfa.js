@@ -1,9 +1,38 @@
-// Sayfanın kendi bağlamında çalışır: Iron / Başbuğ / Özaş / Dinamik (Ada Oto) sitesinin (aynı B2B yazılımı) KENDİ yaptığı ürün arama isteklerinin yanıtlarını okur.
+// Sayfanın kendi bağlamında çalışır: Iron / Başbuğ / Özaş / Dinamik / Özçete / Martaş (aynı B2B yazılımı) ve Oto İsmail sitesinin KENDİ yaptığı ürün arama isteklerinin yanıtlarını okur.
 // Hiçbir istek göndermez, hiçbir şeyi değiştirmez; yalnız gelen sonuçları içerik betiğine iletir.
 (() => {
-  const TED = /(^|\.)b2bbasbug\.com$/.test(location.hostname) ? 'basbug' : /(^|\.)ozas\.com\.tr$/.test(location.hostname) ? 'ozas' : /(^|\.)adaoto\.com\.tr$/.test(location.hostname) ? 'dinamik' : /(^|\.)ozcete\.com\.tr$/.test(location.hostname) ? 'ozcete' : /(^|\.)martas\.com\.tr$/.test(location.hostname) ? 'martas' : 'iron';
+  const TED = /(^|\.)b2bbasbug\.com$/.test(location.hostname) ? 'basbug' : /(^|\.)ozas\.com\.tr$/.test(location.hostname) ? 'ozas' : /(^|\.)adaoto\.com\.tr$/.test(location.hostname) ? 'dinamik' : /(^|\.)ozcete\.com\.tr$/.test(location.hostname) ? 'ozcete' : /(^|\.)martas\.com\.tr$/.test(location.hostname) ? 'martas' : /(^|\.)otoismail\.com\.tr$/.test(location.hostname) ? 'otoismail' : 'iron';
   // PurchasedProductList: site girişte "Aldıklarım" listesini (daha önce alınan tüm ürünler, güncel fiyat+stok) kendisi çeker
   const ARAMA = /\/Service\/(?:[A-Za-z]+\.svc\/)?(ProductSearch[A-Za-z0-9]*|PurchasedProductList[A-Za-z0-9]*|SelectiveSearchItems|SearchProductBy[A-Za-z0-9]*|ProductDetails)(\?|$)/;
+  // Oto İsmail (başka B2B yazılımı): arama yanıtı {Sonuc, data: "<tr>…</tr>"} biçiminde HTML satırlar
+  const OI_ARAMA = /\/Arama\/UrunArama(\?|$)/;
+  const trSayi = (t) => { const m = String(t ?? '').replace(/[^\d,.-]/g, ''); if (!m) return null; const n = Number(m.replace(/\./g, '').replace(',', '.')); return Number.isFinite(n) ? n : null; };
+  const isleOI = (metin) => {
+    let j; try { j = JSON.parse(metin); } catch { return; }
+    if (!j || typeof j.data !== 'string' || !j.data.includes('<tr')) return;
+    const doc = new DOMParser().parseFromString('<table><tbody>' + j.data + '</tbody></table>', 'text/html');
+    // depo sütun adları sayfanın tablo başlığından (yoksa bilinen sıra)
+    const bas = [...document.querySelectorAll('thead th')].map((th) => th.textContent.trim());
+    const i0 = bas.indexOf('KDV DAHİL'); const i1 = bas.indexOf('İşlem');
+    const depoAd = i0 >= 0 && i1 > i0 ? bas.slice(i0 + 1, i1) : ['Gebze', 'İkitelli', 'Ankara', 'İzmir', 'Samsun', 'Gaziantep', 'D999'];
+    const urunler = [...doc.querySelectorAll('tr')].map((tr) => {
+      const td = tr.children; if (td.length < 10 + depoAd.length) return null;
+      const kod = td[3].textContent.replace(/\s+/g, ' ').trim(); if (kod.length < 3) return null;
+      const adEl = td[4].querySelector('[data-content]');
+      const ad = (adEl ? adEl.getAttribute('data-content') : td[4].textContent).replace(/\s+/g, ' ').trim() || null;
+      // fiyat kutusu (sayfada üstüne gelince görünen): Liste Fiyatı (₺) ve Net Fiyat Kdv Hariç
+      const kutu = {}; const pop = td[8].querySelector('[data-content]');
+      if (pop) { const d = new DOMParser().parseFromString(pop.getAttribute('data-content'), 'text/html'); for (const r of d.querySelectorAll('.box-row')) { const b = r.querySelectorAll('div'); if (b.length >= 3) kutu[b[0].textContent.trim()] = trSayi(b[b.length - 1].textContent); } }
+      const kdvDahil = trSayi(td[9].textContent);
+      const fiyat = kutu['Net Fiyat Kdv Hariç'] ?? (kdvDahil ? Math.round((kdvDahil / 1.2) * 100) / 100 : null);
+      const liste = kutu['Liste Fiyatı (₺)'] ?? trSayi(td[8].textContent);
+      // depolar: yeşil tik = stokta (adet yazmıyor); D999 sanal depo sayılmaz
+      const depolar = depoAd.map((ad, k) => ({ ad, adet: td[10 + k] && td[10 + k].querySelector('.fa-check') ? 1 : 0 }));
+      const stok = depolar.filter((d) => d.adet > 0 && !/^D\d+$/.test(d.ad)).length;
+      return { kod, marka: tr.getAttribute('Tedarikci') || null, ad, oem: td[5].textContent.trim() || null, fiyat, liste, stok, depolar };
+    }).filter((x) => x && x.fiyat > 0);
+    if (urunler.length) window.postMessage({ kaynak: 'akcan-iron', tedarikci: TED, urunler }, location.origin);
+  };
   // Iron stok kodunu sayfada şifreli tutar: her onaltılık rakam (ASCII) 0x72 ile XOR'lanmış, sonra yine onaltılık yazılmış
   const kodCoz = (s) => {
     if (typeof s !== 'string' || !/^[0-9A-Fa-f]+$/.test(s) || s.length % 4) return null;
@@ -46,7 +75,8 @@
     const p = asilFetch.apply(this, arguments);
     try {
       const url = String(typeof girdi === 'string' ? girdi : girdi && girdi.url || '');
-      if (ARAMA.test(url)) p.then((r) => { if (r && r.ok) r.clone().text().then((t) => isle(t, url), () => {}); else tani('fetch ' + url.split('/').pop() + ' durum ' + (r && r.status)); }, () => {});
+      if (TED === 'otoismail' && OI_ARAMA.test(url)) p.then((r) => { if (r && r.ok) r.clone().text().then(isleOI, () => {}); }, () => {});
+      else if (ARAMA.test(url)) p.then((r) => { if (r && r.ok) r.clone().text().then((t) => isle(t, url), () => {}); else tani('fetch ' + url.split('/').pop() + ' durum ' + (r && r.status)); }, () => {});
     } catch { /* yok say */ }
     return p;
   };
@@ -58,6 +88,7 @@
     return ac.apply(this, arguments);
   };
   XMLHttpRequest.prototype.send = function () {
+    if (TED === 'otoismail' && OI_ARAMA.test(this.__akcanUrl)) this.addEventListener('load', () => { try { if (this.status === 200 && (this.responseType === '' || this.responseType === 'text')) isleOI(this.responseText); } catch { /* yok say */ } });
     if (ARAMA.test(this.__akcanUrl)) this.addEventListener('load', () => { try { if (this.status === 200 && (this.responseType === '' || this.responseType === 'text')) isle(this.responseText, this.__akcanUrl); else tani('xhr ' + this.__akcanUrl.split('/').pop() + ' durum ' + this.status + ' tür ' + this.responseType); } catch { /* yok say */ } });
     return gonder.apply(this, arguments);
   };

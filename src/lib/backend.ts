@@ -108,7 +108,7 @@ export interface AsistanHafiza { id: number; metin: string; kaynak: 'kullanici' 
 export interface SaseArac { id: number; vin: string | null; plaka: string | null; marka: string | null; model: string | null; model_kod: string | null; yil: number | null; motor: string | null; yakit: string | null; kasa: string | null;
   musteri: string | null; telefon: string | null; notlar: string | null; kaynak?: Record<string, unknown> | null; kullanici: string | null; olusturma: string; son_islem: string }
 export interface TedarikciFiyat { kaynak: 'kart' | 'katalog'; tedarikci: string; urun_id: string | null; kod: string | null; marka: string | null; ad: string | null; oem: string | null; fiyat: number; stok: number | null; stok_var: boolean | null; zaman: string; eslesme: 'kart' | 'kod' | 'oem' }
-export interface TedarikciMaliyet { urun_id: string; tedarikci: 'otomarmara' | 'neko' | 'iron' | 'basbug' | 'ozas' | 'dinamik' | 'ozcete' | 'martas'; kod: string | null; fiyat: number; stok_var: boolean | null; zaman: string }
+export interface TedarikciMaliyet { urun_id: string; tedarikci: 'otomarmara' | 'neko' | 'iron' | 'basbug' | 'ozas' | 'dinamik' | 'ozcete' | 'martas' | 'otoismail'; kod: string | null; fiyat: number; stok_var: boolean | null; zaman: string }
 export interface TyOzellikDeger { attributeId: number; attributeValueId?: number | null; customAttributeValue?: string | null; ad?: string; deger?: string }
 export interface TyKategoriEsleme { bh_kategori: string; ty_kategori_id: number; ty_kategori_ad: string | null; ozellikler: TyOzellikDeger[]; desi: number | null }
 export interface TyMarkaEsleme { bh_marka: string; ty_marka_id: number; ty_marka_ad: string | null }
