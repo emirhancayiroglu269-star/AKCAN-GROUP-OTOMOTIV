@@ -9,7 +9,8 @@
   const trSayi = (t) => { const m = String(t ?? '').replace(/[^\d,.-]/g, ''); if (!m) return null; const n = Number(m.replace(/\./g, '').replace(',', '.')); return Number.isFinite(n) ? n : null; };
   const isleOI = (metin) => {
     const t = (m) => window.postMessage({ kaynak: 'akcan-iron', tani: m }, location.origin);
-    let j; try { j = JSON.parse(metin); } catch { t('Oto İsmail yanıtı okunamadı (JSON değil)'); return; }
+    // yanıt iki kez kodlanmış JSON: önce metin, sonra nesne
+    let j; try { j = JSON.parse(metin); if (typeof j === 'string') j = JSON.parse(j); } catch { t('Oto İsmail yanıtı okunamadı (JSON değil)'); return; }
     if (!j || typeof j.data !== 'string' || !j.data.includes('<tr')) { t('Oto İsmail yanıtında ürün satırı yok'); return; }
     const doc = new DOMParser().parseFromString('<table><tbody>' + j.data + '</tbody></table>', 'text/html');
     // depo sütunları: "KDV DAHİL" ile "İşlem" arası (satırın son 3 hücresi İşlem/Resim/Sepet). Adlar arama tablosunun başlığından, yoksa bilinen sıra.
