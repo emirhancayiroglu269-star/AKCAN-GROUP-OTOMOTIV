@@ -22,3 +22,9 @@ window.addEventListener('message', (e) => {
     else goster(`Akcan: ${r.kaydedilen} ürün okundu` + (r.eslesen?.length ? ` · ${r.eslesen.length} tanesi bizde var, maliyeti güncellendi` : ''), '#047857');
   }); } catch { goster('Akcan: eklenti yenilendi — sayfayı yenileyin (F5)', '#b45309'); }
 });
+
+// Oto İsmail: eklentinin bu sayfada çalıştığını göster (okuma sorunlarını ayırt etmek için)
+if (/(^|\.)otoismail\.com\.tr$/.test(location.hostname)) {
+  const hazir = () => goster('Akcan eklentisi bu sayfada açık — arama yaptıkça fiyatlar okunur', '#334155');
+  if (document.body) hazir(); else document.addEventListener('DOMContentLoaded', hazir);
+}

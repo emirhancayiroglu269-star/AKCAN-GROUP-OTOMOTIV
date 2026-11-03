@@ -27,8 +27,9 @@
       const fiyat = kutu['Net Fiyat Kdv Hariç'] ?? (kdvDahil ? Math.round((kdvDahil / 1.2) * 100) / 100 : null);
       const liste = kutu['Liste Fiyatı (₺)'] ?? trSayi(td[8].textContent);
       // depolar: yeşil tik = stokta (adet yazmıyor); D999 sanal depo sayılmaz
-      const depolar = depoAd.map((ad, k) => ({ ad, adet: td[10 + k] && td[10 + k].querySelector('.fa-check') ? 1 : 0 }));
-      const stok = depolar.filter((d) => d.adet > 0 && !/^D\d+$/.test(d.ad)).length;
+      // yeşil tik = stokta (adet yok, 1 sayılır); yeşil rozet "Son 3 ürün" = 3 adet; kamyon (yolda) ve çarpı = yok
+      const depolar = depoAd.map((ad, k) => { const c = td[10 + k]; if (!c) return { ad, adet: 0 }; const rz = c.querySelector('.badge'); return { ad, adet: rz ? (trSayi(rz.textContent) || 0) : c.querySelector('.fa-check') ? 1 : 0 }; });
+      const stok = depolar.filter((d) => !/^D\d+$/.test(d.ad)).reduce((t, d) => t + d.adet, 0);
       return { kod, marka: tr.getAttribute('Tedarikci') || null, ad, oem: td[5].textContent.trim() || null, fiyat, liste, stok, depolar };
     }).filter((x) => x && x.fiyat > 0);
     if (urunler.length) window.postMessage({ kaynak: 'akcan-iron', tedarikci: TED, urunler }, location.origin);
