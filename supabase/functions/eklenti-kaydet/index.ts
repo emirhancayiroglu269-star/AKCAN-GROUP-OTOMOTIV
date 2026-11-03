@@ -14,7 +14,7 @@ const norm = (s: unknown) => String(s ?? '').toUpperCase().replace(/[^A-Z0-9]/g,
 // marka karşılaştırması Türkçe harfleri sadeleştirir ("FİLTRON" = "FILTRON")
 const markaNorm = (s: unknown) => String(s ?? '').toLocaleUpperCase('tr').replace(/İ/g, 'I').replace(/Ş/g, 'S').replace(/Ğ/g, 'G').replace(/Ü/g, 'U').replace(/Ö/g, 'O').replace(/Ç/g, 'C').replace(/[^A-Z0-9]/g, '');
 const sayi = (v: unknown) => (v === null || v === undefined || v === '' || !Number.isFinite(Number(v)) ? null : Number(v));
-const TEDARIKCILER = new Set(['iron', 'basbug', 'ozas', 'dinamik', 'ozcete']);
+const TEDARIKCILER = new Set(['iron', 'basbug', 'ozas', 'dinamik', 'ozcete', 'martas']);
 /** Eklentiyle BizimHesap'a yüklenen ürün, eşitleme kartı getirene kadar bu süre listede gizlenir */
 const GIZLE_MS = 15 * 60000;
 
