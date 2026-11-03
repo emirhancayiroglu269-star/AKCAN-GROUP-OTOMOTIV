@@ -151,7 +151,7 @@ export default function Panel({ git }: { git: (s: Sayfa) => void }) {
             {stok.kritik > 0 && <button onClick={() => git('alinacaklar')} className="rozet bg-amber-50 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300">⚠ {stok.kritik} kritik stok</button>}
             {vadesiGecen > 0 && <button onClick={() => git('tahsilat')} className="rozet bg-red-50 text-red-700 dark:bg-red-500/15 dark:text-red-300">⏰ {para(vadesiGecen)} vadesi geçmiş</button>}
             {stok.eksi > 0 && <button onClick={() => git('urunler')} className="rozet bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300">{stok.eksi} eksi stok</button>}
-            {zararli > 0 && <button onClick={() => git('fiyat')} className="rozet bg-red-50 text-red-700 dark:bg-red-500/15 dark:text-red-300">{zararli} maliyet altı fiyat</button>}
+            {zararli > 0 && <button onClick={() => { try { sessionStorage.setItem('fiyatFiltre', 'zarar'); } catch { /* yok */ } git('fiyat'); }} className="rozet bg-red-50 text-red-700 dark:bg-red-500/15 dark:text-red-300">{zararli} maliyet altı fiyat</button>}
           </div>
           {onemli.length === 0 ? <div className="py-4 text-center text-sm text-slate-400">Şu an önemli bir uyarı yok.</div> : (
             <ul className="space-y-1">{onemli.map((o) => (

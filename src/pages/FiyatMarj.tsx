@@ -14,9 +14,11 @@ export default function FiyatMarj() {
   const { db, calistir } = useStore();
   const a = db.ayarlar;
   const [hedef, setHedef] = useState(String(a.hedef_marj ?? 35));
-  const [filtre, setFiltre] = useState<Filtre>('hedefAlti');
+  // panelden "maliyet altı fiyat" ile gelindiyse: zararına olanlar, stoğu bitenler dahil
+  const [gelis] = useState(() => { try { const v = sessionStorage.getItem('fiyatFiltre'); sessionStorage.removeItem('fiyatFiltre'); return v; } catch { return null; } });
+  const [filtre, setFiltre] = useState<Filtre>(gelis === 'zarar' ? 'zarar' : 'hedefAlti');
   const [q, setQ] = useState('');
-  const [sadeceStok, setSadeceStok] = useState(true);
+  const [sadeceStok, setSadeceStok] = useState(gelis !== 'zarar');
   const h = parse(hedef) || 35;
   // kullanıcı kararı: ürün sekmesinde genel hedef geçerli; kategori marjları yalnız "Kategori bazında" sekmesinde öneri
   const satirlar = useMemo(() => fiyatSatirlari(db, h), [db, h]);
