@@ -49,20 +49,23 @@ function rozetYap(e) {
   b.style.cssText = `display:inline-block;margin-left:6px;padding:1px 6px;border-radius:4px;font:600 11px/1.5 system-ui,sans-serif;white-space:nowrap;vertical-align:middle;color:#fff;background:${stok > 0 ? '#15803d' : '#64748b'}`;
   return b;
 }
+// hücrenin metni kodla birebir aynı olmalı (önünde yalnız marka adı olabilir): "FDO3017-R" ile "FDO3017" karışmasın
+const kodUyar = (t, k) => t === k || (t.endsWith(k) && /^[A-Z]{2,15}$/.test(t.slice(0, -k.length)));
+const metinRozetsiz = (el) => { let x = ''; const w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, { acceptNode: (n) => (n.parentElement.closest('[data-akcan]') ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT) }); let n; while ((n = w.nextNode())) x += n.textContent + ' '; return x; };
 function bizdeUygula() {
   if (!bizdeHarita.size || !document.body) return;
   const anahtarlar = [...bizdeHarita.keys()];
   const w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, { acceptNode: (n) => (n.parentElement && !n.parentElement.closest('[data-akcan],script,style,textarea,select,option') ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT) });
-  const bulunan = []; let n;
+  const adaylar = new Set(); let n;
   while ((n = w.nextNode())) {
     const t = kn(n.textContent); if (t.length < 5 || t.length > 40) continue;
-    const a = anahtarlar.find((k) => t === k || (t.includes(k) && t.length <= k.length + 15));
-    if (a) bulunan.push([n, bizdeHarita.get(a)]);
+    if (anahtarlar.some((k) => t.includes(k))) adaylar.add(n.parentElement.closest('td,th,[role=gridcell],[role=cell]') || n.parentElement);
   }
-  for (const [node, e] of bulunan) {
-    // aynı satırda (ya da aynı kapta) bir kez
-    const kap = node.parentElement.closest('tr,li,[role=row]') || node.parentElement;
-    if (kap.querySelector('[data-akcan]')) continue;
-    try { node.parentElement.appendChild(rozetYap(e)); } catch { /* yok say */ }
+  for (const hucre of adaylar) {
+    const satir = hucre.closest('tr,li,[role=row]') || hucre;
+    if (satir.querySelector('[data-akcan]')) continue;
+    const t = kn(metinRozetsiz(hucre)); if (t.length > 60) continue;
+    const k = anahtarlar.find((x) => kodUyar(t, x)); if (!k) continue;
+    try { hucre.appendChild(rozetYap(bizdeHarita.get(k))); } catch { /* yok say */ }
   }
 }
