@@ -136,7 +136,7 @@ function Ilanlar({ veri, v }: { veri: TyVeri; v: TyVarsayim }) {
     const stokFark = u && t.stok !== null ? Math.max(0, u.stok) - t.stok : null;
     return { t, u, k, a, kart, td, tedZam: !!td && kart > 0 && td.fiyat > kart * 1.03, tedSupheli: !!td && kart > 0 && td.fiyat > kart * 1.5, simdi, hedef, stokFark, gercekKom: kom.has(t.barkod) };
   }), [veri, urun, kom, son, db, ted, v.komisyon, v.kargo, v.hizmet, v.stopaj, v.hedef_marj, v.taban_marj, v.tavan_yuzde]); // eslint-disable-line react-hooks/exhaustive-deps
-  const uygun = (x: (typeof satirlar)[number], k: IlanFiltre) => k === 'hepsi' ? true : k === 'zarar' ? !!x.simdi && x.simdi.kar < 0 : k === 'hedefAlti' ? !!x.simdi && x.simdi.kar >= 0 && x.simdi.marj < v.hedef_marj - 0.5
+  const uygun = (x: (typeof satirlar)[number], k: IlanFiltre) => k === 'hepsi' ? true : k === 'zarar' ? x.t.satista !== false && !!x.simdi && x.simdi.kar < 0 : k === 'hedefAlti' ? x.t.satista !== false && !!x.simdi && x.simdi.kar >= 0 && x.simdi.marj < v.hedef_marj - 0.5
     : k === 'tedZam' ? x.tedZam
     : k === 'stokFark' ? x.stokFark !== null && x.stokFark !== 0 : k === 'eslesmeyen' ? !x.u : x.t.satista === false;
   const say = (k: IlanFiltre) => satirlar.filter((x) => uygun(x, k)).length;
@@ -166,7 +166,7 @@ function Ilanlar({ veri, v }: { veri: TyVeri; v: TyVarsayim }) {
                 <tr key={x.t.barkod}>
                   <td><div className="font-medium">{x.u ? <UrunLink id={x.u.id}>{x.t.baslik}</UrunLink> : x.t.baslik}</div>
                     <div className="text-xs text-slate-500">{[x.t.barkod, x.t.marka].filter(Boolean).join(' · ')} · komisyon %{x.k}{x.gercekKom ? '' : ' (varsayılan)'}
-                      {!x.u && <span className="ml-1 rozet bg-amber-50 text-amber-800">bizde eşleşmedi</span>}{x.t.satista === false && <span className="ml-1 rozet bg-slate-100 text-slate-600">satışta değil</span>}</div></td>
+                      {!x.u && <span className="ml-1 rozet bg-amber-50 text-amber-800">bizde eşleşmedi</span>}{x.t.satista === false && <span className="ml-1 rozet bg-slate-100 text-slate-600">satışta değil</span>}{x.t.satista === false && x.simdi && x.simdi.kar < 0 && <span className="ml-1 rozet bg-red-50 text-red-700" title="Trendyol satışa kapalı ilanların fiyatını API ile değiştirmeye izin vermiyor. Satıcı panelinde ilanı açarken fiyatı önerilen fiyata çekin.">eski fiyat zararına · açarken fiyatı düzeltin</span>}</div></td>
                   <td className="text-right">{sayi(x.t.stok ?? 0)} / {x.u ? <span className={x.stokFark ? 'font-semibold text-sky-700' : ''}>{sayi(Math.max(0, x.u.stok))}</span> : '—'}</td>
                   <td className="text-right text-slate-500">{x.a > 0 ? para(x.a) : '—'}
                     {x.td && <div className={`text-[11px] ${x.tedSupheli ? 'text-amber-600' : x.tedZam ? 'text-red-600' : 'text-slate-400'}`} title={x.td.hepsi.map((h) => `${TED_AD[h.tedarikci] ?? h.tedarikci}: ${para(h.fiyat)}${h.stokta ? '' : ' (stokta yok)'}`).join('\n')}>
