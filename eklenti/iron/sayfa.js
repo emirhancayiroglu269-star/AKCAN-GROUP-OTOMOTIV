@@ -1,11 +1,21 @@
 // Sayfanın kendi bağlamında çalışır: Iron / Başbuğ / Özaş / Dinamik / Özçete / Martaş (aynı B2B yazılımı) ve Oto İsmail sitesinin KENDİ yaptığı ürün arama isteklerinin yanıtlarını okur.
 // Hiçbir istek göndermez, hiçbir şeyi değiştirmez; yalnız gelen sonuçları içerik betiğine iletir.
 (() => {
-  const TED = /(^|\.)b2bbasbug\.com$/.test(location.hostname) ? 'basbug' : /(^|\.)ozas\.com\.tr$/.test(location.hostname) ? 'ozas' : /(^|\.)adaoto\.com\.tr$/.test(location.hostname) ? 'dinamik' : /(^|\.)ozcete\.com\.tr$/.test(location.hostname) ? 'ozcete' : /(^|\.)martas\.com\.tr$/.test(location.hostname) ? 'martas' : /(^|\.)otoismail\.com\.tr$/.test(location.hostname) ? 'otoismail' : 'iron';
+  const TED = /(^|\.)b2bbasbug\.com$/.test(location.hostname) ? 'basbug' : /(^|\.)ozas\.com\.tr$/.test(location.hostname) ? 'ozas' : /(^|\.)adaoto\.com\.tr$/.test(location.hostname) ? 'dinamik' : /(^|\.)ozcete\.com\.tr$/.test(location.hostname) ? 'ozcete' : /(^|\.)martas\.com\.tr$/.test(location.hostname) ? 'martas' : /(^|\.)otoismail\.com\.tr$/.test(location.hostname) ? 'otoismail' : /(^|\.)neko\.com\.tr$/.test(location.hostname) ? 'neko' : 'iron';
   // PurchasedProductList: site girişte "Aldıklarım" listesini (daha önce alınan tüm ürünler, güncel fiyat+stok) kendisi çeker
   const ARAMA = /\/Service\/(?:[A-Za-z]+\.svc\/)?(ProductSearch[A-Za-z0-9]*|PurchasedProductList[A-Za-z0-9]*|SelectiveSearchItems|SearchProductBy[A-Za-z0-9]*|ProductDetails)(\?|$)/;
   // Oto İsmail (başka B2B yazılımı): arama yanıtı {Sonuc, data: "<tr>…</tr>"} biçiminde HTML satırlar
   const OI_ARAMA = /\/Arama\/UrunArama(\?|$)/;
+  // Neko B4B: arama b4bservice.neko.com.tr/b4b/search… (JSON dizi: ModelNumber, Producer, NetPrice KDV hariç, PriceTL, STOK)
+  const NEKO_ARAMA = /b4bservice\.neko\.com\.tr\/b4b\/search(\/equivalentproducts)?\?/i;
+  const isleNeko = (metin) => {
+    let l; try { l = JSON.parse(metin); } catch { return; }
+    if (!Array.isArray(l)) return;
+    const n = (v) => (v === null || v === undefined || v === '' || !Number.isFinite(Number(v)) ? null : Number(v));
+    const urunler = l.map((x) => ({ kod: String(x.ModelNumber || '').trim(), marka: x.Producer || null, ad: x.Name || null, oem: null, fiyat: n(x.NetPrice), liste: n(x.PriceTL), stok: Math.max(n(x.STOK) || 0, n(x.ProductAvailable) || 0), depolar: null }))
+      .filter((x) => x.kod.length >= 3 && x.fiyat > 0);
+    if (urunler.length) window.postMessage({ kaynak: 'akcan-iron', tedarikci: TED, urunler }, location.origin);
+  };
   const trSayi = (t) => { const m = String(t ?? '').replace(/[^\d,.-]/g, ''); if (!m) return null; const n = Number(m.replace(/\./g, '').replace(',', '.')); return Number.isFinite(n) ? n : null; };
   const isleOI = (metin) => {
     const t = (m) => window.postMessage({ kaynak: 'akcan-iron', tani: m }, location.origin);
@@ -80,7 +90,8 @@
     const p = asilFetch.apply(this, arguments);
     try {
       const url = String(typeof girdi === 'string' ? girdi : girdi && girdi.url || '');
-      if (TED === 'otoismail' && OI_ARAMA.test(url)) p.then((r) => { if (r && r.ok) r.clone().text().then(isleOI, () => {}); }, () => {});
+      if (TED === 'neko' && NEKO_ARAMA.test(url)) p.then((r) => { if (r && r.ok) r.clone().text().then(isleNeko, () => {}); }, () => {});
+      else if (TED === 'otoismail' && OI_ARAMA.test(url)) p.then((r) => { if (r && r.ok) r.clone().text().then(isleOI, () => {}); }, () => {});
       else if (ARAMA.test(url)) p.then((r) => { if (r && r.ok) r.clone().text().then((t) => isle(t, url), () => {}); else tani('fetch ' + url.split('/').pop() + ' durum ' + (r && r.status)); }, () => {});
     } catch { /* yok say */ }
     return p;
@@ -93,6 +104,7 @@
     return ac.apply(this, arguments);
   };
   XMLHttpRequest.prototype.send = function () {
+    if (TED === 'neko' && NEKO_ARAMA.test(this.__akcanUrl)) this.addEventListener('load', () => { try { if (this.status === 200 && (this.responseType === '' || this.responseType === 'text')) isleNeko(this.responseText); } catch { /* yok say */ } });
     if (TED === 'otoismail' && OI_ARAMA.test(this.__akcanUrl)) this.addEventListener('load', () => { try { if (this.status === 200 && (this.responseType === '' || this.responseType === 'text')) isleOI(this.responseText); else window.postMessage({ kaynak: 'akcan-iron', tani: 'Oto İsmail arama yanıtı: durum ' + this.status + ' tür ' + this.responseType }, location.origin); } catch (e) { window.postMessage({ kaynak: 'akcan-iron', tani: 'Oto İsmail okuma hatası: ' + e.message }, location.origin); } });
     if (ARAMA.test(this.__akcanUrl)) this.addEventListener('load', () => { try { if (this.status === 200 && (this.responseType === '' || this.responseType === 'text')) isle(this.responseText, this.__akcanUrl); else tani('xhr ' + this.__akcanUrl.split('/').pop() + ' durum ' + this.status + ' tür ' + this.responseType); } catch { /* yok say */ } });
     return gonder.apply(this, arguments);
