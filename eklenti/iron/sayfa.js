@@ -1,12 +1,30 @@
 // Sayfanın kendi bağlamında çalışır: Iron / Başbuğ / Özaş / Dinamik / Özçete / Martaş (aynı B2B yazılımı) ve Oto İsmail sitesinin KENDİ yaptığı ürün arama isteklerinin yanıtlarını okur.
 // Hiçbir istek göndermez, hiçbir şeyi değiştirmez; yalnız gelen sonuçları içerik betiğine iletir.
 (() => {
-  const TED = /(^|\.)b2bbasbug\.com$/.test(location.hostname) ? 'basbug' : /(^|\.)ozas\.com\.tr$/.test(location.hostname) ? 'ozas' : /(^|\.)adaoto\.com\.tr$/.test(location.hostname) ? 'dinamik' : /(^|\.)ozcete\.com\.tr$/.test(location.hostname) ? 'ozcete' : /(^|\.)martas\.com\.tr$/.test(location.hostname) ? 'martas' : /(^|\.)otoismail\.com\.tr$/.test(location.hostname) ? 'otoismail' : /(^|\.)neko\.com\.tr$/.test(location.hostname) ? 'neko' : 'iron';
+  const TED = /(^|\.)b2bbasbug\.com$/.test(location.hostname) ? 'basbug' : /(^|\.)ozas\.com\.tr$/.test(location.hostname) ? 'ozas' : /(^|\.)adaoto\.com\.tr$/.test(location.hostname) ? 'dinamik' : /(^|\.)ozcete\.com\.tr$/.test(location.hostname) ? 'ozcete' : /(^|\.)martas\.com\.tr$/.test(location.hostname) ? 'martas' : /(^|\.)otoismail\.com\.tr$/.test(location.hostname) ? 'otoismail' : /(^|\.)neko\.com\.tr$/.test(location.hostname) ? 'neko' : /(^|\.)otomarmara\.com\.tr$/.test(location.hostname) ? 'otomarmara' : 'iron';
   // PurchasedProductList: site girişte "Aldıklarım" listesini (daha önce alınan tüm ürünler, güncel fiyat+stok) kendisi çeker
   const ARAMA = /\/Service\/(?:[A-Za-z]+\.svc\/)?(ProductSearch[A-Za-z0-9]*|PurchasedProductList[A-Za-z0-9]*|SelectiveSearchItems|SearchProductBy[A-Za-z0-9]*|ProductDetails)(\?|$)/;
   // Oto İsmail (başka B2B yazılımı): arama yanıtı {Sonuc, data: "<tr>…</tr>"} biçiminde HTML satırlar
   const OI_ARAMA = /\/Arama\/UrunArama(\?|$)/;
   // Neko B4B: arama b4bservice.neko.com.tr/b4b/search… (JSON dizi: ModelNumber, Producer, NetPrice KDV hariç, PriceTL, STOK)
+  // Otomarmara B4B: arama POST /_ClientSummaryData → HTML satırlar (kod ilk hücrede "MARKA BOS-F026407395", depolar 4–9, nakit fiyat KDV dahil 13. hücre)
+  const OM_ARAMA = /\/_ClientSummaryData(\?|$)/;
+  const OM_DEPO = ['OTOMARKET', 'MERKEZ', 'FSM', 'ATAŞEHİR', 'PENDİK', 'DEPO'];
+  const isleOM = (metin) => {
+    if (typeof metin !== 'string' || !metin.includes('<tr')) return;
+    const doc = new DOMParser().parseFromString('<table><tbody>' + metin + '</tbody></table>', 'text/html');
+    const yazi = (el) => (el ? el.textContent.replace(/\s+/g, ' ').trim() : '');
+    const kodBul = (t) => { const l = [...t.matchAll(/(?:^|\s)([A-Z0-9ÇĞİÖŞÜ]{2,6}-[A-Z0-9][A-Z0-9.\-/]*)/g)].map((m) => m[1]); return l.length ? l[l.length - 1] : null; };
+    const tl = (el) => { const m = yazi(el).match(/([\d.]+,\d{2})/); return m ? Number(m[1].replace(/\./g, '').replace(',', '.')) : null; };
+    const urunler = [...doc.querySelectorAll('tr')].map((tr) => {
+      if (!/GetOems\(\d+\)/.test(tr.innerHTML)) return null;
+      const td = tr.querySelectorAll('td'); const t0 = yazi(td[0]); const kod = kodBul(t0); if (!kod) return null;
+      const depolar = OM_DEPO.map((ad, i) => ({ ad, adet: /background-color:\s*green/i.test(td[4 + i] ? td[4 + i].innerHTML : '') ? 1 : 0 }));
+      const kdvli = tl(td[13]) || tl(td[12]);
+      return { kod, marka: t0.replace(kod, '').trim().slice(0, 60) || null, ad: yazi(td[1]).slice(0, 250) || null, oem: null, fiyat: kdvli ? Math.round((kdvli / 1.2) * 100) / 100 : null, liste: null, stok: depolar.reduce((t, d) => t + d.adet, 0), depolar };
+    }).filter((x) => x && x.fiyat > 0);
+    if (urunler.length) window.postMessage({ kaynak: 'akcan-iron', tedarikci: TED, urunler }, location.origin);
+  };
   const NEKO_ARAMA = /b4bservice\.neko\.com\.tr\/b4b\/search(\/equivalentproducts)?\?/i;
   const isleNeko = (metin) => {
     let l; try { l = JSON.parse(metin); } catch { return; }
@@ -90,7 +108,8 @@
     const p = asilFetch.apply(this, arguments);
     try {
       const url = String(typeof girdi === 'string' ? girdi : girdi && girdi.url || '');
-      if (TED === 'neko' && NEKO_ARAMA.test(url)) p.then((r) => { if (r && r.ok) r.clone().text().then(isleNeko, () => {}); }, () => {});
+      if (TED === 'otomarmara' && OM_ARAMA.test(url)) p.then((r) => { if (r && r.ok) r.clone().text().then(isleOM, () => {}); }, () => {});
+      else if (TED === 'neko' && NEKO_ARAMA.test(url)) p.then((r) => { if (r && r.ok) r.clone().text().then(isleNeko, () => {}); }, () => {});
       else if (TED === 'otoismail' && OI_ARAMA.test(url)) p.then((r) => { if (r && r.ok) r.clone().text().then(isleOI, () => {}); }, () => {});
       else if (ARAMA.test(url)) p.then((r) => { if (r && r.ok) r.clone().text().then((t) => isle(t, url), () => {}); else tani('fetch ' + url.split('/').pop() + ' durum ' + (r && r.status)); }, () => {});
     } catch { /* yok say */ }
@@ -104,6 +123,7 @@
     return ac.apply(this, arguments);
   };
   XMLHttpRequest.prototype.send = function () {
+    if (TED === 'otomarmara' && OM_ARAMA.test(this.__akcanUrl)) this.addEventListener('load', () => { try { if (this.status === 200 && (this.responseType === '' || this.responseType === 'text')) isleOM(this.responseText); } catch { /* yok say */ } });
     if (TED === 'neko' && NEKO_ARAMA.test(this.__akcanUrl)) this.addEventListener('load', () => { try { if (this.status === 200 && (this.responseType === '' || this.responseType === 'text')) isleNeko(this.responseText); } catch { /* yok say */ } });
     if (TED === 'otoismail' && OI_ARAMA.test(this.__akcanUrl)) this.addEventListener('load', () => { try { if (this.status === 200 && (this.responseType === '' || this.responseType === 'text')) isleOI(this.responseText); else window.postMessage({ kaynak: 'akcan-iron', tani: 'Oto İsmail arama yanıtı: durum ' + this.status + ' tür ' + this.responseType }, location.origin); } catch (e) { window.postMessage({ kaynak: 'akcan-iron', tani: 'Oto İsmail okuma hatası: ' + e.message }, location.origin); } });
     if (ARAMA.test(this.__akcanUrl)) this.addEventListener('load', () => { try { if (this.status === 200 && (this.responseType === '' || this.responseType === 'text')) isle(this.responseText, this.__akcanUrl); else tani('xhr ' + this.__akcanUrl.split('/').pop() + ' durum ' + this.status + ' tür ' + this.responseType); } catch { /* yok say */ } });
