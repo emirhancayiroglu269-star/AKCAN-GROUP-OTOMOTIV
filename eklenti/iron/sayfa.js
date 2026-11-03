@@ -1,7 +1,7 @@
 // Sayfanın kendi bağlamında çalışır: Iron / Başbuğ / Özaş / Dinamik (Ada Oto) sitesinin (aynı B2B yazılımı) KENDİ yaptığı ürün arama isteklerinin yanıtlarını okur.
 // Hiçbir istek göndermez, hiçbir şeyi değiştirmez; yalnız gelen sonuçları içerik betiğine iletir.
 (() => {
-  const TED = /(^|\.)b2bbasbug\.com$/.test(location.hostname) ? 'basbug' : /(^|\.)ozas\.com\.tr$/.test(location.hostname) ? 'ozas' : /(^|\.)adaoto\.com\.tr$/.test(location.hostname) ? 'dinamik' : 'iron';
+  const TED = /(^|\.)b2bbasbug\.com$/.test(location.hostname) ? 'basbug' : /(^|\.)ozas\.com\.tr$/.test(location.hostname) ? 'ozas' : /(^|\.)adaoto\.com\.tr$/.test(location.hostname) ? 'dinamik' : /(^|\.)ozcete\.com\.tr$/.test(location.hostname) ? 'ozcete' : 'iron';
   // PurchasedProductList: site girişte "Aldıklarım" listesini (daha önce alınan tüm ürünler, güncel fiyat+stok) kendisi çeker
   const ARAMA = /\/Service\/(?:[A-Za-z]+\.svc\/)?(ProductSearch[A-Za-z0-9]*|PurchasedProductList[A-Za-z0-9]*|SelectiveSearchItems|SearchProductBy[A-Za-z0-9]*|ProductDetails)(\?|$)/;
   // Iron stok kodunu sayfada şifreli tutar: her onaltılık rakam (ASCII) 0x72 ile XOR'lanmış, sonra yine onaltılık yazılmış
@@ -54,7 +54,7 @@
   const gorulen = [];
   XMLHttpRequest.prototype.open = function (m, u) {
     this.__akcanUrl = String(u || '');
-    if (TED === 'dinamik' && /\/Service\//.test(this.__akcanUrl) && !ARAMA.test(this.__akcanUrl)) { gorulen.push(this.__akcanUrl.split('?')[0].split('/').pop()); if (gorulen.length > 6) gorulen.shift(); tani('arama isteği yakalanmadı; son servis çağrıları: ' + gorulen.join(', ')); }
+    if ((TED === 'dinamik' || TED === 'ozcete') && /\/Service\//.test(this.__akcanUrl) && !ARAMA.test(this.__akcanUrl)) { gorulen.push(this.__akcanUrl.split('?')[0].split('/').pop()); if (gorulen.length > 6) gorulen.shift(); tani('arama isteği yakalanmadı; son servis çağrıları: ' + gorulen.join(', ')); }
     return ac.apply(this, arguments);
   };
   XMLHttpRequest.prototype.send = function () {
