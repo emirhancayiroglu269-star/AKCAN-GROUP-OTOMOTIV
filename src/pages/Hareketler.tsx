@@ -135,7 +135,7 @@ export default function Hareketler() {
   }, [db.hareketler]);
   // ürün ve marka özeti (satışlar)
   const ozet = useMemo(() => {
-    const ur = new Map<string, { ad: string; kod: string; id: string; adet: number; ciro: number; kar: number }>();
+    const ur = new Map<string, { ad: string; kod: string; id: string; adet: number; ciro: number; kar: number; maliyetsiz: boolean }>();
     const mr = new Map<string, { adet: number; ciro: number; kar: number; urun: Set<string> }>();
     const kl = new Map<string, { ciro: number; kar: number; belge: Set<string> }>();
     const cr = new Map<string, { guid?: string | null; ciro: number; kar: number; belge: Set<string> }>();
@@ -150,8 +150,8 @@ export default function Hareketler() {
     for (const h of liste) {
       if (h.tur !== 'satis' || !sayilir(h)) continue;
       const u = urun.get(h.urun_id); const x = hareketTutar(h, a);
-      const e = ur.get(h.urun_id) ?? { ad: u?.ad ?? h.urun_ad ?? '—', kod: u?.kod ?? '', id: h.urun_id, adet: 0, ciro: 0, kar: 0 };
-      e.adet += h.miktar; e.ciro += x.ciro; e.kar += x.kar; ur.set(h.urun_id, e);
+      const e = ur.get(h.urun_id) ?? { ad: u?.ad ?? h.urun_ad ?? '—', kod: u?.kod ?? '', id: h.urun_id, adet: 0, ciro: 0, kar: 0, maliyetsiz: true };
+      e.adet += h.miktar; e.ciro += x.ciro; e.kar += x.kar; if (!x.maliyetYok) e.maliyetsiz = false; ur.set(h.urun_id, e);
       const mk = (u?.marka || 'Markasız').trim(); const b = mr.get(mk) ?? { adet: 0, ciro: 0, kar: 0, urun: new Set<string>() };
       b.adet += h.miktar; b.ciro += x.ciro; b.kar += x.kar; b.urun.add(h.urun_id); mr.set(mk, b);
       const belge = h.belge_guid || String(h.id);
@@ -287,7 +287,7 @@ export default function Hareketler() {
             <div className="mb-1 text-sm font-semibold">En çok satan ürünler <span className="font-normal text-slate-500">(ciroya göre)</span></div>
             {ozet.urunler.length === 0 ? <Bos metin="Bu dönemde satış yok." /> : (
               <table className="tbl text-sm"><thead><tr><th>Ürün</th><th className="text-right">Adet</th><th className="text-right">Ciro</th>{maliyetGor && <th className="text-right">Kâr</th>}</tr></thead>
-                <tbody>{ozet.urunler.map((x) => { const st = urun.get(x.id)?.stok ?? 0; return <tr key={x.id}><td><UrunLink id={x.id}>{x.ad}</UrunLink><div className="text-xs text-slate-500">{x.kod}{!/İŞÇİLİK|ISCILIK|HİZMET/i.test(x.ad) && <> · <span className={st <= 0 ? 'font-semibold text-red-600' : ''}>{st <= 0 ? 'stok bitti' : `stok ${sayi(st)}`}</span></>}</div></td><td className="text-right">{sayi(x.adet)}</td><td className="text-right font-semibold">{para(x.ciro)}</td>{maliyetGor && <td className={`text-right ${x.kar < 0 ? 'text-red-600' : 'text-emerald-700'}`}>{para(x.kar)}</td>}</tr>; })}</tbody></table>)}
+                <tbody>{ozet.urunler.map((x) => { const st = urun.get(x.id)?.stok ?? 0; return <tr key={x.id}><td><UrunLink id={x.id}>{x.ad}</UrunLink><div className="text-xs text-slate-500">{x.kod}{!!x.kod && !/İŞÇİLİK|ISCILIK|HİZMET/i.test(x.ad) && <> · <span className={st <= 0 ? 'font-semibold text-red-600' : ''}>{st <= 0 ? 'stok bitti' : `stok ${sayi(st)}`}</span></>}</div></td><td className="text-right">{sayi(x.adet)}</td><td className="text-right font-semibold">{para(x.ciro)}</td>{maliyetGor && <td className={`text-right ${x.maliyetsiz ? 'text-xs text-slate-400' : x.kar < 0 ? 'text-red-600' : 'text-emerald-700'}`}>{x.maliyetsiz ? 'maliyet yok' : para(x.kar)}</td>}</tr>; })}</tbody></table>)}
           </div>
           <div>
             <div className="mb-1 text-sm font-semibold">Markalar</div>
