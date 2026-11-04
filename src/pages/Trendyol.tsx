@@ -178,7 +178,7 @@ function Ilanlar({ veri, v }: { veri: TyVeri; v: TyVarsayim }) {
             </table>
           </div>)}
       </div>
-      <p className="mt-3 flex items-start gap-1.5 text-xs text-slate-500"><Info size={14} className="mt-0.5 shrink-0" />Önerilen fiyat = alış + komisyon + kargo + hizmet bedeli + stopaj + hedef kâr (%{v.hedef_marj}); dükkân fiyatının %{v.tavan_yuzde} üstünü geçmez, ama kâr %{v.taban_marj}'in altına inmez. Alış = kart alışı, son alış faturası ve tedarikçideki güncel fiyat (Otomarmara / Neko her gece tam kod eşleşmesiyle kontrol edilir; Iron fiyatları eklentiden gelir) içinden en yükseği; tedarikçi fiyatı kartı %50'den fazla aşarsa (paket/adet farkı ya da ürünü başka yerden daha ucuza alıyor olabilirsiniz) otomatik kullanılmaz, turuncu gösterilir. "Tedarikçide zamlı" listesi kart alışı eskimiş ürünleri gösterir: kartı BizimHesap'ta düzeltin. Komisyon, o ürünün geçmiş Trendyol siparişlerinden alınır; siparişi yoksa varsayılan %{v.komisyon} kullanılır. Bizim stok = iki deponun toplamı. Otomatik fiyat güncelleme açıksa Trendyol fiyatı önerilen fiyata çekilir (gerekirse düşürülür).</p>
+      <p className="mt-3 flex items-start gap-1.5 text-xs text-slate-500"><Info size={14} className="mt-0.5 shrink-0" />Önerilen fiyat = alış + komisyon + kargo + hizmet bedeli + stopaj + hedef kâr (%{v.hedef_marj}); {v.tavan_yuzde < 0 ? 'dükkân fiyatı sınırı uygulanmaz (hedef altındaki ilan hedefe çekilir)' : `dükkân fiyatının %${v.tavan_yuzde} üstünü geçmez`}, ama kâr %{v.taban_marj}'in altına inmez. Alış = kart alışı, son alış faturası ve tedarikçideki güncel fiyat (Otomarmara / Neko her gece tam kod eşleşmesiyle kontrol edilir; Iron fiyatları eklentiden gelir) içinden en yükseği; tedarikçi fiyatı kartı %50'den fazla aşarsa (paket/adet farkı ya da ürünü başka yerden daha ucuza alıyor olabilirsiniz) otomatik kullanılmaz, turuncu gösterilir. "Tedarikçide zamlı" listesi kart alışı eskimiş ürünleri gösterir: kartı BizimHesap'ta düzeltin. Komisyon, o ürünün geçmiş Trendyol siparişlerinden alınır; siparişi yoksa varsayılan %{v.komisyon} kullanılır. Bizim stok = iki deponun toplamı. Otomatik fiyat güncelleme açıksa Trendyol fiyatı önerilen fiyata çekilir (gerekirse düşürülür).</p>
     </div>
   );
 }
@@ -309,7 +309,11 @@ function Varsayimlar({ v }: { v: TyVarsayim }) {
       <div className="grid gap-5 sm:grid-cols-2">
         {alan('hedef_marj', 'Hedef kâr marjı', '%', 'Satışın (KDV hariç) yüzde kaçı kâr kalsın')}
         {alan('taban_marj', 'En düşük kâr marjı', '%', 'Fiyat rekabet için düşürülse bile kâr bunun altına inmez')}
-        {alan('tavan_yuzde', 'Dükkân fiyatına göre tavan', '% üstü', 'Trendyol fiyatı dükkân fiyatının en fazla bu kadar üstünde olsun (taban kâr korunur)')}
+        <div>
+          <label className="flex items-center gap-2 text-sm font-medium"><input type="checkbox" checked={Number(d.tavan_yuzde) < 0} onChange={(e) => setD({ ...d, tavan_yuzde: e.target.checked ? '-1' : '20' })} /> Hedef altındaki ilanı hedef marja çek</label>
+          <div className="mt-0.5 text-xs text-slate-500">Açıkken dükkân fiyatı sınırı uygulanmaz: otomatik güncelleme her ilanı hedef kâra göre fiyatlar.</div>
+          {Number(d.tavan_yuzde) >= 0 && <div className="mt-2">{alan('tavan_yuzde', 'Dükkân fiyatına göre tavan', '% üstü', 'Trendyol fiyatı dükkân fiyatının en fazla bu kadar üstünde olsun (taban kâr korunur)')}</div>}
+        </div>
         {alan('komisyon', 'Varsayılan komisyon', '%', 'Ürünün Trendyol siparişi yoksa kullanılır; varsa gerçek oran alınır')}
         {alan('kargo', 'Sipariş başı kargo', 'TL (KDV dahil)', v.kargo_tablo?.length ? `Desi bilinmeyen ürünlerde kullanılır; diğerlerinde ${v.kargo_firma ?? 'anlaşmalı'} kargo tablosundan desiye göre hesaplanır` : 'Anlaşmalı kargo ücretiniz (desi ortalaması)')}
         {alan('hizmet', 'Sipariş başı hizmet bedeli', 'TL (KDV dahil)', 'Trendyol platform hizmet bedeli vb. sabit kesinti')}
