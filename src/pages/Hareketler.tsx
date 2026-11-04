@@ -44,10 +44,15 @@ export default function Hareketler() {
       }
     }
     const anahtar = (h: Hareket) => `${h.urun_id}|${gunu(h.tarih)}`;
-    const net = new Map<string, number>(); // stok net çıkış − faturalı net çıkış
-    for (const h of stk) if (!esli.has(h)) net.set(anahtar(h), (net.get(anahtar(h)) ?? 0) + (h.tur === 'satis' ? h.miktar : -h.miktar));
-    for (const h of db.hareketler) if (h.kaynak === 'fatura' && net.has(anahtar(h))) net.set(anahtar(h), net.get(anahtar(h))! - (h.tur === 'satis' ? h.miktar : -h.miktar));
-    for (const h of db.iadeler ?? []) if (net.has(anahtar(h))) net.set(anahtar(h), net.get(anahtar(h))! - (h.tur === 'alis' ? h.miktar : -h.miktar));
+    // açıklanamayan çıkış = stok çıkışı − faturalı satış − alış iadesi; açıklanamayan giriş (elle düzeltme) bunu azaltır.
+    // Alış faturası stoğa başka gün girebildiği için fazla alış faturası "eksik" üretmez.
+    const cik = new Map<string, number>(), gir = new Map<string, number>();
+    const ekle = (m: Map<string, number>, k: string, v: number) => m.set(k, (m.get(k) ?? 0) + v);
+    for (const h of stk) if (!esli.has(h)) ekle(h.tur === 'satis' ? cik : gir, anahtar(h), h.miktar);
+    for (const h of db.hareketler) if (h.kaynak === 'fatura' && cik.has(anahtar(h))) ekle(h.tur === 'satis' ? cik : gir, anahtar(h), -h.miktar);
+    for (const h of db.iadeler ?? []) if (cik.has(anahtar(h))) ekle(h.tur === 'alis' ? cik : gir, anahtar(h), -h.miktar);
+    const net = new Map<string, number>();
+    for (const [k, c] of cik) net.set(k, c - Math.max(0, gir.get(k) ?? 0));
     const out: Satir[] = [];
     for (const h of [...stk].reverse()) {
       if (esli.has(h) || h.tur !== 'satis') continue;
