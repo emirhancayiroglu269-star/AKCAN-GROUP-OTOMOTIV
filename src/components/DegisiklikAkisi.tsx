@@ -33,7 +33,7 @@ export function DegisiklikAkisi() {
   const [filtre, setFiltre] = useState<Tur | 'hepsi'>('hepsi');
   const [q, setQ] = useState(''); const [kac, setKac] = useState(100);
 
-  const olaylar = useMemo(() => {
+  const { l: olaylar, duzeltme } = useMemo(() => {
     const [bas, bit] = aralik(donem); const ici = (t?: string | null) => { if (!t) return false; const x = new Date(t).getTime(); return x >= bas && x < bit; };
     const urun = new Map(db.urunler.map((u) => [String(u.id), u])); const l: Olay[] = [];
     for (const f of db.fiyat_gecmisi) {
@@ -43,8 +43,19 @@ export function DegisiklikAkisi() {
       if (maliyet && f.alis_eski !== f.alis_yeni) parca.push(`Alış ${para(f.alis_eski)} → ${para(f.alis_yeni)}${yuzde(f.alis_eski, f.alis_yeni)}`);
       if (parca.length) l.push({ t: f.tarih, tur: 'fiyat', urun: u, metin: parca.join(' · '), ton });
     }
-    for (const h of db.stok_degisim ?? []) {
-      if (!ici(h.tarih) || h.yok_say) continue; const u = urun.get(String(h.urun_id)); const cik = h.tur === 'satis';
+    // Aynı ürünün aynı miktarda çıkıp 1 saat içinde geri girmesi (yanlış girilip silinen / iade alınan satış) birbirini götürür: ikisi de gösterilmez
+    const stk = (db.stok_degisim ?? []).filter((h) => ici(h.tarih) && !h.yok_say).sort((x, y) => x.tarih.localeCompare(y.tarih));
+    const esli = new Set<typeof stk[number]>();
+    for (let i = 0; i < stk.length; i++) {
+      const a = stk[i]; if (esli.has(a)) continue;
+      for (let j = i + 1; j < stk.length; j++) {
+        const b = stk[j]; if (new Date(b.tarih).getTime() - new Date(a.tarih).getTime() > 3600e3) break;
+        if (!esli.has(b) && String(b.urun_id) === String(a.urun_id) && b.tur !== a.tur && Math.abs(b.miktar - a.miktar) < 0.001) { esli.add(a); esli.add(b); break; }
+      }
+    }
+    const duzeltme = esli.size / 2;
+    for (const h of stk) {
+      if (esli.has(h)) continue; const u = urun.get(String(h.urun_id)); const cik = h.tur === 'satis';
       l.push({ t: h.tarih, tur: cik ? 'cikis' : 'giris', urun: u, metin: `${cik ? '−' : '+'}${sayi(h.miktar)} adet`, ek: h.onceki != null && h.sonraki != null ? `stok ${sayi(h.onceki)} → ${sayi(h.sonraki)}` : undefined });
     }
     if (maliyet) {
@@ -61,7 +72,7 @@ export function DegisiklikAkisi() {
     const takip = db.bh_durum?.takip_baslangic ? new Date(db.bh_durum.takip_baslangic).getTime() + 864e5 : 0;
     for (const u of db.urunler) if (u.olusturma && ici(u.olusturma) && new Date(u.olusturma).getTime() > takip)
       l.push({ t: u.olusturma, tur: 'yeni', urun: u, metin: `Satış ${para(u.satis_fiyati)}${maliyet ? ` · alış ${para(u.kart_alis ?? u.alis_fiyati)}` : ''}`, ek: u.marka ?? undefined });
-    return l.sort((a, b) => b.t.localeCompare(a.t));
+    return { l: l.sort((a, b) => b.t.localeCompare(a.t)), duzeltme };
   }, [db, donem, maliyet]);
 
   const sayac = useMemo(() => {
@@ -111,6 +122,7 @@ export function DegisiklikAkisi() {
           })}
         </div>)}
       {gorunen.length > kac && <button className="btn-ghost mt-2 w-full justify-center text-sm" onClick={() => setKac((k) => k + 200)}>{sayi(gorunen.length - kac)} değişiklik daha göster</button>}
+      {duzeltme > 0 && <p className="mt-2 text-xs text-slate-500">{sayi(duzeltme)} stok hareketi 1 saat içinde geri alındığı için (yanlış girilip silinen ya da iade alınan satış) gösterilmedi.</p>}
       <p className="mt-3 text-xs text-slate-500">Eşitleme her 2 dakikada BizimHesap'taki fiyat, stok ve bakiye farklarını yakalar. Stok çıkışı genelde satış, girişi alış demektir; aynı dakikada çıkıp giren ürün tek satır görünebilir.</p>
     </div>
   );
