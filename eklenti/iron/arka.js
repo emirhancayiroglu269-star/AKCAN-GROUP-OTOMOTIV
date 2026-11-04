@@ -14,6 +14,10 @@ chrome.runtime.onMessage.addListener((m, _g, cevap) => {
       if (!anahtar) return cevap({ ok: false, anahtarYok: true });
       try { return cevap(await gonder({ anahtar, islem: m.tur, kalemler: m.kalemler })); } catch (e) { return cevap({ ok: false, hata: String(e?.message || e) }); }
     }
+    if (m.tur === 'odeal') {
+      if (!anahtar) return cevap({ ok: false, anahtarYok: true });
+      try { return cevap(await gonder({ anahtar, islem: 'odeal', yon: m.yon, faturalar: m.faturalar })); } catch (e) { return cevap({ ok: false, hata: String(e?.message || e) }); }
+    }
     if (m.tur !== 'kaydet') return cevap(null);
     if (!anahtar) return cevap({ ok: false, anahtarYok: true });
     try {

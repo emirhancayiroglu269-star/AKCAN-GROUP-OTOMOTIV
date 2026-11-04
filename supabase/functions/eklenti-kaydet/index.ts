@@ -225,6 +225,23 @@ Deno.serve(async (req) => {
     if (l.length) { const { error } = await db.from('bh_alis_log').insert(l); if (error) return yanit({ ok: false, hata: error.message }, 500); }
     return yanit({ ok: true, kaydedilen: l.length });
   }
+  if (b.islem === 'odeal') {
+    // Ödeal e-Fatura portalında kullanıcının açtığı fatura listesi (yalnız başlıklar)
+    const gun = (t: unknown) => { const m = String(t ?? '').match(/(\d{2})[./](\d{2})[./](\d{4})/); return m ? `${m[3]}-${m[2]}-${m[1]}` : null; };
+    const zaman = (t: unknown) => { const m = String(t ?? '').match(/(\d{2})[./](\d{2})[./](\d{4})\s+(\d{2}):(\d{2})(?::(\d{2}))?/); return m ? `${m[3]}-${m[2]}-${m[1]}T${m[4]}:${m[5]}:${m[6] ?? '00'}+03:00` : null; };
+    const yon = ['gelen', 'giden', 'arsiv'].includes(String(b.yon)) ? String(b.yon) : null;
+    if (!yon) return yanit({ ok: false, hata: 'Bilinmeyen fatura yönü' }, 400);
+    const kac = (v: unknown, n: number) => (v === null || v === undefined || v === '' ? null : String(v).slice(0, n));
+    const l = (Array.isArray(b.faturalar) ? b.faturalar as Obj[] : []).slice(0, 500)
+      .filter((x) => typeof x.ettn === 'string' && /^[0-9a-fA-F-]{20,40}$/.test(x.ettn))
+      .map((x) => ({ ettn: String(x.ettn).toLowerCase(), yon, no: kac(x.no, 40), karsi: kac(x.karsi, 250), vkn: kac(String(x.vkn ?? '').replace(/\D/g, ''), 11), tarih: gun(x.tarih), gelis: zaman(x.gelis),
+        senaryo: kac(x.senaryo, 40), tip: kac(x.tip, 40), tutar: sayi(x.tutar), durum: kac(x.durum, 120), ham: typeof x.ham === 'object' && x.ham ? x.ham : null, guncelleme: new Date().toISOString() }));
+    if (!l.length) return yanit({ ok: true, kaydedilen: 0 });
+    const { data: eski } = await db.from('odeal_fatura').select('ettn').in('ettn', l.map((x) => x.ettn));
+    const { error } = await db.from('odeal_fatura').upsert(l, { onConflict: 'ettn' });
+    if (error) return yanit({ ok: false, hata: error.message }, 500);
+    return yanit({ ok: true, kaydedilen: l.length, yeni: l.length - (eski?.length ?? 0) });
+  }
   const ted = String(b.tedarikci ?? ''); if (!TEDARIKCILER.has(ted)) return yanit({ ok: false, hata: 'Bilinmeyen tedarikçi' }, 400);
   if (b.islem === 'test') return yanit({ ok: true });
 

@@ -8,8 +8,9 @@ import type { Hareket } from '../lib/types';
 import { DonemSecici, useDonem } from '../components/DonemSecici';
 import { Bos, Kpi, SayfaBaslik } from '../components/ui';
 import { MusteriLink, UrunLink } from '../components/DetayKart';
+import { EFaturaKontrol } from '../components/EFaturaKontrol';
 
-type Gorunum = 'satir' | 'fatura' | 'ozet';
+type Gorunum = 'satir' | 'fatura' | 'ozet' | 'efatura';
 type Satir = Hareket & { eksik?: boolean };
 
 export default function Hareketler() {
@@ -244,7 +245,7 @@ export default function Hareketler() {
 
       <div className="card">
         <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 p-3 dark:border-slate-800">
-          <div className="flex gap-1">{sekme('satir', 'Satırlar')}{sekme('fatura', 'Faturalar')}{sekme('ozet', 'Ürün & marka')}</div>
+          <div className="flex gap-1">{sekme('satir', 'Satırlar')}{sekme('fatura', 'Faturalar')}{sekme('ozet', 'Ürün & marka')}{maliyetGor && sekme('efatura', 'e-Fatura kontrol')}</div>
           <input className="inp max-w-xs" placeholder="Ürün, kod, marka, cari…" value={q} onChange={(e) => { setQ(e.target.value); setGoster(300); }} />
           <select className="inp w-32" value={tur} onChange={(e) => setTur(e.target.value as typeof tur)}><option value="">Tümü</option><option value="satis">Satışlar</option><option value="alis">Alışlar</option></select>
           <select className="inp w-48" value={cari} onChange={(e) => setCari(e.target.value)}><option value="">Tüm cariler</option>{cariler.map((c) => <option key={c} value={c}>{c}</option>)}</select>
@@ -288,6 +289,7 @@ export default function Hareketler() {
           {faturalar.length > goster && <div className="p-3 text-center"><button className="btn-ghost text-xs" onClick={() => setGoster((g) => g + 500)}>Daha fazla göster ({faturalar.length - goster})</button></div>}
         </div>}
 
+        {gorunum === 'efatura' && maliyetGor && <EFaturaKontrol d={d} />}
         {gorunum === 'ozet' && <div className="grid gap-4 p-3 lg:grid-cols-2">
           <div>
             <div className="mb-1 text-sm font-semibold">En çok satan ürünler <span className="font-normal text-slate-500">(ciroya göre)</span></div>
