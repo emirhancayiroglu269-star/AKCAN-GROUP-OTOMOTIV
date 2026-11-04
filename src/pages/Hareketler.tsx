@@ -20,6 +20,7 @@ export default function Hareketler() {
   const [cari, setCari] = useState('');
   const [yokSay, setYokSay] = useState(false);
   const [sadeceEksik, setSadeceEksik] = useState(false);
+  const [sadeceZarar, setSadeceZarar] = useState(false);
   const [gorunum, setGorunum] = useState<Gorunum>('satir');
   const [acik, setAcik] = useState<Set<string>>(new Set());
   const [goster, setGoster] = useState(300);
@@ -69,19 +70,36 @@ export default function Hareketler() {
     return [...db.hareketler, ...(db.iadeler ?? []), ...disari, ...eksikler].sort((x, y) => y.tarih.localeCompare(x.tarih)) as Satir[];
   }, [db.hareketler, db.iadeler, db.stok_degisim, eksikler]);
   const cariler = useMemo(() => [...new Set(tum.filter((h) => donemde(h.tarih, d) && h.cari_ad).map((h) => h.cari_ad!))].sort((x, y) => x.localeCompare(y, 'tr')), [tum, d]);
-  const liste = useMemo(() => tum.filter((h) => donemde(h.tarih, d) && (!tur || h.tur === tur) && (yokSay || !h.yok_say) && (!sadeceEksik || h.eksik) && (!cari || h.cari_ad === cari) &&
-    (!q.trim() || (() => { const u = urun.get(h.urun_id); return ara(q, u?.ad ?? h.urun_ad, u?.kod, u?.barkod, u?.marka, u?.kategori, h.cari_ad, h.kullanici); })())), [tum, d, tur, q, yokSay, sadeceEksik, cari, urun]);
+  const iadeSet0 = useMemo(() => new Set<Hareket>(db.iadeler ?? []), [db.iadeler]);
+  const zararMi = (h: Satir) => { if (h.tur !== 'satis' || h.yok_say || h.eksik || iadeSet0.has(h)) return false; const x = hareketTutar(h, a); return !x.maliyetYok && x.kar < -0.01; };
+  const uyar = (h: Satir) => (!tur || h.tur === tur) && (yokSay || !h.yok_say) && (!sadeceEksik || h.eksik) && (!sadeceZarar || zararMi(h)) && (!cari || h.cari_ad === cari) &&
+    (!q.trim() || (() => { const u = urun.get(h.urun_id); return ara(q, u?.ad ?? h.urun_ad, u?.kod, u?.barkod, u?.marka, u?.kategori, h.cari_ad, h.kullanici); })());
+  const liste = useMemo(() => tum.filter((h) => donemde(h.tarih, d) && uyar(h)), [tum, d, tur, q, yokSay, sadeceEksik, sadeceZarar, cari, urun, a]); // eslint-disable-line react-hooks/exhaustive-deps
+  // önceki dönem: seçili dönemle aynı uzunlukta, hemen öncesi
+  const dOnce = useMemo(() => {
+    const b = new Date(d.bas + 'T12:00:00'), e = new Date(d.bit + 'T12:00:00'); const n = Math.round((e.getTime() - b.getTime()) / 864e5) + 1;
+    const ob = new Date(b); ob.setDate(ob.getDate() - n); const oe = new Date(b); oe.setDate(oe.getDate() - 1);
+    return { bas: gunu(ob), bit: gunu(oe), n };
+  }, [d]);
+  const oncekiListe = useMemo(() => tum.filter((h) => donemde(h.tarih, dOnce) && uyar(h)), [tum, dOnce, tur, q, yokSay, sadeceEksik, sadeceZarar, cari, urun, a]); // eslint-disable-line react-hooks/exhaustive-deps
+  const zararSay = useMemo(() => tum.filter((h) => donemde(h.tarih, d) && zararMi(h)).length, [tum, d, a]); // eslint-disable-line react-hooks/exhaustive-deps
   const sayilir = (h: Satir) => !h.yok_say && !h.eksik && !iadeSet.has(h);
-  const top = useMemo(() => {
+  const topla = (l: Satir[]) => {
     let ciro = 0, kar = 0, adet = 0, alis = 0, alAdet = 0, iadeSatis = 0, iadeAlis = 0, iadeSay = 0;
-    for (const h of liste) {
+    for (const h of l) {
       if (h.yok_say || h.eksik) continue;
       if (iadeSet.has(h)) { iadeSay++; if (h.tur === 'satis') iadeSatis += h.miktar * h.satis_fiyati; else iadeAlis += h.miktar * h.alis_fiyati; continue; }
       if (h.tur === 'satis') { const x = hareketTutar(h, a); ciro += x.ciro; kar += x.kar; adet += h.miktar; }
       else { alis += h.miktar * h.alis_fiyati; alAdet += h.miktar; }
     }
     return { ciro, kar, adet, alis, alAdet, iadeSatis, iadeAlis, iadeSay };
-  }, [liste, a, iadeSet]);
+  };
+  const top = useMemo(() => topla(liste), [liste, a, iadeSet]); // eslint-disable-line react-hooks/exhaustive-deps
+  const onc = useMemo(() => topla(oncekiListe), [oncekiListe, a, iadeSet]); // eslint-disable-line react-hooks/exhaustive-deps
+  const fark = (x: number, y: number) => {
+    if (!y) return null; const p = ((x - y) / Math.abs(y)) * 100;
+    return <span className={p >= 0 ? 'text-emerald-600' : 'text-red-600'}>{p >= 0 ? '▲' : '▼'}%{Math.abs(p).toFixed(0)} <span className="text-slate-400">önceki {dOnce.n} güne göre</span></span>;
+  };
   const yokSayilan = tum.filter((h) => h.yok_say && donemde(h.tarih, d)).length;
   const eksikDonem = eksikler.length;
 
@@ -113,6 +131,9 @@ export default function Hareketler() {
   const ozet = useMemo(() => {
     const ur = new Map<string, { ad: string; kod: string; id: string; adet: number; ciro: number; kar: number }>();
     const mr = new Map<string, { adet: number; ciro: number; kar: number; urun: Set<string> }>();
+    const kl = new Map<string, { ciro: number; kar: number; belge: Set<string> }>();
+    const cr = new Map<string, { guid?: string | null; ciro: number; kar: number; belge: Set<string> }>();
+    const sg = Array.from({ length: 7 }, () => Array<number>(24).fill(0));
     for (const h of liste) {
       if (h.tur !== 'satis' || !sayilir(h)) continue;
       const u = urun.get(h.urun_id); const x = hareketTutar(h, a);
@@ -120,8 +141,15 @@ export default function Hareketler() {
       e.adet += h.miktar; e.ciro += x.ciro; e.kar += x.kar; ur.set(h.urun_id, e);
       const mk = (u?.marka || 'Markasız').trim(); const b = mr.get(mk) ?? { adet: 0, ciro: 0, kar: 0, urun: new Set<string>() };
       b.adet += h.miktar; b.ciro += x.ciro; b.kar += x.kar; b.urun.add(h.urun_id); mr.set(mk, b);
+      const belge = h.belge_guid || String(h.id);
+      const kk = h.kullanici || (h.kaynak === 'fatura' ? 'Belirtilmemiş' : 'Stok hareketi (tahmini)'); const kv = kl.get(kk) ?? { ciro: 0, kar: 0, belge: new Set<string>() };
+      kv.ciro += x.ciro; kv.kar += x.kar; kv.belge.add(belge); kl.set(kk, kv);
+      if (h.cari_ad) { const cv = cr.get(h.cari_ad) ?? { guid: h.cari_guid, ciro: 0, kar: 0, belge: new Set<string>() }; cv.ciro += x.ciro; cv.kar += x.kar; cv.belge.add(belge); cr.set(h.cari_ad, cv); }
+      const t = new Date(h.tarih); sg[(t.getDay() + 6) % 7][t.getHours()] += x.ciro;
     }
-    return { urunler: [...ur.values()].sort((x, y) => y.ciro - x.ciro).slice(0, 25), markalar: [...mr.entries()].map(([ad, v]) => ({ ad, ...v, cesit: v.urun.size })).sort((x, y) => y.ciro - x.ciro).slice(0, 20) };
+    return { urunler: [...ur.values()].sort((x, y) => y.ciro - x.ciro).slice(0, 25), markalar: [...mr.entries()].map(([ad, v]) => ({ ad, ...v, cesit: v.urun.size })).sort((x, y) => y.ciro - x.ciro).slice(0, 20),
+      kullanicilar: [...kl.entries()].map(([ad, v]) => ({ ad, ciro: v.ciro, kar: v.kar, belge: v.belge.size })).sort((x, y) => y.ciro - x.ciro),
+      cariler: [...cr.entries()].map(([ad, v]) => ({ ad, guid: v.guid, ciro: v.ciro, kar: v.kar, belge: v.belge.size })).sort((x, y) => y.ciro - x.ciro).slice(0, 15), sg };
   }, [liste, urun, a]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const degistir = (h: Hareket) => calistir(() => backend.update<Hareket>('hareketler', h.id, { yok_say: !h.yok_say }), h.yok_say ? 'Hareket hesaba katıldı' : 'Hareket hesaplardan çıkarıldı');
@@ -162,9 +190,9 @@ export default function Hareketler() {
       </SayfaBaslik>
       <div className="mb-3"><DonemSecici d={d} sec={setD} /></div>
       <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Kpi etiket="Satış tutarı (KDV dahil)" deger={para(top.ciro)} alt={`${sayi(top.adet)} adet`} renk="green" />
-        {maliyetGor ? <Kpi etiket="Brüt kâr (KDV hariç)" deger={para(top.kar)} renk={top.kar >= 0 ? 'green' : 'red'} /> : <Kpi etiket="Satış günü" deger={sayi(satisliGun.length)} alt="satış olan gün" />}
-        <Kpi etiket="Alış tutarı (KDV hariç)" deger={para(top.alis)} alt={`${sayi(top.alAdet)} adet giriş`} renk="blue" />
+        <Kpi etiket="Satış tutarı (KDV dahil)" deger={para(top.ciro)} alt={<>{sayi(top.adet)} adet {fark(top.ciro, onc.ciro)}</>} renk="green" />
+        {maliyetGor ? <Kpi etiket="Brüt kâr (KDV hariç)" deger={para(top.kar)} alt={<>{top.ciro > 0 ? `marj %${((top.kar / (top.ciro / 1.2)) * 100).toFixed(0)} ` : ''}{fark(top.kar, onc.kar)}</>} renk={top.kar >= 0 ? 'green' : 'red'} /> : <Kpi etiket="Satış günü" deger={sayi(satisliGun.length)} alt="satış olan gün" />}
+        <Kpi etiket="Alış tutarı (KDV hariç)" deger={para(top.alis)} alt={<>{sayi(top.alAdet)} adet giriş {fark(top.alis, onc.alis)}</>} renk="blue" />
         <button className="text-left" disabled={!eksikDonem} onClick={() => { setSadeceEksik((x) => !x); setGorunum('satir'); }}>
           <Kpi etiket="Faturası eksik" deger={sayi(eksikDonem)} alt={eksikDonem ? (sadeceEksik ? 'Yalnız bunlar gösteriliyor · tümüne dön' : 'Stoktan düşmüş, fatura yok · listele') : 'Fatura rapor edilen günlerde eksik yok'} renk={eksikDonem ? 'red' : 'slate'} ikon={<AlertTriangle size={16} />} /></button>
       </div>
@@ -199,6 +227,7 @@ export default function Hareketler() {
           <select className="inp w-48" value={cari} onChange={(e) => setCari(e.target.value)}><option value="">Tüm cariler</option>{cariler.map((c) => <option key={c} value={c}>{c}</option>)}</select>
           <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={yokSay} onChange={(e) => setYokSay(e.target.checked)} /> Hesap dışı olanları da göster</label>
           {sadeceEksik && <button className="rozet bg-red-50 text-red-700" onClick={() => setSadeceEksik(false)}>Yalnız faturası eksikler ✕</button>}
+          {maliyetGor && zararSay > 0 && <button className={`rozet ${sadeceZarar ? 'bg-red-600 text-white' : 'bg-red-50 text-red-700'}`} title="Maliyetinin altında satılan satırlar" onClick={() => { setSadeceZarar((x) => !x); if (gorunum === 'ozet') setGorunum('satir'); }}>Zararına satış ({zararSay}){sadeceZarar ? ' ✕' : ''}</button>}
           <span className="ml-auto text-xs text-slate-500">{gorunum === 'fatura' ? `${faturalar.length} belge` : `${liste.length} hareket`}{yokSayilan ? ` · ${yokSayilan} hesap dışı` : ''}{top.iadeSay ? ` · ${top.iadeSay} iade toplama katılmadı` : ''}</span>
         </div>
 
@@ -248,6 +277,29 @@ export default function Hareketler() {
             {ozet.markalar.length === 0 ? <Bos metin="Bu dönemde satış yok." /> : (
               <table className="tbl text-sm"><thead><tr><th>Marka</th><th className="text-right">Çeşit</th><th className="text-right">Adet</th><th className="text-right">Ciro</th>{maliyetGor && <th className="text-right">Kâr</th>}{maliyetGor && <th className="text-right">Marj</th>}</tr></thead>
                 <tbody>{ozet.markalar.map((x) => { const net = x.ciro / 1.2; return <tr key={x.ad}><td className="font-medium">{x.ad}</td><td className="text-right">{sayi(x.cesit)}</td><td className="text-right">{sayi(x.adet)}</td><td className="text-right font-semibold">{para(x.ciro)}</td>{maliyetGor && <td className={`text-right ${x.kar < 0 ? 'text-red-600' : 'text-emerald-700'}`}>{para(x.kar)}</td>}{maliyetGor && <td className="text-right text-xs">{net > 0 ? `%${((x.kar / net) * 100).toFixed(0)}` : ''}</td>}</tr>; })}</tbody></table>)}
+          </div>
+          <div>
+            <div className="mb-1 text-sm font-semibold">En çok alan cariler</div>
+            {ozet.cariler.length === 0 ? <Bos metin="Cari bilgisi olan satış yok." /> : (
+              <table className="tbl text-sm"><thead><tr><th>Cari</th><th className="text-right">Fatura</th><th className="text-right">Ciro</th>{maliyetGor && <th className="text-right">Kâr</th>}</tr></thead>
+                <tbody>{ozet.cariler.map((x) => <tr key={x.ad}><td><MusteriLink guid={x.guid} ad={x.ad} /></td><td className="text-right">{sayi(x.belge)}</td><td className="text-right font-semibold">{para(x.ciro)}</td>{maliyetGor && <td className={`text-right ${x.kar < 0 ? 'text-red-600' : 'text-emerald-700'}`}>{para(x.kar)}</td>}</tr>)}</tbody></table>)}
+          </div>
+          <div>
+            <div className="mb-1 text-sm font-semibold">Satışı yapan kullanıcı</div>
+            {ozet.kullanicilar.length === 0 ? <Bos metin="Bu dönemde satış yok." /> : (
+              <table className="tbl text-sm"><thead><tr><th>Kullanıcı</th><th className="text-right">Fatura</th><th className="text-right">Ciro</th><th className="text-right">Ort. fatura</th>{maliyetGor && <th className="text-right">Kâr</th>}</tr></thead>
+                <tbody>{ozet.kullanicilar.map((x) => <tr key={x.ad}><td className="font-medium">{x.ad}</td><td className="text-right">{sayi(x.belge)}</td><td className="text-right font-semibold">{para(x.ciro)}</td><td className="text-right text-xs">{x.belge ? para(x.ciro / x.belge) : ''}</td>{maliyetGor && <td className={`text-right ${x.kar < 0 ? 'text-red-600' : 'text-emerald-700'}`}>{para(x.kar)}</td>}</tr>)}</tbody></table>)}
+          </div>
+          <div className="lg:col-span-2">
+            <div className="mb-1 text-sm font-semibold">Hangi gün, hangi saat satılıyor <span className="font-normal text-slate-500">(ciro; koyu = yoğun)</span></div>
+            {(() => {
+              const saatler = Array.from({ length: 24 }, (_, i) => i).filter((h) => ozet.sg.some((g) => g[h] > 0) || (h >= 8 && h <= 20));
+              const mx = Math.max(1, ...ozet.sg.flat());
+              const gunAd = ['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz'];
+              return (
+                <div className="overflow-x-auto"><table className="text-[11px]"><thead><tr><th />{saatler.map((h) => <th key={h} className="px-0.5 font-normal text-slate-500">{String(h).padStart(2, '0')}</th>)}<th className="pl-2 text-right font-normal text-slate-500">Toplam</th></tr></thead>
+                  <tbody>{ozet.sg.map((g, i) => <tr key={i}><td className="pr-2 text-slate-500">{gunAd[i]}</td>{saatler.map((h) => <td key={h} className="p-0.5"><div className="h-6 w-8 rounded-sm" style={{ background: g[h] > 0 ? `rgba(37,99,235,${0.12 + 0.88 * (g[h] / mx)})` : 'rgba(148,163,184,0.12)' }} title={`${gunAd[i]} ${String(h).padStart(2, '0')}:00 · ${para(g[h])}`} /></td>)}<td className="pl-2 text-right font-medium">{para(g.reduce((t, v) => t + v, 0))}</td></tr>)}</tbody></table></div>);
+            })()}
           </div>
         </div>}
       </div>
