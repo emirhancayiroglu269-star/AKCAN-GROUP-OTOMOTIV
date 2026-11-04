@@ -24,5 +24,20 @@ window.addEventListener('message', (e) => {
     });
   } catch { goster('Akcan: eklenti yenilendi — sayfayı yenileyin (F5)', '#b45309'); }
 });
-const hazir = () => goster('Akcan eklentisi açık — fatura listesini açtıkça faturalar okunur', '#334155');
+// "Tümünü aktar" düğmesi: yalnız fatura listesi sayfalarında; basınca sayfa betiği tablonun tüm sayfalarını sırayla yükletir
+let dugme = null;
+window.addEventListener('message', (e) => {
+  if (e.source !== window || e.origin !== location.origin || e.data?.kaynak !== 'akcan-odeal' || typeof e.data.ilerleme !== 'string') return;
+  goster('Akcan: ' + e.data.ilerleme, e.data.bitti ? '#047857' : '#334155');
+  if (dugme) { dugme.disabled = !e.data.bitti; dugme.textContent = e.data.bitti ? 'Akcan: tümünü aktar' : 'Akcan: aktarılıyor…'; }
+});
+const hazir = () => {
+  goster('Akcan eklentisi açık — fatura listesini açtıkça faturalar okunur', '#334155');
+  if (!/\/(gelenfatura|gonderilenfatura|arsivgonderilen|outgoinginvoice|archive)\b/i.test(location.pathname)) return;
+  dugme = document.createElement('button'); dugme.type = 'button'; dugme.textContent = 'Akcan: tümünü aktar';
+  dugme.title = 'Bu listedeki bu yılın ve geçen yılın tüm faturalarını 100\'er 100\'er okuyup Akcan\'a kaydeder (yalnız okuma)';
+  dugme.style.cssText = 'position:fixed;left:12px;bottom:40px;z-index:2147483647;padding:8px 12px;border:0;border-radius:8px;font:600 12px system-ui,sans-serif;color:#fff;background:#0f766e;box-shadow:0 2px 8px rgba(0,0,0,.25);cursor:pointer';
+  dugme.addEventListener('click', () => { dugme.disabled = true; dugme.textContent = 'Akcan: aktarılıyor…'; window.postMessage({ kaynak: 'akcan-odeal-komut', islem: 'tumu' }, location.origin); });
+  document.body.appendChild(dugme);
+};
 if (document.body) hazir(); else document.addEventListener('DOMContentLoaded', hazir);
