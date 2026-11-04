@@ -127,6 +127,12 @@ export default function Hareketler() {
     }).sort((x, y) => y.h0.tarih.localeCompare(x.h0.tarih));
   }, [liste, a]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // her carinin ilk satış günü (yeni / tekrar gelen müşteri)
+  const ilkSatis = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const h of db.hareketler) if (h.tur === 'satis' && h.cari_ad && !h.yok_say) { const g = gunu(h.tarih); const o = m.get(h.cari_ad); if (!o || g < o) m.set(h.cari_ad, g); }
+    return m;
+  }, [db.hareketler]);
   // ürün ve marka özeti (satışlar)
   const ozet = useMemo(() => {
     const ur = new Map<string, { ad: string; kod: string; id: string; adet: number; ciro: number; kar: number }>();
@@ -134,6 +140,13 @@ export default function Hareketler() {
     const kl = new Map<string, { ciro: number; kar: number; belge: Set<string> }>();
     const cr = new Map<string, { guid?: string | null; ciro: number; kar: number; belge: Set<string> }>();
     const sg = Array.from({ length: 7 }, () => Array<number>(24).fill(0));
+    const kt = new Map<string, { adet: number; ciro: number; kar: number }>();
+    const td = new Map<string, { adet: number; tutar: number; belge: Set<string>; urun: Set<string> }>();
+    for (const h of liste) {
+      if (h.tur !== 'alis' || !sayilir(h)) continue;
+      const k = h.cari_ad || 'Tedarikçi belirtilmemiş (tahmini)'; const v = td.get(k) ?? { adet: 0, tutar: 0, belge: new Set<string>(), urun: new Set<string>() };
+      v.adet += h.miktar; v.tutar += h.miktar * h.alis_fiyati; v.belge.add(h.belge_guid || String(h.id)); v.urun.add(h.urun_id); td.set(k, v);
+    }
     for (const h of liste) {
       if (h.tur !== 'satis' || !sayilir(h)) continue;
       const u = urun.get(h.urun_id); const x = hareketTutar(h, a);
@@ -146,11 +159,15 @@ export default function Hareketler() {
       kv.ciro += x.ciro; kv.kar += x.kar; kv.belge.add(belge); kl.set(kk, kv);
       if (h.cari_ad) { const cv = cr.get(h.cari_ad) ?? { guid: h.cari_guid, ciro: 0, kar: 0, belge: new Set<string>() }; cv.ciro += x.ciro; cv.kar += x.kar; cv.belge.add(belge); cr.set(h.cari_ad, cv); }
       const t = new Date(h.tarih); sg[(t.getDay() + 6) % 7][t.getHours()] += x.ciro;
+      const kk2 = (u?.kategori || 'Kategorisiz').trim(); const kv2 = kt.get(kk2) ?? { adet: 0, ciro: 0, kar: 0 }; kv2.adet += h.miktar; kv2.ciro += x.ciro; kv2.kar += x.kar; kt.set(kk2, kv2);
     }
     return { urunler: [...ur.values()].sort((x, y) => y.ciro - x.ciro).slice(0, 25), markalar: [...mr.entries()].map(([ad, v]) => ({ ad, ...v, cesit: v.urun.size })).sort((x, y) => y.ciro - x.ciro).slice(0, 20),
       kullanicilar: [...kl.entries()].map(([ad, v]) => ({ ad, ciro: v.ciro, kar: v.kar, belge: v.belge.size })).sort((x, y) => y.ciro - x.ciro),
-      cariler: [...cr.entries()].map(([ad, v]) => ({ ad, guid: v.guid, ciro: v.ciro, kar: v.kar, belge: v.belge.size })).sort((x, y) => y.ciro - x.ciro).slice(0, 15), sg };
-  }, [liste, urun, a]); // eslint-disable-line react-hooks/exhaustive-deps
+      cariler: [...cr.entries()].map(([ad, v]) => ({ ad, guid: v.guid, ciro: v.ciro, kar: v.kar, belge: v.belge.size, ilk: ilkSatis.get(ad) })).sort((x, y) => y.ciro - x.ciro).slice(0, 15), sg,
+      kategoriler: [...kt.entries()].map(([ad, v]) => ({ ad, ...v })).sort((x, y) => y.ciro - x.ciro).slice(0, 15),
+      tedarikciler: [...td.entries()].map(([ad, v]) => ({ ad, adet: v.adet, tutar: v.tutar, belge: v.belge.size, cesit: v.urun.size })).sort((x, y) => y.tutar - x.tutar).slice(0, 15),
+      yeniCari: [...cr.keys()].filter((c) => (ilkSatis.get(c) ?? '') >= d.bas).length, toplamCari: cr.size };
+  }, [liste, urun, a, ilkSatis, d]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const degistir = (h: Hareket) => calistir(() => backend.update<Hareket>('hareketler', h.id, { yok_say: !h.yok_say }), h.yok_say ? 'Hareket hesaba katıldı' : 'Hareket hesaplardan çıkarıldı');
   const turAd = (h: Satir) => (iadeSet.has(h) ? (h.tur === 'satis' ? 'Satış iadesi' : 'Alış iadesi') : h.tur === 'satis' ? 'Satış' : 'Alış');
@@ -270,7 +287,7 @@ export default function Hareketler() {
             <div className="mb-1 text-sm font-semibold">En çok satan ürünler <span className="font-normal text-slate-500">(ciroya göre)</span></div>
             {ozet.urunler.length === 0 ? <Bos metin="Bu dönemde satış yok." /> : (
               <table className="tbl text-sm"><thead><tr><th>Ürün</th><th className="text-right">Adet</th><th className="text-right">Ciro</th>{maliyetGor && <th className="text-right">Kâr</th>}</tr></thead>
-                <tbody>{ozet.urunler.map((x) => <tr key={x.id}><td><UrunLink id={x.id}>{x.ad}</UrunLink><div className="text-xs text-slate-500">{x.kod}</div></td><td className="text-right">{sayi(x.adet)}</td><td className="text-right font-semibold">{para(x.ciro)}</td>{maliyetGor && <td className={`text-right ${x.kar < 0 ? 'text-red-600' : 'text-emerald-700'}`}>{para(x.kar)}</td>}</tr>)}</tbody></table>)}
+                <tbody>{ozet.urunler.map((x) => { const st = urun.get(x.id)?.stok ?? 0; return <tr key={x.id}><td><UrunLink id={x.id}>{x.ad}</UrunLink><div className="text-xs text-slate-500">{x.kod} · <span className={st <= 0 ? 'font-semibold text-red-600' : ''}>{st <= 0 ? 'stok bitti' : `stok ${sayi(st)}`}</span></div></td><td className="text-right">{sayi(x.adet)}</td><td className="text-right font-semibold">{para(x.ciro)}</td>{maliyetGor && <td className={`text-right ${x.kar < 0 ? 'text-red-600' : 'text-emerald-700'}`}>{para(x.kar)}</td>}</tr>; })}</tbody></table>)}
           </div>
           <div>
             <div className="mb-1 text-sm font-semibold">Markalar</div>
@@ -279,10 +296,10 @@ export default function Hareketler() {
                 <tbody>{ozet.markalar.map((x) => { const net = x.ciro / 1.2; return <tr key={x.ad}><td className="font-medium">{x.ad}</td><td className="text-right">{sayi(x.cesit)}</td><td className="text-right">{sayi(x.adet)}</td><td className="text-right font-semibold">{para(x.ciro)}</td>{maliyetGor && <td className={`text-right ${x.kar < 0 ? 'text-red-600' : 'text-emerald-700'}`}>{para(x.kar)}</td>}{maliyetGor && <td className="text-right text-xs">{net > 0 ? `%${((x.kar / net) * 100).toFixed(0)}` : ''}</td>}</tr>; })}</tbody></table>)}
           </div>
           <div>
-            <div className="mb-1 text-sm font-semibold">En çok alan cariler</div>
+            <div className="mb-1 text-sm font-semibold">En çok alan cariler {ozet.toplamCari > 0 && <span className="font-normal text-slate-500">· {sayi(ozet.toplamCari)} cari, {sayi(ozet.yeniCari)} tanesi ilk kez aldı</span>}</div>
             {ozet.cariler.length === 0 ? <Bos metin="Cari bilgisi olan satış yok." /> : (
               <table className="tbl text-sm"><thead><tr><th>Cari</th><th className="text-right">Fatura</th><th className="text-right">Ciro</th>{maliyetGor && <th className="text-right">Kâr</th>}</tr></thead>
-                <tbody>{ozet.cariler.map((x) => <tr key={x.ad}><td><MusteriLink guid={x.guid} ad={x.ad} /></td><td className="text-right">{sayi(x.belge)}</td><td className="text-right font-semibold">{para(x.ciro)}</td>{maliyetGor && <td className={`text-right ${x.kar < 0 ? 'text-red-600' : 'text-emerald-700'}`}>{para(x.kar)}</td>}</tr>)}</tbody></table>)}
+                <tbody>{ozet.cariler.map((x) => <tr key={x.ad}><td><MusteriLink guid={x.guid} ad={x.ad} />{x.ilk && x.ilk >= d.bas && <span className="rozet ml-1 bg-sky-50 text-sky-700">yeni</span>}</td><td className="text-right">{sayi(x.belge)}</td><td className="text-right font-semibold">{para(x.ciro)}</td>{maliyetGor && <td className={`text-right ${x.kar < 0 ? 'text-red-600' : 'text-emerald-700'}`}>{para(x.kar)}</td>}</tr>)}</tbody></table>)}
           </div>
           <div>
             <div className="mb-1 text-sm font-semibold">Satışı yapan kullanıcı</div>
@@ -290,6 +307,18 @@ export default function Hareketler() {
               <table className="tbl text-sm"><thead><tr><th>Kullanıcı</th><th className="text-right">Fatura</th><th className="text-right">Ciro</th><th className="text-right">Ort. fatura</th>{maliyetGor && <th className="text-right">Kâr</th>}</tr></thead>
                 <tbody>{ozet.kullanicilar.map((x) => <tr key={x.ad}><td className="font-medium">{x.ad}</td><td className="text-right">{sayi(x.belge)}</td><td className="text-right font-semibold">{para(x.ciro)}</td><td className="text-right text-xs">{x.belge ? para(x.ciro / x.belge) : ''}</td>{maliyetGor && <td className={`text-right ${x.kar < 0 ? 'text-red-600' : 'text-emerald-700'}`}>{para(x.kar)}</td>}</tr>)}</tbody></table>)}
           </div>
+          <div>
+            <div className="mb-1 text-sm font-semibold">Kategoriler</div>
+            {ozet.kategoriler.length === 0 ? <Bos metin="Bu dönemde satış yok." /> : (
+              <table className="tbl text-sm"><thead><tr><th>Kategori</th><th className="text-right">Adet</th><th className="text-right">Ciro</th><th className="w-24" />{maliyetGor && <th className="text-right">Marj</th>}</tr></thead>
+                <tbody>{ozet.kategoriler.map((x) => { const net = x.ciro / 1.2; const pay = top.ciro > 0 ? (x.ciro / top.ciro) * 100 : 0; return <tr key={x.ad}><td className="font-medium">{x.ad}</td><td className="text-right">{sayi(x.adet)}</td><td className="text-right font-semibold">{para(x.ciro)}</td><td><div className="h-1.5 rounded bg-slate-100 dark:bg-slate-800"><div className="h-1.5 rounded bg-marka-500" style={{ width: `${Math.min(100, pay)}%` }} /></div><div className="text-[10px] text-slate-500">%{pay.toFixed(0)}</div></td>{maliyetGor && <td className={`text-right text-xs ${x.kar < 0 ? 'text-red-600' : ''}`}>{net > 0 ? `%${((x.kar / net) * 100).toFixed(0)}` : ''}</td>}</tr>; })}</tbody></table>)}
+          </div>
+          {maliyetGor && <div>
+            <div className="mb-1 text-sm font-semibold">Alış yapılan tedarikçiler</div>
+            {ozet.tedarikciler.length === 0 ? <Bos metin="Bu dönemde alış yok." /> : (
+              <table className="tbl text-sm"><thead><tr><th>Tedarikçi</th><th className="text-right">Fatura</th><th className="text-right">Çeşit</th><th className="text-right">Adet</th><th className="text-right">Tutar</th></tr></thead>
+                <tbody>{ozet.tedarikciler.map((x) => <tr key={x.ad}><td className="font-medium">{x.ad}</td><td className="text-right">{sayi(x.belge)}</td><td className="text-right">{sayi(x.cesit)}</td><td className="text-right">{sayi(x.adet)}</td><td className="text-right font-semibold">{para(x.tutar)}</td></tr>)}</tbody></table>)}
+          </div>}
           <div className="lg:col-span-2">
             <div className="mb-1 text-sm font-semibold">Hangi gün, hangi saat satılıyor <span className="font-normal text-slate-500">(ciro; koyu = yoğun)</span></div>
             {(() => {
