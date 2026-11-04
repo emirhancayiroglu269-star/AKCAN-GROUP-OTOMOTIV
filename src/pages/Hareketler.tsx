@@ -21,7 +21,12 @@ export default function Hareketler() {
 
   // iade belgeleri (satış iadesi: müşteriden geri, alış iadesi: tedarikçiye) listede gösterilir, toplamlara katılmaz
   const iadeSet = useMemo(() => new Set<Hareket>(db.iadeler ?? []), [db.iadeler]);
-  const tum = useMemo(() => [...db.hareketler, ...(db.iadeler ?? [])].sort((x, y) => y.tarih.localeCompare(x.tarih)), [db.hareketler, db.iadeler]);
+  // fatura raporu olan günlerde liste fatura satırlarını gösterir; o günlerin hesap dışı bırakılan stok hareketleri ayrıca eklenir (görülüp geri alınabilsin)
+  const tum = useMemo(() => {
+    const ids = new Set(db.hareketler.map((h) => h.id));
+    const disari = (db.stok_degisim ?? []).filter((h) => h.yok_say && !ids.has(h.id));
+    return [...db.hareketler, ...(db.iadeler ?? []), ...disari].sort((x, y) => y.tarih.localeCompare(x.tarih));
+  }, [db.hareketler, db.iadeler, db.stok_degisim]);
   const liste = useMemo(() => tum.filter((h) => donemde(h.tarih, d) && (!tur || h.tur === tur) && (yokSay || !h.yok_say) &&
     (!q.trim() || (() => { const u = urun.get(h.urun_id); return ara(q, u?.ad ?? h.urun_ad, u?.kod, u?.barkod, u?.marka, u?.kategori); })())), [tum, d, tur, q, yokSay, urun]);
   const top = useMemo(() => {
@@ -34,7 +39,7 @@ export default function Hareketler() {
     }
     return { ciro, kar, adet, alis, alAdet, iadeSatis, iadeAlis, iadeSay };
   }, [liste, a, iadeSet]);
-  const yokSayilan = db.hareketler.filter((h) => h.yok_say && donemde(h.tarih, d)).length;
+  const yokSayilan = tum.filter((h) => h.yok_say && donemde(h.tarih, d)).length;
 
   const degistir = (h: Hareket) => calistir(() => backend.update<Hareket>('hareketler', h.id, { yok_say: !h.yok_say }), h.yok_say ? 'Hareket hesaba katıldı' : 'Hareket hesaplardan çıkarıldı');
   const csv = () => {
