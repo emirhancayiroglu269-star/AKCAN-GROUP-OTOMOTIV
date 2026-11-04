@@ -3,7 +3,7 @@ import { AlertTriangle, ChevronDown, ChevronRight, Download, Info } from 'lucide
 import { useStore } from '../lib/store';
 import { backend } from '../lib/backend';
 import { ara, gunu, para, sayi, tarih, tarihSaat } from '../lib/format';
-import { donemde, hareketTutar } from '../lib/analiz';
+import { donemde, GECIS_RE, hareketTutar, hizmetMi } from '../lib/analiz';
 import type { Hareket } from '../lib/types';
 import { DonemSecici, useDonem } from '../components/DonemSecici';
 import { Bos, Kpi, SayfaBaslik } from '../components/ui';
@@ -26,6 +26,12 @@ export default function Hareketler() {
   const [goster, setGoster] = useState(300);
   const urun = useMemo(() => new Map(db.urunler.map((u) => [u.id, u])), [db.urunler]);
   const a = db.ayarlar;
+  // işçilik / hizmet satırlarının maliyeti yoktur: KDV hariç tutarın tamamı kâr sayılır (araç alım-satım hariç)
+  const hTutar = (h: Hareket) => {
+    const x = hareketTutar(h, a); if (!x.maliyetYok || h.tur !== 'satis') return x;
+    const u = urun.get(h.urun_id); const ad = u?.ad ?? h.urun_ad ?? '';
+    return !GECIS_RE.test(ad) && hizmetMi(h, u) ? { ...x, kar: x.ciroNet, maliyetYok: false } : x;
+  };
   const raporSon = db.bh_durum?.rapor_son ?? null;
 
   // iade belgeleri (satış iadesi: müşteriden geri, alış iadesi: tedarikçiye) listede gösterilir, toplamlara katılmaz
@@ -71,7 +77,7 @@ export default function Hareketler() {
   }, [db.hareketler, db.iadeler, db.stok_degisim, eksikler]);
   const cariler = useMemo(() => [...new Set(tum.filter((h) => donemde(h.tarih, d) && h.cari_ad).map((h) => h.cari_ad!))].sort((x, y) => x.localeCompare(y, 'tr')), [tum, d]);
   const iadeSet0 = useMemo(() => new Set<Hareket>(db.iadeler ?? []), [db.iadeler]);
-  const zararMi = (h: Satir) => { if (h.tur !== 'satis' || h.yok_say || h.eksik || iadeSet0.has(h)) return false; const x = hareketTutar(h, a); return !x.maliyetYok && x.kar < -0.01; };
+  const zararMi = (h: Satir) => { if (h.tur !== 'satis' || h.yok_say || h.eksik || iadeSet0.has(h)) return false; const x = hTutar(h); return !x.maliyetYok && x.kar < -0.01; };
   const uyar = (h: Satir) => (!tur || h.tur === tur) && (yokSay || !h.yok_say) && (!sadeceEksik || h.eksik) && (!sadeceZarar || zararMi(h)) && (!cari || h.cari_ad === cari) &&
     (!q.trim() || (() => { const u = urun.get(h.urun_id); return ara(q, u?.ad ?? h.urun_ad, u?.kod, u?.barkod, u?.marka, u?.kategori, h.cari_ad, h.kullanici); })());
   const liste = useMemo(() => tum.filter((h) => donemde(h.tarih, d) && uyar(h)), [tum, d, tur, q, yokSay, sadeceEksik, sadeceZarar, cari, urun, a]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -89,7 +95,7 @@ export default function Hareketler() {
     for (const h of l) {
       if (h.yok_say || h.eksik) continue;
       if (iadeSet.has(h)) { iadeSay++; if (h.tur === 'satis') iadeSatis += h.miktar * h.satis_fiyati; else iadeAlis += h.miktar * h.alis_fiyati; continue; }
-      if (h.tur === 'satis') { const x = hareketTutar(h, a); ciro += x.ciro; kar += x.kar; adet += h.miktar; }
+      if (h.tur === 'satis') { const x = hTutar(h); ciro += x.ciro; kar += x.kar; adet += h.miktar; }
       else { alis += h.miktar * h.alis_fiyati; alAdet += h.miktar; }
     }
     return { ciro, kar, adet, alis, alAdet, iadeSatis, iadeAlis, iadeSay };
@@ -107,7 +113,7 @@ export default function Hareketler() {
   const gunluk = useMemo(() => {
     const m = new Map<string, { ciro: number; kar: number }>();
     for (let t = new Date(d.bas + 'T12:00:00'); gunu(t) <= d.bit && m.size < 400; t.setDate(t.getDate() + 1)) m.set(gunu(t), { ciro: 0, kar: 0 });
-    for (const h of liste) { if (h.tur !== 'satis' || !sayilir(h)) continue; const g = m.get(gunu(h.tarih)); if (!g) continue; const x = hareketTutar(h, a); g.ciro += x.ciro; g.kar += x.kar; }
+    for (const h of liste) { if (h.tur !== 'satis' || !sayilir(h)) continue; const g = m.get(gunu(h.tarih)); if (!g) continue; const x = hTutar(h); g.ciro += x.ciro; g.kar += x.kar; }
     return [...m.entries()].map(([gun, v]) => ({ gun, ...v }));
   }, [liste, d, a]); // eslint-disable-line react-hooks/exhaustive-deps
   const enCok = Math.max(1, ...gunluk.map((g) => g.ciro));
@@ -121,7 +127,7 @@ export default function Hareketler() {
     for (const h of liste) { const k = h.kaynak === 'fatura' && h.belge_guid ? `b:${h.belge_guid}` : `h:${h.id}`; const l = m.get(k) ?? []; l.push(h); m.set(k, l); }
     return [...m.entries()].map(([k, l]) => {
       let tutar = 0, kar = 0;
-      for (const h of l) { if (!sayilir(h)) continue; const x = hareketTutar(h, a); if (h.tur === 'satis') { tutar += x.ciro; kar += x.kar; } else tutar += h.miktar * h.alis_fiyati; }
+      for (const h of l) { if (!sayilir(h)) continue; const x = hTutar(h); if (h.tur === 'satis') { tutar += x.ciro; kar += x.kar; } else tutar += h.miktar * h.alis_fiyati; }
       const h0 = l[0];
       return { k, l, h0, tutar, kar, adet: l.reduce((t, h) => t + h.miktar, 0) };
     }).sort((x, y) => y.h0.tarih.localeCompare(x.h0.tarih));
@@ -149,7 +155,7 @@ export default function Hareketler() {
     }
     for (const h of liste) {
       if (h.tur !== 'satis' || !sayilir(h)) continue;
-      const u = urun.get(h.urun_id); const x = hareketTutar(h, a);
+      const u = urun.get(h.urun_id); const x = hTutar(h);
       const e = ur.get(h.urun_id) ?? { ad: u?.ad ?? h.urun_ad ?? '—', kod: u?.kod ?? '', id: h.urun_id, adet: 0, ciro: 0, kar: 0, maliyetsiz: true };
       e.adet += h.miktar; e.ciro += x.ciro; e.kar += x.kar; if (!x.maliyetYok) e.maliyetsiz = false; ur.set(h.urun_id, e);
       const mk = (u?.marka || 'Markasız').trim(); const b = mr.get(mk) ?? { adet: 0, ciro: 0, kar: 0, urun: new Set<string>() };
@@ -174,14 +180,14 @@ export default function Hareketler() {
   const csv = () => {
     const sat = (x: (string | number | null | undefined)[]) => x.map((v) => `"${String(v ?? '').replace(/"/g, '""')}"`).join(';');
     const icerik = [sat(['Tarih', 'Tür', 'Kaynak', 'Cari', 'Kullanıcı', 'Stok kodu', 'Ürün', 'Marka', 'Miktar', 'Önceki stok', 'Sonraki stok', 'Satış fiyatı', 'Alış fiyatı', 'Tutar', 'Kâr (KDV hariç)', 'Hesap dışı', 'Faturası yok']),
-      ...liste.map((h) => { const u = urun.get(h.urun_id); const x = hareketTutar(h, a); return sat([tarihSaat(h.tarih), turAd(h), h.kaynak === 'fatura' ? 'Fatura' : 'Tahmini', h.cari_ad, h.kullanici, u?.kod, u?.ad ?? h.urun_ad, u?.marka, h.miktar, h.onceki, h.sonraki, h.satis_fiyati, maliyetGor ? h.alis_fiyati : '', h.tur === 'satis' ? x.ciro.toFixed(2) : (h.miktar * h.alis_fiyati).toFixed(2), h.tur === 'satis' && maliyetGor ? x.kar.toFixed(2) : '', h.yok_say ? 'Evet' : '', h.eksik ? 'Evet' : '']); })].join('\n');
+      ...liste.map((h) => { const u = urun.get(h.urun_id); const x = hTutar(h); return sat([tarihSaat(h.tarih), turAd(h), h.kaynak === 'fatura' ? 'Fatura' : 'Tahmini', h.cari_ad, h.kullanici, u?.kod, u?.ad ?? h.urun_ad, u?.marka, h.miktar, h.onceki, h.sonraki, h.satis_fiyati, maliyetGor ? h.alis_fiyati : '', h.tur === 'satis' ? x.ciro.toFixed(2) : (h.miktar * h.alis_fiyati).toFixed(2), h.tur === 'satis' && maliyetGor ? x.kar.toFixed(2) : '', h.yok_say ? 'Evet' : '', h.eksik ? 'Evet' : '']); })].join('\n');
     const el = document.createElement('a'); el.href = URL.createObjectURL(new Blob(['﻿' + icerik], { type: 'text/csv' })); el.download = `hareketler-${d.bas}-${d.bit}.csv`; el.click();
   };
   const zaman = (t: string) => (gunu(t) === gunu() ? 'Bugün ' + new Date(t).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }) : tarihSaat(t));
   const sekme = (g: Gorunum, ad: string) => <button key={g} onClick={() => setGorunum(g)} className={`rounded-md px-3 py-1.5 text-sm ${gorunum === g ? 'bg-marka-600 text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-200'}`}>{ad}</button>;
 
   const satirTr = (h: Satir, ic = false) => {
-    const u = urun.get(h.urun_id); const x = hareketTutar(h, a); const iade = iadeSet.has(h);
+    const u = urun.get(h.urun_id); const x = hTutar(h); const iade = iadeSet.has(h);
     return (
       <tr key={`${h.id}-${h.eksik ? 'e' : ''}`} className={`${h.yok_say ? 'opacity-40' : ''} ${h.eksik ? 'bg-red-50/70 dark:bg-red-500/10' : ''} ${ic ? 'text-[13px]' : ''}`}>
         <td className={`whitespace-nowrap text-slate-500 ${ic ? 'pl-8' : ''}`}>{zaman(h.tarih)}</td>
@@ -275,7 +281,7 @@ export default function Hareketler() {
                     </tr>
                     {(ac || !coklu) && coklu && f.l.map((h) => (
                       <tr key={`i${h.id}`} className="bg-slate-50/60 text-[13px] dark:bg-slate-900/40"><td /><td colSpan={3} className="pl-2"><UrunLink id={h.urun_id}>{urun.get(h.urun_id)?.ad ?? h.urun_ad}</UrunLink> <span className="text-xs text-slate-500">{urun.get(h.urun_id)?.kod}</span></td>
-                        <td /><td className="text-right">{sayi(h.miktar)}</td><td className="text-right">{para(h.tur === 'satis' ? hareketTutar(h, a).ciro : h.miktar * h.alis_fiyati)}</td>{maliyetGor && <td className="text-right text-xs">{h.tur === 'satis' ? para(hareketTutar(h, a).kar) : ''}</td>}</tr>))}
+                        <td /><td className="text-right">{sayi(h.miktar)}</td><td className="text-right">{para(h.tur === 'satis' ? hTutar(h).ciro : h.miktar * h.alis_fiyati)}</td>{maliyetGor && <td className="text-right text-xs">{h.tur === 'satis' ? para(hTutar(h).kar) : ''}</td>}</tr>))}
                   </Fragment>);
               })}</tbody>
             </table>)}
