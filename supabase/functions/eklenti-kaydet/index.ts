@@ -46,7 +46,9 @@ function eslestir(h: NonNullable<typeof kodHarita>, kod: string, marka: string |
   const o = onekAt(kod); const m = markaNorm(marka);
   const markaUyar = (u: HU) => !!m && !!u.marka && (u.marka === m || u.marka.startsWith(m) || m.startsWith(u.marka));
   let aday: HU[];
-  if (o.onek && o.govde.length >= 4) aday = (h.govde.get(o.govde) ?? []).filter((u) => markaUyar(u) || (!!u.onek && (o.onek.startsWith(u.onek) || u.onek.startsWith(o.onek))));
+  // tedarikçi kodunun önündeki ad bizdeki MARKA da olabilir (Dinamik "KRAW AN-736" ↔ bizim "MCR-AN-736", marka KRAW)
+  const onekMarka = (u: HU) => !!u.marka && o.onek.length >= 3 && (u.marka === o.onek || u.marka.startsWith(o.onek) || o.onek.startsWith(u.marka));
+  if (o.onek && o.govde.length >= 4) aday = (h.govde.get(o.govde) ?? []).filter((u) => markaUyar(u) || onekMarka(u) || (!!u.onek && (o.onek.startsWith(u.onek) || u.onek.startsWith(o.onek))));
   // tedarikçi kodu marka öneksizse (Başbuğ "1682953780" + marka EUROREPAR ↔ bizim "ERP-1682953780"): yalnız marka uyarsa
   else if (!o.onek && o.govde.length >= 6) aday = (h.govde.get(o.govde) ?? []).filter(markaUyar);
   else return null;
