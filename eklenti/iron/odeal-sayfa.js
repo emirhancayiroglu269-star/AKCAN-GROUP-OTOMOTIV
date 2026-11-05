@@ -2,7 +2,7 @@
 // (gelenfatura-dataTable = tedarikçiden gelen e-fatura, outgoing-dataTable = kestiğimiz e-fatura / e-arşiv).
 // Hiçbir istek göndermez, hiçbir şeyi değiştirmez; yalnız listedeki fatura başlıklarını (no, karşı taraf, tarih, tutar, durum) içerik betiğine iletir.
 (() => {
-  const LISTE = /\/exec\/(gelenfatura|outgoing)-dataTable\.php(\?|$)/;
+  const LISTE = /(^|\/)exec\/(gelenfatura|outgoing)-dataTable\.php(\?|$)/; // sayfa adresi göreli de olabilir ("exec/outgoing-…", "../exec/gelenfatura-…")
   const yazi = (html) => new DOMParser().parseFromString('<div>' + String(html ?? '') + '</div>', 'text/html').body; // etkisiz belge: betik/resim çalışmaz
   const metin = (el) => (el ? el.textContent.replace(/\s+/g, ' ').trim() : '');
   const isle = (txt) => {

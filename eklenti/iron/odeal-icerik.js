@@ -17,7 +17,8 @@ window.addEventListener('message', (e) => {
   if (!canli) { goster('Akcan: eklenti yenilendi — sayfayı yenileyin (F5)', '#b45309'); return; }
   try {
     chrome.runtime.sendMessage({ tur: 'odeal', yon: e.data.yon, faturalar: e.data.faturalar.slice(0, 500) }, (r) => {
-      if (chrome.runtime.lastError || !r) return;
+      if (chrome.runtime.lastError) return;
+      if (!r) { goster('Akcan: eklentinin arka planı eski — chrome://extensions sayfasında eklentiyi yenileyin', '#b45309'); return; }
       if (r.anahtarYok) goster('Akcan: eklenti anahtarı girilmemiş (eklenti simgesine tıklayın)', '#b45309');
       else if (!r.ok) goster('Akcan: kaydedilemedi — ' + (r.hata || 'bağlantı hatası'), '#b91c1c');
       else goster(`Akcan: ${r.kaydedilen} ${AD[e.data.yon]} okundu` + (r.yeni ? ` · ${r.yeni} yeni` : ''), '#047857');
