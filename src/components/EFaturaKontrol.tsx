@@ -94,12 +94,22 @@ export function EFaturaKontrol({ d }: { d: { bas: string; bit: string } }) {
     }
     // kalanlar: BizimHesap'ta alış carisi olarak geçen bir firmaysa parça faturası, değilse gider faturası sayılır
     const alisCari = [...new Set(db.hareketler.filter((h) => h.tur === 'alis' && h.cari_ad).map((h) => h.cari_ad!))];
-    const tedarikciMi = (o: OdealFatura) => alisCari.some((c) => adBenzer(o.karsi, c));
+    // gider: bilinen hizmet/fatura firmaları; tedarikçi: alış carisi olan ya da adı otomotiv/parça olan firma
+    const GIDER_RE = /\b(TT ?NET|TT MOBIL|TURK TELEKOM|TURKCELL|VODAFONE|ENERJISA|CK ENERJI|IGDAS|ISKI|ODEAL|BIZIM HESAP|KOCTAS|MAGAZACILIK|D-MARKET|HEPSIBURADA|TRENDYOL|AMAZON|BIDOLU|OPET|SHELL|PETROL OFISI|AKARYAKIT|SIGORTA|BANKA|KARGO|YURTICI|ARAS|MNG)\b/;
+    const ust = (x: string | null) => String(x ?? '').toLocaleUpperCase('tr').replace(/İ/g, 'I').replace(/Ş/g, 'S').replace(/Ğ/g, 'G').replace(/Ü/g, 'U').replace(/Ö/g, 'O').replace(/Ç/g, 'C');
+    const tedarikciMi = (o: OdealFatura) => !GIDER_RE.test(ust(o.karsi)) && (alisCari.some((c) => adBenzer(o.karsi, c)) || /OTOMOTIV|YEDEK|PARCA|MOTOR|AKU|LASTIK|MADENI YAG|BOYA|KIMYA|RULMAN|FILTRE/.test(ust(o.karsi)));
     const sirala = (l: OdealFatura[]) => l.sort((x, y) => (y.tarih ?? '').localeCompare(x.tarih ?? ''));
+    // olası eşleşme: tutarı tutmayan ama aynı firmadan ±15 gün içinde girilmiş BizimHesap alışı (tutar farklı girilmiş olabilir)
+    const ipucu = new Map<string, Belge>();
+    for (const o of kalanAlis) {
+      if (!o.tarih) continue;
+      const b = alis.bKalan.filter((x) => adBenzer(o.karsi, x.cari) && gunFark(o.tarih!, x.gun) <= 15).sort((x, y) => Math.abs(x.tutar - (o.tutar ?? 0)) - Math.abs(y.tutar - (o.tutar ?? 0)))[0];
+      if (b) ipucu.set(o.ettn, b);
+    }
     // aynı firmadan aynı tutarda ikinci bir BizimHesap alış belgesi: çift giriş olabilir
     const cift = alis.bKalan.filter((b) => alis.es.some((e) => Math.abs(e.b.tutar - b.tutar) <= tol(b.tutar) && gunFark(e.b.gun, b.gun) <= 10 && adBenzer(e.b.cari, b.cari)));
     return {
-      ga, sa,
+      ga, sa, ipucu,
       parca: sirala(kalanAlis.filter((o) => icinde(o.tarih!, ga) && !o.kontrol && tedarikciMi(o))),
       gider: sirala(kalanAlis.filter((o) => icinde(o.tarih!, ga) && !o.kontrol && !tedarikciMi(o))),
       isaretli: sirala([...kalanAlis, ...satis.oKalan].filter((o) => icinde(o.tarih!, o.yon === 'gelen' ? ga : sa) && !!o.kontrol)),
@@ -123,7 +133,8 @@ export function EFaturaKontrol({ d }: { d: { bas: string; bit: string } }) {
   const toplam = (l: { tutar: number | null }[]) => l.reduce((t, x) => t + (x.tutar ?? 0), 0);
   const odealTablo = (l: OdealFatura[], bos: string) => l.length === 0 ? <div className="flex items-center gap-2 p-3 text-sm text-emerald-700"><CheckCircle2 size={16} /> {bos}</div> : (
     <table className="tbl text-sm"><thead><tr><th>Tarih</th><th>Fatura no</th><th>Firma</th><th>Senaryo</th><th className="text-right">Tutar</th><th /></tr></thead>
-      <tbody>{l.map((o) => <tr key={o.ettn}><td className="whitespace-nowrap">{tarih(o.tarih)}</td><td className="font-mono text-xs">{o.no}</td><td>{o.karsi}<div className="text-[11px] text-slate-500">{o.vkn}{o.durum ? ` · ${o.durum}` : ''}</div></td><td className="text-xs">{o.senaryo}</td><td className="text-right font-semibold">{para(o.tutar ?? 0)}</td>
+      <tbody>{l.map((o) => <tr key={o.ettn}><td className="whitespace-nowrap">{tarih(o.tarih)}</td><td className="font-mono text-xs">{o.no}</td><td>{o.karsi}<div className="text-[11px] text-slate-500">{o.vkn}{o.durum ? ` · ${o.durum}` : ''}</div>
+        {(() => { const b = sonuc.ipucu.get(o.ettn); if (!b) return null; const f = b.tutar - (o.tutar ?? 0); return <div className="mt-0.5 text-[11px] font-medium text-amber-700">BizimHesap'ta aynı firmadan {tarih(b.gun)} tarihli {para(b.tutar)} alış var · fark {f > 0 ? '+' : ''}{para(f)} (tutar farklı girilmiş olabilir)</div>; })()}</td><td className="text-xs">{o.senaryo}</td><td className="text-right font-semibold">{para(o.tutar ?? 0)}</td>
         <td className="text-right">{o.kontrol ? <button className="btn-ghost text-xs" onClick={() => isaretle(o, null)}>Geri al</button> : <button className="btn-ghost whitespace-nowrap text-xs" title="Bu fatura bilerek BizimHesap'a girilmedi (devir, şahsi alım, iade edildi vb.): listeden çıkar" onClick={() => isaretle(o, 'bilerek')}>Bilerek girilmedi</button>}</td></tr>)}</tbody></table>);
 
   return (
