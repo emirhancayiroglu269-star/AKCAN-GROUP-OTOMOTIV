@@ -189,9 +189,9 @@ if (OTO > 0) {
   const dongu = async () => {
     if (durdu) return;
     try {
-      // Her tur son 2 günü; yarım saatte bir de son 35 günü yeniler (geriye tarihli ya da sonradan düzenlenen faturalar için). Değişmeyen veri yazılmaz.
+      // Her tur son 2 günü; 15 dakikada bir de son 35 günü yeniler (geriye tarihli ya da sonradan düzenlenen faturalar için). Değişmeyen veri yazılmaz.
       turSayisi++;
-      const { ozet, notlar } = await tur(turSayisi % Math.max(1, Math.round(30 / OTO)) === 0 ? 35 : 2, true);
+      const { ozet, notlar } = await tur(turSayisi % Math.max(1, Math.round(15 / OTO)) === 0 ? 35 : 2, true);
       if (durdu) return;
       artArda = 0;
       if (Object.values(ozet).some(Boolean)) sonDegisim = saat();

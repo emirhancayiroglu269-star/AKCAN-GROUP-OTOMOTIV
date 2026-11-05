@@ -21,7 +21,7 @@ export function AktarimYerImi() {
   useEffect(() => {
     if (!anahtar) return;
     link.current?.setAttribute('href', 'javascript:' + encodeURIComponent(kodu(anahtar, 45)));
-    linkOto.current?.setAttribute('href', 'javascript:' + encodeURIComponent(kodu(anahtar, 7, OTO_DK)));
+    linkOto.current?.setAttribute('href', 'javascript:' + encodeURIComponent(kodu(anahtar, 35, OTO_DK)));
   }, [anahtar]);
 
   const olustur = async () => {
@@ -49,7 +49,7 @@ export function AktarimYerImi() {
           <ol className="list-decimal space-y-1 pl-5 text-slate-600 dark:text-slate-300">
             <li>Yeşil düğmeleri Chrome'un yer imleri çubuğuna sürükleyin (eskileri silin; çubuk görünmüyorsa Ctrl+Shift+B).</li>
             <li><b>Analize Aktar</b>: son 45 günü bir kez aktarır (yaklaşık 1 dakika).</li>
-            <li><b>Analize Aktar (otomatik)</b>: son 7 günü aktarır, sonra sekme açık kaldıkça her {OTO_DK} dakikada bir bugünün ve son 2 günün verilerini günceller. Yalnız değişiklik olunca yazar. BizimHesap oturumu kapanırsa kutu kırmızıya döner; yeniden girip tekrar tıklayın.</li>
+            <li><b>Analize Aktar (otomatik)</b>: son 35 günü aktarır, sonra sekme açık kaldıkça her {OTO_DK} dakikada bir son 2 günü, 15 dakikada bir de son 35 günü yeniden okur (geriye tarihli girilen faturalar da yakalanır). Yalnız değişiklik olunca yazar. BizimHesap oturumu kapanırsa kutu kırmızıya döner; yeniden girip tekrar tıklayın.</li>
           </ol>
           <div className="flex flex-wrap items-center gap-2">
             <a ref={link} onClick={(e) => { e.preventDefault(); toast('Bu düğmeye tıklamayın; yer imleri çubuğuna sürükleyin'); }}
