@@ -89,6 +89,19 @@ export function EFaturaKontrol({ d }: { d: { bas: string; bit: string } }) {
     const icinde = (gun: string, a: { min: string; max: string } | null) => !!a && gun >= a.min && gun <= a.max && gun >= d.bas && gun <= d.bit;
     const alis = eslestir(gelen, belgeler.filter((b) => b.tur === 'alis'));
     const satis = eslestir(giden, belgeler.filter((b) => b.tur === 'satis'), true);
+    // ikinci tur: şahıslara / nihai tüketiciye kesilen e-arşivler. BizimHesap'ta bu müşteriler plaka-araç adıyla açıldığı için
+    // isim tutmaz: tutar birebir aynı (±1 TL) ve fatura satıştan 5 gün önce – 60 gün sonra arasındaysa en yakın tarihli satışla eşleşir
+    {
+      const bKul = new Set(satis.es.map((e) => e.b.guid)); const kalan: OdealFatura[] = [];
+      const sahis = (o: OdealFatura) => /^\d{11}$/.test(o.vkn ?? '') || /NIHAI|NİHAİ/i.test(o.karsi ?? '');
+      for (const o of satis.oKalan.sort((x, y) => (x.tarih ?? '').localeCompare(y.tarih ?? ''))) {
+        if (!sahis(o) || o.tutar == null || !o.tarih) { kalan.push(o); continue; }
+        const fark = (b: Belge) => (new Date(o.tarih + 'T12:00:00').getTime() - new Date(b.gun + 'T12:00:00').getTime()) / GUN;
+        const b = belgeler.filter((x) => x.tur === 'satis' && !bKul.has(x.guid) && Math.abs(x.tutar - o.tutar!) <= 1 && fark(x) >= -5 && fark(x) <= 60).sort((x, y) => Math.abs(fark(x)) - Math.abs(fark(y)))[0];
+        if (b) { bKul.add(b.guid); satis.es.push({ o, b }); } else kalan.push(o);
+      }
+      satis.oKalan = kalan;
+    }
     // alış olarak bulunamayanlar BizimHesap'ta masraf (gider) olarak girilmiş olabilir: tutar ±%0,5, tarih ±15 gün
     const mKul = new Set<number>(); const giderGirilmis: { o: OdealFatura; m: { id: number; tarih: string; tutar: number; aciklama?: string | null } }[] = [];
     const kalanAlis: OdealFatura[] = [];
