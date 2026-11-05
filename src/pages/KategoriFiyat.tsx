@@ -32,6 +32,13 @@ export default function KategoriFiyat() {
   const bhSecili = new Set(db.ayarlar.kategori_bh ?? []);
   const bhDegistir = (ad: string) => calistir(async () => { const l = new Set(bhSecili); if (l.has(ad)) l.delete(ad); else l.add(ad); await backend.ayarKaydet({ kategori_bh: [...l] }); },
     bhSecili.has(ad) ? `${ad} BizimHesap listesinden çıkarıldı` : `${ad} BizimHesap listesine eklendi: eklentide "satış fiyatı" listesinde görünecek`);
+  // başlıktaki kutu: listede görünen (hedefi kayıtlı) kategorilerin hepsini BizimHesap listesine ekler ya da hepsini çıkarır
+  const secilebilir = liste.filter((k) => k.kayitli).map((k) => k.ad);
+  const hepsiSecili = secilebilir.length > 0 && secilebilir.every((ad) => bhSecili.has(ad));
+  const bhHepsi = () => calistir(async () => {
+    const l = new Set(bhSecili); if (hepsiSecili) secilebilir.forEach((ad) => l.delete(ad)); else secilebilir.forEach((ad) => l.add(ad));
+    await backend.ayarKaydet({ kategori_bh: [...l] });
+  }, hepsiSecili ? `${secilebilir.length} kategori BizimHesap listesinden çıkarıldı` : `${secilebilir.length} kategori BizimHesap listesine eklendi`);
   const kaydet = () => calistir(async () => { await backend.ayarKaydet({ kategori_marj: { ...(db.ayarlar.kategori_marj ?? {}), ...taslakSayi } }); setTaslak({}); }, 'Kategori marjları kaydedildi');
   const onerilenleriUygula = () => setTaslak(Object.fromEntries(katlar.map((k) => [k.ad, String(k.onerilen)])));
   const csv = (kaynak: KatOzet[]) => {
@@ -69,7 +76,12 @@ export default function KategoriFiyat() {
           {liste.length === 0 ? <Bos metin="Kategori yok." /> : (
             <table className="tbl"><thead><tr>
               <th>Kategori</th><th className="text-right">Satış (6 ay, KDV hariç)</th><th className="text-right">Gerçekleşen marj</th><th className="text-right">Liste marjı</th>
-              <th className="text-right">Önerilen</th><th className="w-28 text-right">Hedef marj %</th><th className="text-right">Artır</th><th className="text-right">İndir</th><th className="text-right">Aylık etki</th><th className="text-center" title="İşaretli kategorilerin 'fiyatı artır' ürünleri eklentinin BizimHesap satış fiyatı listesine gelir; orada onaylayarak yüklersiniz">BizimHesap'a</th>
+              <th className="text-right">Önerilen</th><th className="w-28 text-right">Hedef marj %</th><th className="text-right">Artır</th><th className="text-right">İndir</th><th className="text-right">Aylık etki</th><th className="text-center" title="İşaretli kategorilerin 'fiyatı artır' ürünleri eklentinin BizimHesap satış fiyatı listesine gelir; orada onaylayarak yüklersiniz">
+                <label className="inline-flex cursor-pointer items-center gap-1" title={hepsiSecili ? 'Listedeki tüm kategorileri çıkar' : 'Listedeki tüm kategorileri ekle (hedefi kayıtlı olanlar)'}>
+                  <input type="checkbox" checked={hepsiSecili} disabled={!secilebilir.length} onChange={bhHepsi} /> BizimHesap'a
+                </label>
+                <div className="text-[10px] font-normal text-slate-500">{sayi(liste.filter((k) => bhSecili.has(k.ad)).length)} seçili</div>
+              </th>
             </tr></thead>
               <tbody>{liste.map((k) => (
                 <tr key={k.ad} className={`cursor-pointer ${secili === k.ad ? 'bg-marka-50 dark:bg-marka-500/10' : ''}`} onClick={() => setSecili(k.ad)}>
