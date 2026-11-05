@@ -18,6 +18,7 @@ const ARACLAR = [
   { name: 'tahsilat_durumu', description: 'Vadesi geçmiş alacaklar (en büyük 20), toplamı ve son 30 günün tahsilat notları / ödeme sözleri.', input_schema: { type: 'object', properties: {} } },
   { name: 'stok_uyarilari', description: 'Kritik seviyenin altına düşen ürünler, eksi stoklar ve açık stok planları (sipariş, alma vb.).', input_schema: { type: 'object', properties: {} } },
   { name: 'olu_stok', description: '180 gündür satılmayan stoklu ürünler, stok değerine göre (KDV hariç).', input_schema: { type: 'object', properties: { limit: { type: 'integer', maximum: 30 } } } },
+  { name: 'efatura_kontrol', description: 'Ödeal e-Fatura portalından okunan faturalarla BizimHesap kayıtlarının karşılaştırması (son N gün, varsayılan 30): BizimHesap\'a alış ya da masraf olarak girilmemiş gelen e-faturalar ve BizimHesap\'ta satışı bulunmayan kesilmiş e-fatura/e-arşivler (adet, KDV dahil tutar, en büyük 10). "Bilerek girilmedi" işaretlenenler ve iptaller sayılmaz.', input_schema: { type: 'object', properties: { gun: { type: 'integer', minimum: 1, maximum: 365 } } } },
   { name: 'hafiza_kaydet', description: 'Kullanıcının verdiği kalıcı bir kararı ya da bilgiyi hafızaya yazar (ör. "Areon koku artık alınmayacak"). Yalnız kullanıcı açıkça söylediğinde kullan.', input_schema: { type: 'object', properties: { metin: { type: 'string', maxLength: 300 } }, required: ['metin'] } },
   { name: 'oneri_olustur', description: 'Kullanıcının ONAYINA sunulacak bir öneri yazar. Onaylanmadan hiçbir şey değişmez. İsteğe bağlı aksiyon onaylanınca uygulanır: siparis/alma/kampanya/iade/beklet (urun_kod ile stok planı) ya da tahsilat_notu (cari ile not).', input_schema: { type: 'object', properties: {
     baslik: { type: 'string', maxLength: 120 }, aciklama: { type: 'string', maxLength: 600 }, oncelik: { type: 'integer', minimum: 1, maximum: 3, description: '1 acil, 2 normal, 3 bilgi' },
@@ -44,7 +45,7 @@ async function aracCalistir(ad: string, girdi: Obj, ctx: { kullanici: string; ka
       if (error) throw error; ctx.sayac.oneri++;
       return 'Öneri onaya sunuldu.';
     }
-    const { data, error } = await db.rpc('asistan_veri', { p_arac: ad, p: girdi ?? {} });
+    const { data, error } = ad === 'efatura_kontrol' ? await db.rpc('asistan_efatura', { p: girdi ?? {} }) : await db.rpc('asistan_veri', { p_arac: ad, p: girdi ?? {} });
     if (error) throw error;
     const s = JSON.stringify(data); return s.length > 7000 ? s.slice(0, 7000) + '…(kısaltıldı)' : s;
   } catch (e) { return `Hata: ${(e as Error).message?.slice(0, 200) ?? e}`; }
@@ -134,6 +135,7 @@ Deno.serve(async (req) => {
       const { data: acik } = await db.from('asistan_oneri').select('baslik').eq('durum', 'yeni').order('zaman', { ascending: false }).limit(40);
       const ctx = { kullanici, kaynak: 'sabah', sayac: { oneri: 0 } };
       const ek = `Şu an SABAH İNCELEMESİ yapıyorsun; kullanıcı yok. Dünkü ve son 7 günün satışlarına, tahsilata, stok uyarılarına ve ölü stoğa bak.
+Ayrıca efatura_kontrol ile e-faturaları kontrol et: BizimHesap'a girilmemiş gelen e-fatura ya da BizimHesap'ta satışı olmayan kesilmiş fatura varsa bunu bir öneri olarak yaz (son 2 günün faturaları henüz girilmemiş olabilir, onları ayrıca belirt). Ödeal verisi 7 günden eskiyse (odeal_son_okuma) kullanıcıya Ödeal'de "Akcan: tümünü aktar" düğmesine basmasını hatırlat.
 Gerçekten işe yarar en fazla 6 bulguyu oneri_olustur ile yaz (her biri somut, kısa, ne yapılacağı belli). Önemsiz ya da zaten bilinen şeyleri yazma.
 Şu an onay bekleyen öneriler (tekrar yazma): ${(acik ?? []).map((x) => x.baslik).join(' | ') || 'yok'}
 Bitince tek paragraf özet yaz.`;
