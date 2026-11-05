@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Download, Info, Save, Sparkles } from 'lucide-react';
 import { useStore } from '../lib/store';
+import { KodKopyala } from '../components/KodKopyala';
 import { backend } from '../lib/backend';
 import { ara, para, parse, sayi, tarih } from '../lib/format';
 import { kategoriFiyatlama, type Durum, type KatOzet } from '../lib/kategoriFiyat';
@@ -132,7 +133,7 @@ export default function KategoriFiyat() {
               <table className="tbl"><thead><tr><th>Ürün</th><th className="text-right">Stok</th><th className="text-right">Maliyet</th><th className="text-right">Mevcut satış</th><th className="text-right">Marj</th><th className="text-right">Önerilen satış</th><th className="text-right">90 günde satılan</th><th>Durum</th><th className="text-right">Aylık etki</th></tr></thead>
                 <tbody>{urunler.slice(0, 500).map((x) => (
                   <tr key={x.u.id}>
-                    <td><div className="font-medium">{x.u.ad}</div><div className="text-xs text-slate-500">{[x.u.kod, x.u.marka].filter(Boolean).join(' · ')}</div></td>
+                    <td><div className="font-medium">{x.u.ad}</div><div className="text-xs text-slate-500">{x.u.kod && <KodKopyala kod={x.u.kod} className="mr-1" />}{x.u.marka ? `· ${x.u.marka}` : ''}</div></td>
                     <td className="text-right">{sayi(x.u.stok)}</td>
                     <td className="text-right">{x.maliyet > 0 ? para(x.maliyet) : '—'}<div className="text-[10px] text-slate-400">{x.maliyetKaynak === 'fatura' ? 'son fatura' : x.maliyetKaynak === 'kart' ? 'kart' : ''}</div></td>
                     <td className="text-right">{para(x.u.satis_fiyati)}</td>

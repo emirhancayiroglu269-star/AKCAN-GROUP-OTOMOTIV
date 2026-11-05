@@ -1,8 +1,9 @@
 import { useMemo, useState } from 'react';
-import { Download, Info } from 'lucide-react';
+import { Copy, Download, Info } from 'lucide-react';
 import { UrunLink } from '../components/DetayKart';
 import { OtoparcasanLink } from '../components/DisLink';
-import { useStore } from '../lib/store';
+import { toast, useStore } from '../lib/store';
+import { KodKopyala } from '../components/KodKopyala';
 import { backend } from '../lib/backend';
 import { fiyatSatirlari } from '../lib/fiyatUyari';
 import { ara, para, parse, sayi, tarih } from '../lib/format';
@@ -39,6 +40,7 @@ export default function FiyatMarj() {
   return (
     <div>
       <SayfaBaslik baslik="Fiyat & Marj" alt="Hedef marjın altında kalan ürünler ve önerilen satış fiyatları">
+        <button className="btn-ghost" disabled={!liste.length} title="Listedeki stok kodlarını alt alta panoya kopyalar" onClick={() => { const k = liste.map((r) => r.u.kod).filter(Boolean).join('\n'); navigator.clipboard.writeText(k).then(() => toast(`${liste.filter((r) => r.u.kod).length} stok kodu kopyalandı`), () => toast('Kopyalanamadı', 'hata')); }}><Copy size={16} /> Kodları kopyala</button>
         <button className="btn-ghost" onClick={csv}><Download size={16} /> Excel (CSV)</button>
       </SayfaBaslik>
       <div className="mb-4 grid gap-3 lg:grid-cols-4">
@@ -63,7 +65,7 @@ export default function FiyatMarj() {
               <thead><tr><th>Ürün</th><th className="text-right">Stok</th><th className="text-right">BH alış</th><th className="text-right">Son fatura alışı</th><th className="text-right">Satış</th><th className="text-right">Güncel marj</th><th className="text-right">Önerilen satış</th><th className="text-right">Fark</th></tr></thead>
               <tbody>{liste.slice(0, 500).map((r) => (
                 <tr key={r.u.id}>
-                  <td><div className="font-medium"><UrunLink id={r.u.id}>{r.u.ad}</UrunLink></div><div className="text-xs text-slate-500">{[r.u.kod, r.u.marka].filter(Boolean).join(' · ')} <OtoparcasanLink u={r.u} kisa /></div></td>
+                  <td><div className="font-medium"><UrunLink id={r.u.id}>{r.u.ad}</UrunLink></div><div className="text-xs text-slate-500">{r.u.kod && <KodKopyala kod={r.u.kod} className="mr-1" />}{r.u.marka ? `· ${r.u.marka}` : ''} <OtoparcasanLink u={r.u} kisa /></div></td>
                   <td className="text-right">{sayi(r.u.stok)}</td>
                   <td className="text-right text-slate-500">{r.u.alis_fiyati > 0 ? <>{para(r.bk.alisNet)}{r.u.kart_alis ? <div className="text-[10px] text-sky-700" title={`Kartta ${para(r.u.kart_alis)} yazıyor; ${r.u.alis_fatura?.tarih} tarihli faturanın net fiyatı kullanılıyor`}>fatura fiyatı</div> : null}</> : '—'}</td>
                   <td className={`text-right ${r.maliyetArtti ? 'font-semibold text-red-600' : 'text-slate-500'}`}>{r.son ? <>{para(r.son.fiyat)}<div className="text-[10px] font-normal text-slate-400">{tarih(r.son.tarih + 'T12:00')}{r.son.tedarikci ? ` · ${r.son.tedarikci}` : ''}</div></> : '—'}</td>

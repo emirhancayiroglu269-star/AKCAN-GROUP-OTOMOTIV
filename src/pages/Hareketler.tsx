@@ -1,6 +1,7 @@
 import { Fragment, useMemo, useState } from 'react';
 import { AlertTriangle, ChevronDown, ChevronRight, Download, Info } from 'lucide-react';
 import { useStore } from '../lib/store';
+import { KodKopyala } from '../components/KodKopyala';
 import { backend } from '../lib/backend';
 import { ara, gunu, para, sayi, tarih, tarihSaat } from '../lib/format';
 import { donemde, GECIS_RE, hareketTutar, hizmetMi } from '../lib/analiz';
@@ -195,7 +196,7 @@ export default function Hareketler() {
         <td><span className={`rozet ${iade ? 'bg-amber-50 text-amber-700' : h.tur === 'satis' ? 'bg-emerald-50 text-emerald-700' : 'bg-sky-50 text-sky-700'}`}>{turAd(h)}</span>
           <div className={`mt-0.5 text-[10px] ${h.eksik ? 'font-semibold text-red-600' : h.kaynak === 'fatura' ? 'text-slate-500' : 'text-amber-600'}`}>{h.eksik ? 'Faturası yok' : h.kaynak === 'fatura' ? 'Fatura' : 'Tahmini'}</div></td>
         <td><div className="font-medium"><UrunLink id={h.urun_id}>{u?.ad ?? h.urun_ad ?? 'Bilinmeyen ürün'}</UrunLink></div>
-          <div className="text-xs text-slate-500">{[u?.kod, u?.marka].filter(Boolean).join(' · ')}</div></td>
+          <div className="text-xs text-slate-500">{u?.kod && <KodKopyala kod={u.kod} className="mr-1" />}{u?.marka ? `· ${u.marka}` : ''}</div></td>
         <td className="text-sm">{h.cari_ad ? (h.tur === 'satis' ? <MusteriLink guid={h.cari_guid} ad={h.cari_ad} /> : h.cari_ad) : <span className="text-slate-300">—</span>}{h.kullanici && <div className="text-[11px] text-slate-500">{h.kullanici}</div>}</td>
         <td className="text-right font-medium">{(h.tur === 'satis') !== iade ? '−' : '+'}{sayi(h.miktar)}</td>
         <td className="whitespace-nowrap text-right text-xs text-slate-500">{h.onceki != null ? `${sayi(h.onceki)} → ${sayi(h.sonraki ?? 0)}` : ''}</td>
@@ -295,7 +296,7 @@ export default function Hareketler() {
             <div className="mb-1 text-sm font-semibold">En çok satan ürünler <span className="font-normal text-slate-500">(ciroya göre)</span></div>
             {ozet.urunler.length === 0 ? <Bos metin="Bu dönemde satış yok." /> : (
               <table className="tbl text-sm"><thead><tr><th>Ürün</th><th className="text-right">Adet</th><th className="text-right">Ciro</th>{maliyetGor && <th className="text-right">Kâr</th>}</tr></thead>
-                <tbody>{ozet.urunler.map((x) => { const st = urun.get(x.id)?.stok ?? 0; return <tr key={x.id}><td><UrunLink id={x.id}>{x.ad}</UrunLink><div className="text-xs text-slate-500">{x.kod}{!!x.kod && !/İŞÇİLİK|ISCILIK|HİZMET/i.test(x.ad) && <> · <span className={st <= 0 ? 'font-semibold text-red-600' : ''}>{st <= 0 ? 'stok bitti' : `stok ${sayi(st)}`}</span></>}</div></td><td className="text-right">{sayi(x.adet)}</td><td className="text-right font-semibold">{para(x.ciro)}</td>{maliyetGor && <td className={`text-right ${x.maliyetsiz ? 'text-xs text-slate-400' : x.kar < 0 ? 'text-red-600' : 'text-emerald-700'}`}>{x.maliyetsiz ? 'maliyet yok' : para(x.kar)}</td>}</tr>; })}</tbody></table>)}
+                <tbody>{ozet.urunler.map((x) => { const st = urun.get(x.id)?.stok ?? 0; return <tr key={x.id}><td><UrunLink id={x.id}>{x.ad}</UrunLink><div className="text-xs text-slate-500">{x.kod && <KodKopyala kod={x.kod} />}{!!x.kod && !/İŞÇİLİK|ISCILIK|HİZMET/i.test(x.ad) && <> · <span className={st <= 0 ? 'font-semibold text-red-600' : ''}>{st <= 0 ? 'stok bitti' : `stok ${sayi(st)}`}</span></>}</div></td><td className="text-right">{sayi(x.adet)}</td><td className="text-right font-semibold">{para(x.ciro)}</td>{maliyetGor && <td className={`text-right ${x.maliyetsiz ? 'text-xs text-slate-400' : x.kar < 0 ? 'text-red-600' : 'text-emerald-700'}`}>{x.maliyetsiz ? 'maliyet yok' : para(x.kar)}</td>}</tr>; })}</tbody></table>)}
           </div>
           <div>
             <div className="mb-1 text-sm font-semibold">Markalar</div>
