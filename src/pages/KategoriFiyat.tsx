@@ -29,6 +29,9 @@ export default function KategoriFiyat() {
   const degisti = Object.keys(taslakSayi).length > 0;
   const top = katlar.reduce((t, k) => ({ artir: t.artir + k.artir, indir: t.indir + k.indir, etki: t.etki + k.aylikEtki, indirDeger: t.indirDeger + k.indirDeger }), { artir: 0, indir: 0, etki: 0, indirDeger: 0 });
 
+  const bhSecili = new Set(db.ayarlar.kategori_bh ?? []);
+  const bhDegistir = (ad: string) => calistir(async () => { const l = new Set(bhSecili); if (l.has(ad)) l.delete(ad); else l.add(ad); await backend.ayarKaydet({ kategori_bh: [...l] }); },
+    bhSecili.has(ad) ? `${ad} BizimHesap listesinden çıkarıldı` : `${ad} BizimHesap listesine eklendi: eklentide "satış fiyatı" listesinde görünecek`);
   const kaydet = () => calistir(async () => { await backend.ayarKaydet({ kategori_marj: { ...(db.ayarlar.kategori_marj ?? {}), ...taslakSayi } }); setTaslak({}); }, 'Kategori marjları kaydedildi');
   const onerilenleriUygula = () => setTaslak(Object.fromEntries(katlar.map((k) => [k.ad, String(k.onerilen)])));
   const csv = (kaynak: KatOzet[]) => {
@@ -66,7 +69,7 @@ export default function KategoriFiyat() {
           {liste.length === 0 ? <Bos metin="Kategori yok." /> : (
             <table className="tbl"><thead><tr>
               <th>Kategori</th><th className="text-right">Satış (6 ay, KDV hariç)</th><th className="text-right">Gerçekleşen marj</th><th className="text-right">Liste marjı</th>
-              <th className="text-right">Önerilen</th><th className="w-28 text-right">Hedef marj %</th><th className="text-right">Artır</th><th className="text-right">İndir</th><th className="text-right">Aylık etki</th>
+              <th className="text-right">Önerilen</th><th className="w-28 text-right">Hedef marj %</th><th className="text-right">Artır</th><th className="text-right">İndir</th><th className="text-right">Aylık etki</th><th className="text-center" title="İşaretli kategorilerin 'fiyatı artır' ürünleri eklentinin BizimHesap satış fiyatı listesine gelir; orada onaylayarak yüklersiniz">BizimHesap'a</th>
             </tr></thead>
               <tbody>{liste.map((k) => (
                 <tr key={k.ad} className={`cursor-pointer ${secili === k.ad ? 'bg-marka-50 dark:bg-marka-500/10' : ''}`} onClick={() => setSecili(k.ad)}>
@@ -82,6 +85,11 @@ export default function KategoriFiyat() {
                   <td className="text-right">{k.artir ? <span className="font-semibold text-emerald-700 dark:text-emerald-400">{sayi(k.artir)}</span> : <span className="text-slate-400">0</span>}</td>
                   <td className="text-right">{k.indir ? <span className="font-semibold text-sky-700 dark:text-sky-400">{sayi(k.indir)}</span> : <span className="text-slate-400">0</span>}</td>
                   <td className="text-right font-semibold">{k.aylikEtki > 0 ? para(k.aylikEtki) : <span className="font-normal text-slate-400">—</span>}</td>
+                  <td className="text-center" onClick={(e) => e.stopPropagation()}>
+                    <label className="inline-flex cursor-pointer items-center gap-1 text-xs" title={k.kayitli ? `Kayıtlı hedef %${k.hedef}` : 'Önce hedef marjı kaydedin'}>
+                      <input type="checkbox" checked={bhSecili.has(k.ad)} disabled={!k.kayitli && !bhSecili.has(k.ad)} onChange={() => bhDegistir(k.ad)} />{bhSecili.has(k.ad) ? <span className="font-semibold text-marka-700">listede</span> : null}
+                    </label>
+                  </td>
                 </tr>
               ))}</tbody></table>
           )}
@@ -130,7 +138,7 @@ export default function KategoriFiyat() {
 
       <div className="mt-4 flex items-start gap-2 rounded-xl bg-slate-100 p-3 text-xs text-slate-600 dark:bg-slate-800 dark:text-slate-300">
         <Info size={15} className="mt-0.5 shrink-0" />
-        <span><b>Önerilen marj nasıl bulunur?</b> Son 6 ayda o kategoride yapılan satışların dörtte biri hangi marjla ve üstünde yapıldıysa o marj önerilir (müşterinin kabul ettiği kanıtlanmış seviye). Çok satılan kategorilerde (yağ, filtre gibi fiyatı karşılaştırılan ürünler) ortalamanın en fazla 5 puan üstü önerilir. Satışı olmayan kategorilerde kartlardaki fiyatların ortanca marjı kullanılır. Öneri %15–60 arasında tutulur. Maliyet olarak kart alışı ile son fatura alışından yüksek olanı alınır. Fiyatlar KDV dahil 50 TL'ye yukarı yuvarlanır. Program BizimHesap'a yazmaz; CSV listesindeki fiyatları BizimHesap'a siz girersiniz.</span>
+        <span><b>Önerilen marj nasıl bulunur?</b> Son 6 ayda o kategoride yapılan satışların dörtte biri hangi marjla ve üstünde yapıldıysa o marj önerilir (müşterinin kabul ettiği kanıtlanmış seviye). Çok satılan kategorilerde (yağ, filtre gibi fiyatı karşılaştırılan ürünler) ortalamanın en fazla 5 puan üstü önerilir. Satışı olmayan kategorilerde kartlardaki fiyatların ortanca marjı kullanılır. Öneri %15–60 arasında tutulur. Maliyet olarak kart alışı ile son fatura alışından yüksek olanı alınır. Fiyatlar KDV dahil 50 TL'ye yukarı yuvarlanır. Program BizimHesap'a kendisi yazmaz: <b>"BizimHesap'a"</b> sütununda işaretlediğiniz kategorilerin "fiyatı artır" ürünleri, eklentinin BizimHesap'taki <b>satış fiyatı</b> listesine gelir; orada kontrol edip onaylayarak yüklersiniz. Ani zam yapmamak için önce bir iki kategoriyle deneyip satış hızına bakın.</span>
       </div>
     </div>
   );

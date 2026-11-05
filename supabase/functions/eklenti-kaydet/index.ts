@@ -147,8 +147,11 @@ async function bhStoksuz() {
  */
 const HIZMET_RE = /işçilik|iscilik|hizmet|revizyon|prim\b|primi|montaj|tamir|torna|kaporta|ücret|rektefiye|değişim|degisim/;
 async function bhSatisListe() {
-  const { data: ay } = await db.from('ayarlar').select('alis_kdv_haric,hedef_marj').eq('id', 1).maybeSingle();
+  const { data: ay } = await db.from('ayarlar').select('alis_kdv_haric,hedef_marj,kategori_marj,kategori_bh').eq('id', 1).maybeSingle();
   const kdvHaric = ay?.alis_kdv_haric !== false; const hedef = Math.min(80, Math.max(1, Number(ay?.hedef_marj ?? 15) || 15));
+  // sitede "Kategori bazında" sekmesinden BizimHesap listesine eklenen kategoriler: o kategorinin kayıtlı hedef marjı uygulanır
+  const katMarj = (ay?.kategori_marj ?? {}) as Record<string, number>;
+  const katSecili = new Set<string>(Array.isArray(ay?.kategori_bh) ? (ay!.kategori_bh as string[]) : []);
   const urunler: Obj[] = [];
   for (let i = 0; i < 50000; i += 1000) {
     const { data, error } = await db.from('urunler').select('id,kod,ad,kategori,alis_fiyati,satis_fiyati,kdv,stok').eq('aktif', true).gt('alis_fiyati', 0).gt('satis_fiyati', 0).order('id').range(i, i + 999);
@@ -185,10 +188,13 @@ async function bhSatisListe() {
     const t = tedEn.get(id); const tedKullan = !!t && t.fiyat > kart * 1.03 && t.fiyat <= kart * 1.5; const maliyet = tedKullan ? t!.fiyat : kart;
     const satis = Number(u.satis_fiyati); const net = satis / (1 + kdv / 100);
     const marj = ((net - maliyet) / net) * 100;
-    if (marj >= hedef - 0.5) continue; // hedef marjın altında kalanlar (zararına olanlar dahil)
-    const oneri = Math.ceil((maliyet / (1 - hedef / 100)) * (1 + kdv / 100) / 50) * 50;
+    const kat = String(u.kategori); const katH = katSecili.has(kat) ? Math.min(60, Math.max(hedef, Number(katMarj[kat]) || 0)) : 0;
+    const hH = katH > hedef ? katH : hedef; // kategori hedefi seçiliyse ve genelden yüksekse o uygulanır
+    const oneri = Math.ceil((maliyet / (1 - hH / 100)) * (1 + kdv / 100) / 50) * 50;
+    // genel hedefin altındakiler (zararına olanlar dahil); kategori seçiliyse sitedeki "Fiyatı artır" kuralı: satış önerinin %3'ten fazla altında
+    if (katH > hedef ? satis >= oneri * 0.97 : marj >= hedef - 0.5) continue;
     const l = sonAlis.get(id); const bekle = !!l && l.tedarikci !== 'geri_al' && Number(l.yeni) > Number(l.eski) * 1.5 && Math.abs(alis - Number(l.yeni)) <= Math.max(0.05, Number(l.yeni) * 0.01);
-    out.push({ urun_id: id, kod: u.kod, ad: u.ad, alis: Math.round(maliyet * 100) / 100, kart: Math.round(kart * 100) / 100, kaynak: tedKullan ? t!.tedarikci : null, kart_ham: satis, yeni: oneri, marj: Math.round(marj * 10) / 10, zarar: net < maliyet, bekle, hedef });
+    out.push({ urun_id: id, kod: u.kod, ad: u.ad, alis: Math.round(maliyet * 100) / 100, kart: Math.round(kart * 100) / 100, kaynak: tedKullan ? t!.tedarikci : null, kart_ham: satis, yeni: oneri, marj: Math.round(marj * 10) / 10, zarar: net < maliyet, bekle, hedef: hH, kat: katH > hedef ? kat : null });
   }
   return out.sort((a, x) => Number(a.bekle) - Number(x.bekle) || Number(a.marj) - Number(x.marj));
 }
