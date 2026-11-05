@@ -182,7 +182,8 @@ async function bhSatisListe() {
     else if (!sonAlis.has(id)) sonAlis.set(id, x); }
   const out: Obj[] = [];
   for (const u of urunler) {
-    const id = u.id as string; if (!(Number(u.stok) > 0) && !satilan.has(id)) continue;
+    // seçili kategorilerde stokta olmayan ürünler de listelenir (kullanıcı kararı); diğerlerinde stoklu ya da son 90 günde satılmış olanlar
+    const id = u.id as string; if (!(Number(u.stok) > 0) && !satilan.has(id) && !katSecili.has(String(u.kategori))) continue;
     if (!u.kod || !u.kategori || sonSatis.has(id) || HIZMET_RE.test(String(u.ad ?? '').toLocaleLowerCase('tr'))) continue;
     const kdv = Number(u.kdv) || 20; const alis = Number(u.alis_fiyati); const kart = kdvHaric ? alis : alis / (1 + kdv / 100);
     const t = tedEn.get(id); const tedKullan = !!t && t.fiyat > kart * 1.03 && t.fiyat <= kart * 1.5; const maliyet = tedKullan ? t!.fiyat : kart;
