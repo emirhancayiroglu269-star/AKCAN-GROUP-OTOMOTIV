@@ -45,17 +45,21 @@
     const adres = typeof st.ajax === 'object' ? st.ajax.url : st.ajax; const tip = (typeof st.ajax === 'object' && st.ajax.type) || 'POST';
     const temel = dt.ajax.params() || {};
     const yil = new Date().getFullYear(); let toplam = 0;
+    // gönderilen / e-arşiv listesi sunucuda çok yavaş (10 satır ~15 sn): küçük sayfalar ve uzun bekleme
+    const giden = /outgoing/.test(String(adres)); const BOY = giden ? 25 : 100;
+    // yıl filtresi: gelen listesinde "gunAy", gönderilen listesinde "filter" (değeri yıl ise)
+    const yilAlan = (y) => ({ ...('gunAy' in temel ? { gunAy: y } : {}), ...(/^20\d\d$/.test(String(temel.filter ?? '')) ? { filter: y } : {}) });
     const yukle = (gunAy, bas) => new Promise((r) => {
-      $.ajax({ url: adres, type: tip, dataType: 'text', timeout: 60000, data: { ...temel, draw: (Number(temel.draw) || 1) + 1, start: bas, length: 100, ...('gunAy' in temel ? { gunAy } : {}) } })
+      $.ajax({ url: adres, type: tip, dataType: 'text', timeout: 240000, data: { ...temel, draw: (Number(temel.draw) || 1) + 1, start: bas, length: BOY, ...yilAlan(gunAy) } })
         .done((t) => { let j = null; try { j = JSON.parse(t); } catch { /* yok say */ } r(j); }).fail(() => r(null));
     });
     try {
       for (const y of [yil, yil - 1]) {
-        for (let bas = 0; bas < 20000; bas += 100) {
+        for (let bas = 0; bas < 20000; bas += BOY) {
           const j = await yukle(String(y), bas); if (!j) { bildir(`${y}: istek yanıt vermedi, durduruldu`, true); return; }
           const n = Array.isArray(j.data) ? j.data.length : 0; toplam += n;
           bildir(`${y}: ${bas + n} fatura okundu…`);
-          if (n < 100) break;
+          if (n < BOY) break;
           await new Promise((r) => setTimeout(r, 800));
         }
       }

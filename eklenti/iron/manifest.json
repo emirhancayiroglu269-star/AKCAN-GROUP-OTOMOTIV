@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Akcan — tedarikçi fiyat yardımcısı",
-  "version": "1.9.9",
+  "version": "1.10.0",
   "description": "Iron Otomotiv, Başbuğ, Özaş ve Dinamik (Ada Oto) B2B'de (aynı B2B yazılımı) yaptığınız aramaların fiyatlarını Akcan'a kaydeder; BizimHesap'ta tedarikçide zamlanan ürünlerin kart alış fiyatını, sizin onayınızla BizimHesap'ın kendi Toplu Ürün Güncelleme özelliğiyle günceller. Ödeal e-Fatura portalında açtığınız fatura listesini (yalnız fatura başlıkları) Akcan'a kaydeder. Sepete eklemez, sipariş vermez.",
   "permissions": [
     "storage"
