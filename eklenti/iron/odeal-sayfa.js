@@ -39,16 +39,21 @@
     if (!$ || !$.fn?.dataTable) { bildir('Fatura tablosu bulunamadı', true); return; }
     const tablo = [...$.fn.dataTable.tables()].find((t) => { const s = $(t).DataTable().settings()[0]; const u = typeof s.ajax === 'object' ? s.ajax?.url : s.ajax; return LISTE.test('/exec/' + String(u || '').split('/exec/').pop()); });
     if (!tablo) { bildir('Bu sayfada fatura listesi yok (Gelen / Gönderilen / e-Arşiv sayfasını açın)', true); return; }
-    calisiyor = true; const $t = $(tablo); const dt = $t.DataTable();
-    const yil = new Date().getFullYear(); let bas = 0, gunAy = String(yil), toplam = 0;
-    const ayar = (_e, _s, d) => { d.start = bas; d.length = 100; if ('gunAy' in d) d.gunAy = gunAy; };
-    $t.on('preXhr.dt', ayar);
-    const yukle = () => new Promise((r) => { const zaman = setTimeout(() => r(null), 30000); $t.one('xhr.dt', (_e, _s, j) => { clearTimeout(zaman); r(j); }); dt.ajax.reload(null, false); });
+    // Tabloyu yeniden çizdirmek yerine (100 satırlık tablo sayfayı donduruyordu) tablonun son isteğiyle aynı parametrelerle
+    // aynı adrese istek atılır; yanıt aşağıdaki okuyucudan geçer, ekrandaki tablo değişmez.
+    calisiyor = true; const dt = $(tablo).DataTable(); const st = dt.settings()[0];
+    const adres = typeof st.ajax === 'object' ? st.ajax.url : st.ajax; const tip = (typeof st.ajax === 'object' && st.ajax.type) || 'POST';
+    const temel = dt.ajax.params() || {};
+    const yil = new Date().getFullYear(); let toplam = 0;
+    const yukle = (gunAy, bas) => new Promise((r) => {
+      $.ajax({ url: adres, type: tip, dataType: 'text', timeout: 60000, data: { ...temel, draw: (Number(temel.draw) || 1) + 1, start: bas, length: 100, ...('gunAy' in temel ? { gunAy } : {}) } })
+        .done((t) => { let j = null; try { j = JSON.parse(t); } catch { /* yok say */ } r(j); }).fail(() => r(null));
+    });
     try {
       for (const y of [yil, yil - 1]) {
-        gunAy = String(y);
-        for (bas = 0; bas < 20000; bas += 100) {
-          const j = await yukle(); const n = Array.isArray(j?.data) ? j.data.length : 0; toplam += n;
+        for (let bas = 0; bas < 20000; bas += 100) {
+          const j = await yukle(String(y), bas); if (!j) { bildir(`${y}: istek yanıt vermedi, durduruldu`, true); return; }
+          const n = Array.isArray(j.data) ? j.data.length : 0; toplam += n;
           bildir(`${y}: ${bas + n} fatura okundu…`);
           if (n < 100) break;
           await new Promise((r) => setTimeout(r, 800));
@@ -56,7 +61,7 @@
       }
       bildir(`Bitti: ${toplam} fatura aktarıldı`, true);
     } catch (e) { bildir('Aktarım durdu: ' + (e?.message || e), true); }
-    finally { $t.off('preXhr.dt', ayar); calisiyor = false; bas = 0; gunAy = String(yil); try { dt.page.len(10); dt.ajax.reload(); } catch { /* yok say */ } }
+    finally { calisiyor = false; }
   }
   window.addEventListener('message', (e) => { if (e.source === window && e.origin === location.origin && e.data?.kaynak === 'akcan-odeal-komut' && e.data.islem === 'tumu') tumunuAktar(); });
   const X = XMLHttpRequest.prototype; const ac = X.open, gonder = X.send;
