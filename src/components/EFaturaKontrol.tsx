@@ -21,13 +21,17 @@ const adBenzer = (a: string | null | undefined, b: string | null | undefined) =>
 const tol = (t: number) => Math.max(1, Math.abs(t) * 0.005);
 
 /** Ödeal faturaları ile BizimHesap belgelerini tutar (±%0,5), tarih (±10 gün) ve firma adına göre birebir eşleştirir */
-function eslestir(od: OdealFatura[], bl: Belge[]) {
+// satış faturası (e-fatura/e-arşiv) çoğu zaman BizimHesap satışından günler, hatta haftalar sonra toplu kesilir:
+// aynı firmaysa fatura, satıştan 5 gün önce ile 120 gün sonra arasında olabilir
+function eslestir(od: OdealFatura[], bl: Belge[], gecKesim = false) {
   const adaylar: { o: OdealFatura; b: Belge; puan: number }[] = [];
   for (const o of od) for (const b of bl) {
     if (o.tutar == null || !o.tarih) continue;
     const df = Math.abs(o.tutar - b.tutar); if (df > tol(o.tutar)) continue;
-    const gf = gunFark(o.tarih, b.gun); if (gf > 10) continue;
-    adaylar.push({ o, b, puan: (adBenzer(o.karsi, b.cari) ? 0 : 20) + gf + df / Math.max(1, o.tutar) * 100 });
+    const gf = gunFark(o.tarih, b.gun); const ayni = adBenzer(o.karsi, b.cari);
+    const sonra = (new Date(o.tarih + 'T12:00:00').getTime() - new Date(b.gun + 'T12:00:00').getTime()) / GUN;
+    if (gf > 10 && !(gecKesim && ayni && sonra >= -5 && sonra <= 120)) continue;
+    adaylar.push({ o, b, puan: (ayni ? 0 : 20) + (gf > 10 ? 10 + gf / 10 : gf) + df / Math.max(1, o.tutar) * 100 });
   }
   adaylar.sort((x, y) => x.puan - y.puan);
   const oKul = new Set<string>(), bKul = new Set<string>(); const es: Eslesme[] = [];
@@ -40,6 +44,7 @@ export function EFaturaKontrol({ d }: { d: { bas: string; bit: string } }) {
   const [veri, setVeri] = useState<OdealFatura[] | null>(null); const [hata, setHata] = useState<string | null>(null); const [yuk, setYuk] = useState(0);
   const [kapsam, setKapsam] = useState<{ min: string | null; max: string | null; say: number } | null>(null);
   const bas = useMemo(() => { const t = new Date(d.bas + 'T12:00:00'); t.setDate(t.getDate() - 10); return t.toLocaleDateString('sv'); }, [d.bas]);
+  const basBelge = useMemo(() => { const t = new Date(d.bas + 'T12:00:00'); t.setDate(t.getDate() - 120); return t.toLocaleDateString('sv'); }, [d.bas]);
   const bit = useMemo(() => { const t = new Date(d.bit + 'T12:00:00'); t.setDate(t.getDate() + 10); return t.toLocaleDateString('sv'); }, [d.bit]);
 
   useEffect(() => {
@@ -65,14 +70,14 @@ export function EFaturaKontrol({ d }: { d: { bas: string; bit: string } }) {
     const m = new Map<string, Belge>();
     const ekle = (h: Hareket, iade: boolean) => {
       if (h.kaynak !== 'fatura' || !h.belge_guid || iade) return;
-      const gun = h.tarih.slice(0, 10); if (gun < bas || gun > bit) return;
+      const gun = h.tarih.slice(0, 10); if (gun < basBelge || gun > bit) return;
       const t = h.tur === 'satis' ? h.miktar * h.satis_fiyati : h.miktar * h.alis_fiyati * (1 + (h.kdv ?? 20) / 100);
       const b = m.get(h.belge_guid) ?? { guid: h.belge_guid, tur: h.tur, cari: h.cari_ad ?? '—', gun, tutar: 0, kalem: 0 };
       b.tutar += t; b.kalem++; m.set(h.belge_guid, b);
     };
     for (const h of db.hareketler) ekle(h, false);
     return [...m.values()];
-  }, [db.hareketler, bas, bit]);
+  }, [db.hareketler, basBelge, bit]);
 
   const sonuc = useMemo(() => {
     if (!veri) return null;
@@ -83,7 +88,7 @@ export function EFaturaKontrol({ d }: { d: { bas: string; bit: string } }) {
     const ga = aralik(gelen), sa = aralik(giden);
     const icinde = (gun: string, a: { min: string; max: string } | null) => !!a && gun >= a.min && gun <= a.max && gun >= d.bas && gun <= d.bit;
     const alis = eslestir(gelen, belgeler.filter((b) => b.tur === 'alis'));
-    const satis = eslestir(giden, belgeler.filter((b) => b.tur === 'satis'));
+    const satis = eslestir(giden, belgeler.filter((b) => b.tur === 'satis'), true);
     // alış olarak bulunamayanlar BizimHesap'ta masraf (gider) olarak girilmiş olabilir: tutar ±%0,5, tarih ±15 gün
     const mKul = new Set<number>(); const giderGirilmis: { o: OdealFatura; m: { id: number; tarih: string; tutar: number; aciklama?: string | null } }[] = [];
     const kalanAlis: OdealFatura[] = [];
