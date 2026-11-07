@@ -12,7 +12,7 @@ V18 ekran ve iş kuralı bakımından kapsamlı (satış/kasa, cari, alış, iad
 | İş mantığı | Tarayıcıda (src/modules: Stok.tsx 241 KB, Yonetim 122 KB, SatisSayfasi 88 KB…; toplam ~42.700 satır) | Okuma ve analiz tarayıcıda; eşitleme ve servisler sunucuda (Edge Functions) |
 | Kayıt yapma | Var: satış, alış, iade/iptal, tahsilat/ödeme, gün sonu, dönem kapanışı (state içinde) | Yok: tüm işlemler BizimHesap'ta |
 | Veri tabanı tarafı | 4 migrasyon, 257 satır (kullanıcı profili, rol, atomik state yazma); `app-state` sunucu fonksiyonunun kodu depoda yok | 60 migrasyon, RLS, tetikleyiciler, zamanlanmış görevler |
-| Kimlik / yetki | Supabase Auth'a geçiş yarım; kendi planında "parola state'ten çıkarılmalı" yazıyor | Supabase Auth + kullanıcı listesi; sunucu tarafı yetki 059 ile hazır (uygulanmadı) |
+| Kimlik / yetki | Supabase Auth'a geçiş yarım; kendi planında "parola state'ten çıkarılmalı" yazıyor | Supabase Auth + kullanıcı listesi; sunucu tarafı yetki 059 ile uygulandı (07.11.2026) |
 | Eşzamanlı kullanım | Tek belge: iki kasa aynı anda yazınca sürüm çakışması, biri yeniden denemek zorunda | Satır bazlı; çakışma yalnız aynı kayıtta |
 | Raporlama | State'in tamamı yüklenip tarayıcıda hesaplanır | Veritabanı + tarayıcı; 8 aylık gerçek fatura verisi |
 | Testler | 127 dosya: duman testleri ve sözleşme testleri (finans, stok, satış/alış zinciri, iade, mutabakat, belge numarası) | Elle ve SQL ile test |

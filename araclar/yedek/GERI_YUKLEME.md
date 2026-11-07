@@ -39,4 +39,4 @@ Yeni Supabase projesine yüklendikten sonra: Edge Functions'ları (`supabase/fun
 
 ## İzin değişikliğini geri alma
 
-Faz 0'ın yetki değişikliği (`supabase/059_faz0_yetki_denetim.sql`, henüz uygulanmadı) uygulandıktan sonra sorun çıkarırsa `supabase/yedek/059_geri_al.sql` dosyası Supabase SQL Editor'de çalıştırılır. Veri silmez; izinleri 07.11.2026 öncesine döndürür.
+Faz 0'ın yetki değişikliği (`supabase/059_faz0_yetki_denetim.sql`, 07.11.2026 16:23'te uygulandı) sorun çıkarırsa `supabase/yedek/059_geri_al.sql` dosyası Supabase SQL Editor'de çalıştırılır. Veri silmez; izinleri 07.11.2026 öncesine döndürür.
