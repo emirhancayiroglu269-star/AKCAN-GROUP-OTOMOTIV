@@ -13,6 +13,8 @@ name: Veritabanı yedeği
 on:
   schedule: [{ cron: '30 0 * * *' }]
   workflow_dispatch:
+  push:                        # iş dosyası güncellenince bir kez çalışır (ilk kurulum ve değişiklik sonrası deneme)
+    paths: ['.github/workflows/yedek.yml']
 permissions: { contents: read }
 concurrency: { group: yedek, cancel-in-progress: false }
 jobs:
