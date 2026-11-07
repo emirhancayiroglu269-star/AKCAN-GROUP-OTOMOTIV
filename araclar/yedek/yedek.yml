@@ -41,7 +41,13 @@ jobs:
           # bağlantı adresini libpq ortam değişkenlerine böl; her parçayı loglarda maskele (adres hiçbir komutta açık geçmez)
           python3 - <<'PY'
           import os, urllib.parse as u
-          p = u.urlparse(os.environ['DB_URL'])
+          try:
+              p = u.urlparse(os.environ['DB_URL'].strip()); p.port; p.hostname
+          except Exception:
+              # hata mesajı adresin hiçbir parçasını içermez
+              raise SystemExit('::error::SUPABASE_DB_URL çözümlenemedi: köşeli parantez, <bölge> ya da [ŞİFRE] gibi yer tutucular kalmış olabilir. Supabase > Connect > Session pooler adresini olduğu gibi kopyalayıp yalnız şifreyi yazın.')
+          if '<' in os.environ['DB_URL'] or '[' in os.environ['DB_URL'] or 'YOUR-PASSWORD' in os.environ['DB_URL'].upper():
+              raise SystemExit('::error::SUPABASE_DB_URL içinde yer tutucu kalmış (<...>, [...] ya da YOUR-PASSWORD). Gerçek adresi ve şifreyi girin.')
           v = {'PGHOST': p.hostname or '', 'PGPORT': str(p.port or 5432), 'PGUSER': u.unquote(p.username or ''),
                'PGPASSWORD': u.unquote(p.password or ''), 'PGDATABASE': (p.path or '/postgres').lstrip('/') or 'postgres'}
           if not all(v[k] for k in ('PGHOST', 'PGUSER', 'PGPASSWORD')): raise SystemExit('::error::SUPABASE_DB_URL biçimi hatalı (postgresql://kullanici:sifre@sunucu:5432/postgres)')
