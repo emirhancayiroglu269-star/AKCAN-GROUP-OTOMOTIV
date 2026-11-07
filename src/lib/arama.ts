@@ -152,11 +152,16 @@ export function genelArama(db: DB, q: string, limit = 80): AramaSatiri[] {
   }
   // 4) ad / marka / kategori / araç: yazılan her kelime geçmeli (Türkçe karaktersiz, Romen rakamı sayı, harf-rakam ayrık)
   const kel = katla(s).split(' ').filter(Boolean);
-  // "golf 5", "megane 3", "w 205": model adı ile hemen ardından gelen numara yan yanaysa (ya da "GOLF 4 5 6" gibi sıralıysa) üste çıkar
-  const ikili = kel.flatMap((k, i) => (i > 0 && /^\d+$/.test(k) && !/^\d+$/.test(kel[i - 1]) ? [new RegExp(` ${kel[i - 1]}( \\d+){0,3} ${k} `)] : []));
+  // "golf 5", "megane 3", "w 205": model adından hemen sonra o numara geliyorsa (ya da "GOLF 4 5 6" gibi artan sırada) üste çıkar
+  const ikili = kel.flatMap((k, i) => (i > 0 && /^\d+$/.test(k) && !/^\d+$/.test(kel[i - 1]) ? [[kel[i - 1], Number(k)] as const] : []));
+  const yanYana = (a: string) => { const t = a.trim().split(' '); return ikili.every(([m, n]) => t.some((x, i) => {
+    if (x !== m) return false;
+    for (let j = i + 1; j < t.length && /^\d+$/.test(t[j]); j++) { const v = Number(t[j]); if (v === n) return true; if (v > n) return false; }
+    return false;
+  })); };
   const bonus = (u: Urun) => {
     const a = d.ad.get(u.id)!; const n = d.satis.get(u.id) ?? 0;
-    return (ikili.length && ikili.every((r) => r.test(a)) ? 10 : 0) + (kel.every((k) => gecerEs(a, k)) ? 8 : 0) + (kel[0] && a.startsWith(' ' + kel[0]) ? 4 : 0) + Math.min(8, Math.round(Math.log2(1 + n) * 2)) + (u.stok > 0 ? 4 : 0);
+    return (ikili.length && yanYana(a) ? 10 : 0) + (kel.every((k) => gecerEs(a, k)) ? 8 : 0) + (kel[0] && a.startsWith(' ' + kel[0]) ? 4 : 0) + Math.min(8, Math.round(Math.log2(1 + n) * 2)) + (u.stok > 0 ? 4 : 0);
   };
   if (kel.length) for (const u of d.urun) {
     if (sonuc.has(u.id)) continue; const m = d.metin.get(u.id)!;
