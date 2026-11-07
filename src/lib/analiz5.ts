@@ -7,10 +7,11 @@ const gun = (t: string) => new Date(gunu(t) + 'T12:00').getTime();
 
 // ======================= BİRLİKTE SATILANLAR (ürün başına) =======================
 export interface Yaninda { u: Urun; n: number; oran: number }
-const yanindaOnbellek = new WeakMap<DB, Map<ID, Yaninda[]>>();
+// hareketler ve ürünler değişmedikçe yeniden hesaplanmaz (BizimHesap eşitleme saati gibi küçük güncellemeler önbelleği bozmaz)
+const yanindaOnbellek = new WeakMap<object, { urunler: unknown; r: Map<ID, Yaninda[]> }>();
 /** Son 180 günde aynı faturada en az 2 kez birlikte satılan ürünler (ürün başına en çok 5) */
 export function birlikteSatilanlar(db: DB): Map<ID, Yaninda[]> {
-  const v = yanindaOnbellek.get(db); if (v) return v;
+  const v = yanindaOnbellek.get(db.hareketler); if (v && v.urunler === db.urunler) return v.r;
   const sinir = gunu(new Date(Date.now() - 179 * 864e5));
   const urun = new Map(db.urunler.map((u) => [u.id, u])); const gecis = gecisBelgeleri(db);
   const belge = new Map<string, Set<ID>>();
@@ -29,7 +30,7 @@ export function birlikteSatilanlar(db: DB): Map<ID, Yaninda[]> {
     const l = [...m.entries()].filter(([, n]) => n >= 2).map(([b, n]) => ({ u: urun.get(b)!, n, oran: n / (tek.get(a) ?? 1) })).sort((x, y) => y.n - x.n || y.oran - x.oran).slice(0, 5);
     if (l.length) r.set(a, l);
   }
-  yanindaOnbellek.set(db, r); return r;
+  yanindaOnbellek.set(db.hareketler, { urunler: db.urunler, r }); return r;
 }
 
 // ======================= PAHALIYA ALINANLAR =======================

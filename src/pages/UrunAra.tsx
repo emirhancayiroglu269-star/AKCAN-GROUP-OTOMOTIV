@@ -12,17 +12,21 @@ import { muadilDetay, depoKisa, MUADIL_ESIK } from '../lib/muadil';
 import { ESLESME_AD, dizin, genelArama, koddanBizdeki, type AramaSatiri } from '../lib/arama';
 import { detayAc } from '../components/DetayKart';
 import { TedarikciFiyatlari } from '../components/TedarikciFiyatlari';
+import { KodKopyala } from '../components/KodKopyala';
 import { ON_DOLDUR, type OnDoldur } from './Sase';
 import { HazirlikPanel } from '../components/HazirlikFisi';
 import type { Urun } from '../lib/types';
 
 const TUR_RENK: Record<AramaSatiri['tur'], string> = {
   kod: 'bg-marka-100 text-marka-700', barkod: 'bg-marka-100 text-marka-700', oem: 'bg-sky-100 text-sky-700',
-  esdeger: 'bg-orange-100 text-orange-700', kismi: 'bg-slate-100 text-slate-600', metin: 'bg-slate-100 text-slate-600',
+  esdeger: 'bg-orange-100 text-orange-700', kismi: 'bg-slate-100 text-slate-600', metin: 'bg-slate-100 text-slate-600', yakin: 'bg-amber-50 text-amber-700',
 };
 
 /** Ürün Ara: stok kodu, barkod, OEM, Otomarmara eşdeğer kodu, ad ve araç-model ile arama; muadiller ve Otomarmara canlı arama */
 interface TeklifKalem { u: Urun; adet: number; fiyat: number; ekonomik?: boolean }
+
+const SON_ANAHTAR = 'sonAramalar';
+const sonOku = (): string[] => { try { const v = JSON.parse(localStorage.getItem(SON_ANAHTAR) ?? '[]'); return Array.isArray(v) ? v.slice(0, 10) : []; } catch { return []; } };
 
 export default function UrunAra() {
   const { db, izin, mode, personel, eposta } = useStore(); const maliyet = izin('maliyet');
@@ -38,126 +42,146 @@ export default function UrunAra() {
   useEffect(() => { try { sessionStorage.removeItem(ON_DOLDUR); } catch { /* yok */ } }, []);
   const [yazi, setYazi] = useState(onDoldur?.q ?? ''); const [q, setQ] = useState(onDoldur?.q ?? '');
   const [stokta, setStokta] = useState(false); const [depo, setDepo] = useState('');
-  const [goster, setGoster] = useState(30);
+  const [goster, setGoster] = useState(25);
+  const [son, setSon] = useState<string[]>(sonOku);
   const ref = useRef<HTMLInputElement>(null);
-  useEffect(() => { const t = setTimeout(() => { setQ(yazi); setGoster(30); }, 200); return () => clearTimeout(t); }, [yazi]);
+  useEffect(() => { const t = setTimeout(() => { setQ(yazi); setGoster(25); }, 150); return () => clearTimeout(t); }, [yazi]);
   // arama dizini sayfa açılır açılmaz arka planda hazırlansın (ilk harfte beklenmesin)
   useEffect(() => { const t = setTimeout(() => dizin(db), 30); return () => clearTimeout(t); }, [db]);
+  // son aramalar (bu tarayıcıda): yazmayı bitirip 2 sn bekleyince kaydedilir
+  useEffect(() => {
+    const k = q.trim(); if (k.length < 2) return;
+    const t = setTimeout(() => setSon((l) => { const y = [k, ...l.filter((x) => x.toLocaleUpperCase('tr') !== k.toLocaleUpperCase('tr'))].slice(0, 10); try { localStorage.setItem(SON_ANAHTAR, JSON.stringify(y)); } catch { /* yok */ } return y; }), 2000);
+    return () => clearTimeout(t);
+  }, [q]);
 
   const depolar = aktifDepolar(db);
-  const harita = useMemo(() => stokHaritasi(db), [db]);
+  const harita = useMemo(() => stokHaritasi(db), [db.urun_depo_stok]); // eslint-disable-line react-hooks/exhaustive-deps
   const depoStok = (u: Urun, id: string) => harita.get(u.id)?.get(id) ?? 0;
-  const tum = useMemo(() => genelArama(db, q, 300), [db, q]);
-  const liste = tum.filter((x) => (!stokta || (depo ? depoStok(x.u, depo) > 0 : x.u.stok > 0)));
+  const tum = useMemo(() => genelArama(db, q, 300), [db.urunler, db.urun_kodlari, db.otomarmara_veri, db.hareketler, q]); // eslint-disable-line react-hooks/exhaustive-deps
+  const liste = useMemo(() => tum.filter((x) => (!stokta || (depo ? depoStok(x.u, depo) > 0 : x.u.stok > 0))), [tum, stokta, depo, harita]); // eslint-disable-line react-hooks/exhaustive-deps
+  const stokluSayi = tum.filter((x) => x.u.stok > 0).length;
   // parça kodu gibi mi ("GOLF 5 BALATA" gibi 3+ kelimelik araç aramaları kod sayılmaz: otomatik "soruldu" kaydı ve tedarikçi araması yapılmaz)
   const kodGibi = /\d/.test(q) && q.replace(/\s/g, '').length >= 4 && q.trim().split(/\s+/).length <= 2;
   // kod / barkod birebir bulunduysa tedarikçi fiyatları o ürünün kartında açılır; bulunamadıysa üstte kodla (OEM dahil) gösterilir
   const kesinBulundu = kodGibi && (liste[0]?.tur === 'kod' || liste[0]?.tur === 'barkod');
   // kodla aranıp stokta karşılığı çıkmayan parça otomatik "soruldu, yok" kaydı olur (aynı kod oturumda bir kez; yazım sürerken kaydedilmez)
   const otoKayit = useRef<Set<string>>(new Set());
-  const stoktaVar = tum.some((x) => x.u.stok > 0);
+  const stoktaVar = stokluSayi > 0;
   useEffect(() => {
     const k = q.trim().toUpperCase(); if (!kodGibi || stoktaVar || k.replace(/[^A-Z0-9]/g, '').length < 5 || otoKayit.current.has(k) || mode === 'demo') return;
     const t = setTimeout(() => {
       otoKayit.current.add(k);
-      backend.sorulanEkle({ metin: k, urun_id: tum[0]?.u.stok <= 0 && tum[0]?.tur !== 'metin' && tum[0]?.tur !== 'kismi' ? tum[0].u.id : null, kullanici: `oto · ${personel || eposta || 'tezgâh'}`, adet: 1 }).catch(() => undefined);
+      backend.sorulanEkle({ metin: k, urun_id: tum[0]?.u.stok <= 0 && tum[0]?.tur !== 'metin' && tum[0]?.tur !== 'kismi' && tum[0]?.tur !== 'yakin' ? tum[0].u.id : null, kullanici: `oto · ${personel || eposta || 'tezgâh'}`, adet: 1 }).catch(() => undefined);
     }, 6000);
     return () => clearTimeout(t);
   }, [q, kodGibi, stoktaVar]); // eslint-disable-line react-hooks/exhaustive-deps
+  const benzer = liste.length > 0 && liste.every((x) => x.tur === 'yakin');
 
   return (
-    <div className={`mx-auto max-w-4xl space-y-4 ${teklif.length ? "pb-72" : ""}`}>
-      <div className="card space-y-3 p-4">
+    <div className={`mx-auto max-w-4xl space-y-3 ${teklif.length ? "pb-72" : ""}`}>
+      <div className="card sticky top-0 z-10 space-y-2 p-3">
         <div className="relative">
           <Search size={18} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
           <input ref={ref} autoFocus className="inp py-3 pl-10 pr-10 text-base" placeholder="Stok kodu, barkod, OEM / eşdeğer kodu ya da “megane 3 balata”" value={yazi}
-            onChange={(e) => setYazi(e.target.value)} onKeyDown={(e) => { if (e.key === 'Escape') setYazi(''); }} enterKeyHint="search" autoCapitalize="characters" autoCorrect="off" spellCheck={false} />
+            onChange={(e) => setYazi(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Escape') setYazi(''); if (e.key === 'Enter' && yazi === q && liste[0]) detayAc({ tur: 'urun', id: liste[0].u.id }); }}
+            enterKeyHint="search" autoCapitalize="characters" autoCorrect="off" spellCheck={false} />
           {yazi && <button className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1.5 text-slate-400 hover:text-slate-600" onClick={() => { setYazi(''); ref.current?.focus(); }} aria-label="Temizle"><X size={18} /></button>}
         </div>
-        <div className="flex flex-wrap items-center gap-2 text-sm">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
           <label className="inline-flex items-center gap-1.5"><input type="checkbox" checked={stokta} onChange={(e) => setStokta(e.target.checked)} /> Sadece stokta olanlar</label>
           {depolar.length > 1 && <select className="inp w-auto py-1 text-sm" value={depo} onChange={(e) => setDepo(e.target.value)}>
             <option value="">Tüm depolar</option>{depolar.map((d) => <option key={d.id} value={d.id}>{depoKisa(d.ad)}</option>)}</select>}
-          {q && <span className="ml-auto text-xs text-slate-500">{liste.length} ürün</span>}
+          {q && <span className="ml-auto text-xs text-slate-500">{sayi(liste.length)} ürün{!stokta && tum.length ? ` · ${sayi(stokluSayi)} stokta` : ''}</span>}
           {q && <button className="btn-ghost px-2 py-1 text-xs" onClick={() => sorulanEkle(q)} title="Müşteri bu parçayı sordu ama bizde yok: kaçan satış olarak kaydet"><HelpCircle size={14} /> Soruldu, bizde yok</button>}
         </div>
       </div>
 
+      {!q && son.length > 0 && <div className="flex flex-wrap items-center gap-1.5 px-1 text-sm">
+        <span className="text-xs text-slate-500">Son aramalar:</span>
+        {son.map((x) => <button key={x} className="rounded-full bg-slate-100 px-2.5 py-0.5 text-slate-700 hover:bg-marka-100 hover:text-marka-700 dark:bg-slate-800 dark:text-slate-200" onClick={() => { setYazi(x); setQ(x); ref.current?.focus(); }}>{x}</button>)}
+        <button className="text-xs text-slate-400 hover:underline" onClick={() => { setSon([]); try { localStorage.removeItem(SON_ANAHTAR); } catch { /* yok */ } }}>temizle</button>
+      </div>}
       {!q && <div className="card p-4 text-sm text-slate-600 dark:text-slate-300">
         <p className="mb-2 font-medium">Neyle arayabilirsiniz?</p>
         <ul className="list-disc space-y-1 pl-5 text-slate-500">
-          <li><b>Stok kodu / barkod:</b> BOS-0241140537 ya da barkodu okutun</li>
-          <li><b>OEM kodu:</b> orijinal parça numarası (boşluk, nokta, tire fark etmez)</li>
-          <li><b>Başka markanın kodu:</b> Otomarmara eşdeğer listesinde geçiyorsa bizdeki karşılığı bulunur</li>
-          <li><b>Ad ve araç:</b> “megane 3 balata”, “egea yağ filtresi”, “w205 amortisör”</li>
-          <li>Bizde bulunamayan kodu <b>Otomarmara'da</b> da arayabilirsiniz (aşağıda çıkar)</li>
+          <li><b>Kod:</b> stok kodu, barkod, OEM ya da başka markanın kodu. Boşluk, nokta, tire fark etmez; önüne marka yazılabilir (“rapro r54892”).</li>
+          <li><b>Ad ve araç:</b> “megane 3 balata”, “golf5 amortisör”, “1.5 dci triger”. Küçük yazım hataları ve vw, mb, pejo gibi kısaltmalar da bulunur.</li>
+          <li><b>Enter:</b> ilk sonucun ayrıntısını açar · <b>Esc:</b> aramayı temizler.</li>
         </ul>
       </div>}
 
       {maliyet && mode === 'bulut' && kodGibi && !kesinBulundu && <div className="card p-3"><TedarikciFiyatlari kod={q} /></div>}
-      {q && liste.length === 0 && <div className="card p-4 text-sm text-slate-500">Bizde “{q}” ile eşleşen {stokta ? 'stoklu ' : ''}ürün bulunamadı.</div>}
+      {q && liste.length === 0 && <div className="card p-4 text-sm text-slate-500">Bizde “{q}” ile eşleşen {stokta ? 'stoklu ' : ''}ürün bulunamadı.{stokta && tum.length ? <> <button className="text-marka-700 underline" onClick={() => setStokta(false)}>Stokta olmayanları da göster ({tum.length})</button></> : null}</div>}
+      {benzer && <div className="px-1 text-xs text-amber-700 dark:text-amber-400">Tam eşleşme yok; yazıma benzeyen ürünler gösteriliyor.</div>}
       {liste.length > 0 && <div className="space-y-2">
         {liste.slice(0, goster).map((x, i) => <SonucKart key={x.u.id} x={x} tedAcik={maliyet && mode === 'bulut' && i === 0 && kesinBulundu} maliyet={maliyet} depolar={depolar} depoStok={depoStok} teklifEkle={teklifEkle} soruldu={(u) => sorulanEkle(q, u)} teklifte={teklif.some((k) => k.u.id === x.u.id)} />)}
         {liste.length > goster && <button className="btn-ghost w-full" onClick={() => setGoster((g) => g + 40)}>Daha fazla göster ({liste.length - goster})</button>}
       </div>}
 
-      {q && mode === 'bulut' && <TedarikciArama q={q} oto={kodGibi && tum.length === 0} maliyet={maliyet} />}
+      {q && mode === 'bulut' && <TedarikciArama q={q} oto={kodGibi && !stoktaVar} maliyet={maliyet} />}
       {onDoldur?.arac && <div className="fixed bottom-2 right-2 z-20 hidden rounded-full bg-slate-900 px-3 py-1 text-xs text-white shadow lg:block print:hidden">Araç: {onDoldur.arac}</div>}
       {teklif.length > 0 && <TeklifPanel teklif={teklif} setTeklif={setTeklif} firma={db.ayarlar.firma_adi} aracBas={onDoldur?.arac ?? ''} aracId={onDoldur?.arac_id ?? null} />}
     </div>
   );
 }
 
+type Panel = 'muadil' | 'yaninda' | 'ted' | null;
 function SonucKart({ x, tedAcik, maliyet, depolar, depoStok, teklifEkle, soruldu, teklifte }: { x: AramaSatiri; tedAcik?: boolean; maliyet: boolean; depolar: { id: string; ad: string }[]; depoStok: (u: Urun, d: string) => number;
   teklifEkle: (u: Urun, ekonomik?: boolean) => void; soruldu: (u: Urun) => void; teklifte: boolean }) {
-  const { db, mode } = useStore(); const u = x.u; const [ac, setAc] = useState(false); const [ted, setTed] = useState(!!tedAcik);
-  const yaninda = useMemo(() => birlikteSatilanlar(db).get(u.id) ?? [], [db, u.id]);
-  const muadilD = useMemo(() => muadilDetay(db)(u), [db, u]);
-  const muadil = muadilD.map((x) => x.v); const ortak = new Map(muadilD.map((x) => [x.v.id, x.ortak]));
+  const { db, mode } = useStore(); const u = x.u; const [panel, setPanel] = useState<Panel>(tedAcik ? 'ted' : null);
+  const yaninda = useMemo(() => birlikteSatilanlar(db).get(u.id) ?? [], [db.hareketler, db.urunler, u.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  const muadilD = useMemo(() => muadilDetay(db)(u), [db.urunler, db.otomarmara_veri, db.urun_kodlari, u]); // eslint-disable-line react-hooks/exhaustive-deps
+  const muadil = muadilD.map((m) => m.v); const ortak = new Map(muadilD.map((m) => [m.v.id, m.ortak]));
   const stoktaMuadil = muadil.filter((m) => m.stok > 0);
   const bk = maliyet ? birimKar(u, db.ayarlar) : null;
+  const ac = (p: Panel) => setPanel((x) => (x === p ? null : p));
+  const cip = (p: Panel, etiket: string, vurgu = false) => <button className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] ${panel === p ? 'border-marka-400 bg-marka-50 text-marka-700 dark:bg-marka-500/10' : vurgu ? 'border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-500/40 dark:text-emerald-400' : 'border-slate-200 text-slate-600 hover:border-marka-300 hover:text-marka-700 dark:border-slate-700 dark:text-slate-300'}`} onClick={() => ac(p)}>{panel === p ? <ChevronUp size={11} /> : <ChevronDown size={11} />}{etiket}</button>;
+  const depoYazi = depolar.length > 1 && u.stok > 0 ? depolar.map((d) => [depoKisa(d.ad), depoStok(u, d.id)] as const).filter(([, n]) => n > 0).map(([a, n]) => `${a} ${sayi(n)}`).join(' · ') : '';
   return (
     <div className="card p-3">
       <div className="flex items-start gap-3">
-        <button className="min-w-0 flex-1 text-left" onClick={() => detayAc({ tur: 'urun', id: u.id })}>
-          <div className="font-medium leading-snug hover:text-marka-600">{u.ad}</div>
-          <div className="mt-0.5 text-xs text-slate-500">{[u.kod, u.marka, u.kategori, u.raf && `Raf ${u.raf}`].filter(Boolean).join(' · ')}</div>
-          <div className="mt-1 flex flex-wrap gap-1">
-            <span className={`rozet ${TUR_RENK[x.tur]}`}>{ESLESME_AD[x.tur]}{x.etiket ? `: ${x.etiket}` : ''}</span>
-          </div>
-        </button>
-        <div className="shrink-0 text-right">
-          <div className="font-semibold">{para(u.satis_fiyati)}</div>
-          {bk && <div className="text-[11px] text-slate-500">alış {para(bk.alisNet)} · %{bk.marj.toFixed(0)}</div>}
-          <div className={`text-sm font-medium ${u.stok > 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-red-600'}`}>Stok {sayi(u.stok)}</div>
-          {depolar.length > 1 && <div className="text-[11px] text-slate-500">{depolar.map((d) => `${depoKisa(d.ad)} ${sayi(depoStok(u, d.id))}`).join(' · ')}</div>}
-          <div className="mt-1 flex justify-end gap-1">
-            {u.stok <= 0 && <button className="rounded border border-slate-200 px-1.5 py-0.5 text-[11px] text-slate-600 hover:border-red-300 hover:text-red-600 dark:border-slate-700 dark:text-slate-300" title="Müşteri sordu, stokta yok: kaçan satış olarak kaydet" onClick={() => soruldu(u)}>Soruldu</button>}
-            <button className={`inline-flex items-center gap-0.5 rounded border px-1.5 py-0.5 text-[11px] ${teklifte ? 'border-emerald-300 bg-emerald-50 text-emerald-700' : 'border-slate-200 text-slate-600 hover:border-marka-300 hover:text-marka-700 dark:border-slate-700 dark:text-slate-300'}`} onClick={() => teklifEkle(u)} disabled={teklifte}><Plus size={11} />{teklifte ? 'Teklifte' : 'Teklif'}</button>
+        <div className="min-w-0 flex-1">
+          <button className="text-left font-medium leading-snug hover:text-marka-600" onClick={() => detayAc({ tur: 'urun', id: u.id })}>{u.ad}</button>
+          <div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-xs text-slate-500">
+            {u.kod && <KodKopyala kod={u.kod} className="font-semibold text-slate-700 dark:text-slate-200" />}
+            {[u.marka, u.raf && `Raf ${u.raf}`].filter(Boolean).map((t) => <span key={String(t)}>· {t}</span>)}
+            {x.tur !== 'metin' && <span className={`rozet ${TUR_RENK[x.tur]}`}>{ESLESME_AD[x.tur]}{x.etiket ? `: ${x.etiket}` : ''}</span>}
           </div>
         </div>
+        <div className="shrink-0 text-right">
+          <div className="text-base font-semibold">{para(u.satis_fiyati)}</div>
+          {bk && <div className="text-[11px] text-slate-500">alış {para(bk.alisNet)} · %{bk.marj.toFixed(0)}</div>}
+        </div>
       </div>
-      {yaninda.length > 0 && <div className="mt-2 flex flex-wrap items-center gap-1 border-t border-slate-100 pt-2 text-xs dark:border-slate-800">
-        <span className="font-medium text-amber-700">Yanında sorun:</span>
-        {yaninda.slice(0, 4).map((y) => <button key={y.u.id} className="rounded-full bg-amber-50 px-2 py-0.5 text-amber-900 hover:bg-amber-100 dark:bg-amber-500/10 dark:text-amber-200" title={`Bu ürünle aynı faturada ${y.n} kez satıldı · stok ${sayi(y.u.stok)}`} onClick={() => detayAc({ tur: 'urun', id: y.u.id })}>
-          {y.u.ad.length > 34 ? y.u.ad.slice(0, 32) + '…' : y.u.ad} <span className={y.u.stok > 0 ? 'text-emerald-700' : 'text-red-500'}>({sayi(y.u.stok)})</span></button>)}
+      <div className="mt-2 flex flex-wrap items-center gap-1.5">
+        <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${u.stok > 0 ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-300' : 'bg-red-50 text-red-700 dark:bg-red-500/10 dark:text-red-400'}`}>{u.stok > 0 ? `Stok ${sayi(u.stok)}` : 'Stokta yok'}</span>
+        {depoYazi && <span className="text-[11px] text-slate-500">{depoYazi}</span>}
+        <span className="flex-1" />
+        {muadil.length > 0 && cip('muadil', `Muadil ${muadil.length}${stoktaMuadil.length ? ` · ${stoktaMuadil.length} stokta` : ''}`, u.stok <= 0 && stoktaMuadil.length > 0)}
+        {yaninda.length > 0 && cip('yaninda', `Yanında satılan ${yaninda.length}`)}
+        {maliyet && mode === 'bulut' && cip('ted', 'Tedarikçi fiyatları')}
+        {u.stok <= 0 && <button className="rounded-full border border-slate-200 px-2 py-0.5 text-[11px] text-slate-600 hover:border-red-300 hover:text-red-600 dark:border-slate-700 dark:text-slate-300" title="Müşteri sordu, stokta yok: kaçan satış olarak kaydet" onClick={() => soruldu(u)}>Soruldu</button>}
+        <button className={`inline-flex items-center gap-0.5 rounded-full border px-2 py-0.5 text-[11px] font-medium ${teklifte ? 'border-emerald-300 bg-emerald-50 text-emerald-700' : 'border-marka-300 text-marka-700 hover:bg-marka-50 dark:text-marka-400'}`} onClick={() => teklifEkle(u)} disabled={teklifte}><Plus size={11} />{teklifte ? 'Teklifte' : 'Teklif'}</button>
+      </div>
+      {panel === 'ted' && <div className="mt-2 border-t border-slate-100 pt-2 dark:border-slate-800"><TedarikciFiyatlari u={u} /></div>}
+      {panel === 'yaninda' && <div className="mt-2 flex flex-wrap items-center gap-1 border-t border-slate-100 pt-2 text-xs dark:border-slate-800">
+        <span className="text-slate-500">Aynı faturada sık satılanlar:</span>
+        {yaninda.map((y) => <button key={y.u.id} className="rounded-full bg-amber-50 px-2 py-0.5 text-amber-900 hover:bg-amber-100 dark:bg-amber-500/10 dark:text-amber-200" title={`Bu ürünle aynı faturada ${y.n} kez satıldı`} onClick={() => detayAc({ tur: 'urun', id: y.u.id })}>
+          {y.u.ad.length > 40 ? y.u.ad.slice(0, 38) + '…' : y.u.ad} <span className={y.u.stok > 0 ? 'text-emerald-700' : 'text-red-500'}>({sayi(y.u.stok)})</span></button>)}
       </div>}
-      {maliyet && mode === 'bulut' && <div className="mt-2 border-t border-slate-100 pt-2 dark:border-slate-800">
-        {ted ? <TedarikciFiyatlari u={u} /> : <button className="inline-flex items-center gap-1 text-xs font-medium text-marka-700 dark:text-marka-500" onClick={() => setTed(true)}><ChevronDown size={14} /> Tedarikçi fiyatları (5 tedarikçi, muadiller dahil)</button>}
-      </div>}
-      {muadil.length > 0 && <div className="mt-2 border-t border-slate-100 pt-2 dark:border-slate-800">
-        <button className="inline-flex items-center gap-1 text-xs font-medium text-marka-700 dark:text-marka-500" onClick={() => setAc(!ac)}>
-          {ac ? <ChevronUp size={14} /> : <ChevronDown size={14} />} Muadiller ({MUADIL_ESIK}+ ortak OEM): {muadil.length}{stoktaMuadil.length ? `, ${stoktaMuadil.length} tanesi stokta` : ', hiçbiri stokta değil'}
-        </button>
-        {ac && <div className="mt-2 space-y-1">{muadil.slice(0, 20).map((m) => (
+      {panel === 'muadil' && <div className="mt-2 space-y-1 border-t border-slate-100 pt-2 dark:border-slate-800">
+        <div className="text-[11px] text-slate-500">En az {MUADIL_ESIK} ortak OEM kodu olan ürünler, stokta olanlar önde</div>
+        {muadil.slice(0, 20).map((m) => (
           <div key={m.id} className="flex items-center gap-1">
-          <button className="flex min-w-0 flex-1 items-center justify-between gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-slate-50 dark:hover:bg-slate-800" onClick={() => detayAc({ tur: 'urun', id: m.id })}>
-            <span className="min-w-0"><span className="block truncate">{m.ad}</span><span className="block text-[11px] text-slate-500">{[m.kod, m.marka, m.raf && `Raf ${m.raf}`, `${ortak.get(m.id)} ortak OEM`].filter(Boolean).join(' · ')}</span></span>
-            <span className="shrink-0 text-right"><span className="block font-medium">{para(m.satis_fiyati)}</span>
-              <span className={`block text-[11px] ${m.stok > 0 ? 'text-emerald-700' : 'text-slate-400'}`}>stok {sayi(m.stok)}{depolar.length > 1 && m.stok > 0 ? ` (${depolar.map((d) => `${depoKisa(d.ad)} ${sayi(depoStok(m, d.id))}`).join(', ')})` : ''}</span></span>
-          </button>
-          <button className="shrink-0 rounded p-1.5 text-slate-400 hover:bg-slate-50 hover:text-marka-700 dark:hover:bg-slate-800" title={m.satis_fiyati < u.satis_fiyati ? 'Teklife ekonomik seçenek olarak ekle' : 'Teklife ekle'} onClick={() => teklifEkle(m, m.satis_fiyati < u.satis_fiyati)}><Plus size={14} /></button>
-          </div>))}</div>}
+            <button className="flex min-w-0 flex-1 items-center justify-between gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-slate-50 dark:hover:bg-slate-800" onClick={() => detayAc({ tur: 'urun', id: m.id })}>
+              <span className="min-w-0"><span className="block truncate">{m.ad}</span><span className="block text-[11px] text-slate-500">{[m.kod, m.marka, m.raf && `Raf ${m.raf}`, `${ortak.get(m.id)} ortak OEM`].filter(Boolean).join(' · ')}</span></span>
+              <span className="shrink-0 text-right"><span className="block font-medium">{para(m.satis_fiyati)}</span>
+                <span className={`block text-[11px] ${m.stok > 0 ? 'text-emerald-700' : 'text-slate-400'}`}>stok {sayi(m.stok)}{depolar.length > 1 && m.stok > 0 ? ` (${depolar.map((d) => `${depoKisa(d.ad)} ${sayi(depoStok(m, d.id))}`).join(', ')})` : ''}</span></span>
+            </button>
+            <button className="shrink-0 rounded p-1.5 text-slate-400 hover:bg-slate-50 hover:text-marka-700 dark:hover:bg-slate-800" title={m.satis_fiyati < u.satis_fiyati ? 'Teklife ekonomik seçenek olarak ekle' : 'Teklife ekle'} onClick={() => teklifEkle(m, m.satis_fiyati < u.satis_fiyati)}><Plus size={14} /></button>
+          </div>))}
       </div>}
     </div>
   );
