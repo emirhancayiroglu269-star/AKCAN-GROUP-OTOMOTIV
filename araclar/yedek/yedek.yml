@@ -48,8 +48,10 @@ jobs:
           if not m:
               raise SystemExit('::error::SUPABASE_DB_URL biçimi tanınmadı (postgresql://kullanici:sifre@sunucu:5432/postgres bekleniyor). Supabase > Connect > Session pooler adresini kopyalayıp yalnız şifreyi yazın.')
           kul, sif, host, port, db = m.groups()
-          if re.search(r'<[a-z-]+>|\[YOUR-PASSWORD\]|YOUR-PASSWORD', adres, re.I) or not sif:
-              raise SystemExit('::error::SUPABASE_DB_URL içinde yer tutucu kalmış (<region>, [YOUR-PASSWORD] gibi) ya da şifre boş.')
+          # hangi şablon parçasının kaldığını söyler (bunlar Supabase'in örnek metni; gerçek bilgi yazdırılmaz)
+          if re.search(r'YOUR-PASSWORD', adres, re.I): raise SystemExit('::error::SUPABASE_DB_URL içinde [YOUR-PASSWORD] yazısı duruyor: köşeli parantezleriyle silip yerine veritabanı şifresini yazın.')
+          if re.search(r'<[a-z-]+>', host): raise SystemExit('::error::SUPABASE_DB_URL sunucu kısmında <region> gibi bir yer tutucu duruyor: Connect ekranındaki gerçek adresi (ör. aws-0-eu-central-1.pooler.supabase.com) kopyalayın.')
+          if not sif: raise SystemExit('::error::SUPABASE_DB_URL içinde şifre boş.')
           if '%' in sif:
               try: sif = u.unquote(sif, errors='strict')
               except Exception: pass
