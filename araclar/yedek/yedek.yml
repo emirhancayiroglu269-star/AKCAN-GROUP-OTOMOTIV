@@ -28,7 +28,7 @@ jobs:
         ports: ['5432:5432']
         options: --health-cmd pg_isready --health-interval 5s --health-retries 30
     env:
-      TEST_URL: postgresql://postgres:test@localhost:5432/postgres
+      TEST_URL: postgresql://postgres:test@localhost:5432/postgres?sslmode=disable   # yerel test veritabanı (SSL yok)
     steps:
       - name: Sırları hazırla (maskeli)
         env:
