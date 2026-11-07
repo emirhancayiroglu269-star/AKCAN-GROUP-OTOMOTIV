@@ -9,6 +9,7 @@ import { DegisiklikAkisi } from '../components/DegisiklikAkisi';
 import { KullaniciPanel } from '../components/KullaniciPanel';
 import { AktarimYerImi } from '../components/AktarimYerImi';
 import { OtomarmaraDurum } from '../components/OtomarmaraDurum';
+import { GuvenlikPanel } from '../components/GuvenlikPanel';
 
 export default function AyarlarSayfa() {
   const { db, mode, calistir } = useStore();
@@ -50,6 +51,7 @@ export default function AyarlarSayfa() {
       {mode === 'bulut' && <AktarimYerImi />}
       {mode === 'bulut' && <OtomarmaraDurum />}
       <KullaniciPanel />
+      {mode === 'bulut' && <GuvenlikPanel />}
 
       <div className="card p-5">
         <h3 className="mb-3 font-semibold">Veri</h3>

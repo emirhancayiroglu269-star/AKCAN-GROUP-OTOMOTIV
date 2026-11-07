@@ -6,9 +6,12 @@ import { onbellekOku, onbellekYaz, onbellekSil } from './onbellek';
 
 /** ürünlerde BizimHesap'ın ham JSON'u (bh_ham) çok büyük ve sitede kullanılmıyor: çekilmez */
 const URUN_KOLON = 'id,kod,barkod,ad,marka,kategori,birim,alis_fiyati,satis_fiyati,kdv,stok,kritik_stok,raf,aktif,olusturma,bh_id,bh_guncelleme,bh_stok,degisim,gorsel_var';
-const ONBELLEK_ANAHTAR = 'ham'; const ONBELLEK_SURUM = 2; // 2: urunler.gorsel_var eklendi
+// 3: önbellek kullanıcıya özel (personel yönetici verisini görmesin); eski ortak 'ham' anahtarı silinir
+const ONBELLEK_ANAHTAR = 'ham3'; const ONBELLEK_SURUM = 3; const ESKI_ONBELLEK = 'ham';
+/** Personel (kasiyer / teknisyen) bu tabloları maliyetsiz görünümlerinden okur (supabase/059): alış fiyatı, alış tutarı ve cari bakiye boş gelir */
+const PERSONEL_GORUNUM = new Set(['urunler', 'hareketler', 'rapor_satirlari', 'fiyat_gecmisi', 'cariler']);
 /** çıkışta önbellek silinir (ortak bilgisayarda veri kalmasın) */
-export const onbellekTemizle = () => onbellekSil(ONBELLEK_ANAHTAR);
+export const onbellekTemizle = () => Promise.all([onbellekSil(ONBELLEK_ANAHTAR), onbellekSil(ESKI_ONBELLEK)]).then(() => undefined);
 
 const URL = (import.meta.env?.VITE_SUPABASE_URL as string | undefined) || SUPABASE_URL;
 const KEY = (import.meta.env?.VITE_SUPABASE_ANON_KEY as string | undefined) || SUPABASE_ANON_KEY;
@@ -87,6 +90,10 @@ export interface Backend {
   tedarikciFiyatAra(kodlar: string[], urunler: string[]): Promise<TedarikciFiyat[]>;
   /** Tarayıcı eklentisinin (Iron) kayıt anahtarı — yalnız yönetici */
   eklentiAnahtar(): Promise<string | null>;
+  /** işlem geçmişi (denetim kaydı): yalnız yönetici; en yeniler önce */
+  denetimOku(p: { limit?: number; tablo?: string; eposta?: string; once?: string }): Promise<DenetimKaydi[]>;
+  /** son gecelik yedekler ve geri yükleme testleri */
+  yedekKayitlari(): Promise<YedekKaydi[]>;
   /** Trendyol sunucu fonksiyonunda serbest işlem (kategori/marka arama, özellikler, eşleşme kaydı, ürün yükleme) */
   tyIslem<T = Record<string, unknown>>(govde: Record<string, unknown>): Promise<T>;
   tyEslemeOku(): Promise<{ kategori: TyKategoriEsleme[]; marka: TyMarkaEsleme[]; yukleme: TyYukleme[] }>;
@@ -122,6 +129,8 @@ export interface FiyatTeklifi { id: number; zaman: string; musteri: string | nul
   /** müşteri linki (#t/kod) ve müşterinin yanıtı */
   kod?: string | null; gecerlilik?: string | null; musteri_yanit?: 'onay' | 'red' | 'revizyon' | null; musteri_not?: string | null; yanit_zaman?: string | null;
   goruntulenme?: number; ilk_goruntu?: string | null; son_goruntu?: string | null }
+export interface DenetimKaydi { id: number; zaman: string; eposta: string | null; rol: string | null; tablo: string; islem: 'ekleme' | 'degisiklik' | 'silme'; kayit: string | null; eski: Record<string, unknown> | null; yeni: Record<string, unknown> | null }
+export interface YedekKaydi { id: number; zaman: string; durum: 'basarili' | 'hata'; boyut_mb: number | null; tablo_sayisi: number | null; satir_sayisi: number | null; geri_yukleme: 'basarili' | 'fark_var' | 'hata' | null; fark: Record<string, unknown> | null; aciklama: string | null }
 export interface Sorulan { id: number; zaman: string; metin: string; urun_id: ID | null; kullanici: string | null; adet: number }
 export interface SayimSatir { depo_id: ID; urun_id: ID; sayilan: number; sistem: number | null; kullanici: string | null; zaman?: string }
 
@@ -181,7 +190,7 @@ function supabaseBackend(sb: SupabaseClient): Backend {
 
   // ---------- artımlı yükleme ----------
   type Ham = Record<string, unknown[]>;
-  interface HamOnbellek { surum: number; zaman: number; tablolar: Ham; son: Record<string, string>; sonSil: string | null }
+  interface HamOnbellek { surum: number; zaman: number; tablolar: Ham; son: Record<string, string>; sonSil: string | null; eposta?: string; personel?: boolean }
   interface Izlenen { t: string; k: string[]; order: string; asc: boolean; sinir: number; gecersiz?: boolean }
   /** her yüklemede tamamen çekilen küçük tablolar */
   const KUCUK: [string, string, boolean, number, [string, boolean]?][] = [
@@ -196,6 +205,14 @@ function supabaseBackend(sb: SupabaseClient): Backend {
     { t: 'masraflar', k: ['id'], order: 'tarih', asc: false, sinir: 100000, gecersiz: true }, { t: 'kasa_akisi', k: ['id'], order: 'tarih', asc: false, sinir: 200000, gecersiz: true },
     { t: 'otomarmara_veri', k: ['urun_id'], order: 'urun_id', asc: true, sinir: 100000 },
   ];
+  // oturumun rolü: yükleme başında sunucudan sorulur; personel maliyetsiz görünümleri okur
+  let personel = false; let gorunumVar = true;
+  const kaynak = (t: string) => (personel && gorunumVar && PERSONEL_GORUNUM.has(t) ? t + '_p' : t);
+  async function oturum() {
+    const [{ data: s }, r] = await Promise.all([sb.auth.getSession(), sb.rpc('benim_rolum')]);
+    const rol = r.error ? null : (r.data as string | null);
+    return { eposta: (s.session?.user.email ?? '').toLowerCase(), personel: rol !== 'yonetici' };
+  }
   const anahtar = (z: Izlenen, r: unknown) => z.k.map((k) => String((r as Record<string, unknown>)[k])).join('|');
   /** 2 dk geri (o anda süren yazma işlemleri için örtüşme; aynı satırın tekrar gelmesi zararsız, kaçan olursa 24 saatlik tam yükleme düzeltir) */
   // (veritabanı zamanı mikrosaniyeli gelir: iPhone tarayıcısı için milisaniyeye kısaltılır)
@@ -204,7 +221,7 @@ function supabaseBackend(sb: SupabaseClient): Backend {
     if (!son) return hepsi(z.t, z.order, z.asc, z.sinir, z.gecersiz ? ['gecersiz', false] : undefined);
     const kolon = z.t === 'urunler' ? URUN_KOLON + ',etiket' : '*'; const l: unknown[] = [];
     for (let i = 0; i < z.sinir; i += 1000) {
-      let q = sb.from(z.t).select(kolon).gt('degisim', geri(son)).order('degisim', { ascending: true });
+      let q = sb.from(kaynak(z.t)).select(kolon).gt('degisim', geri(son)).order('degisim', { ascending: true });
       for (const k of z.k) q = q.order(k, { ascending: true });
       const d = ok(await q.range(i, i + 999)) as unknown[]; l.push(...d); if (d.length < 1000) break;
     }
@@ -218,7 +235,7 @@ function supabaseBackend(sb: SupabaseClient): Backend {
     const URUN = URUN_KOLON;
     // sayfalama kararlı olsun: sıralama sütunu tekrarlı olabildiğinden (ör. aynı anda eklenen ürünler) benzersiz ikinci sıralama eklenir; yoksa sayfalar arasında kayıt tekrarlanır ya da atlanır
     const ikinci = t === 'urun_depo_stok' ? 'depo_id' : t === 'hesap_bakiyeleri' || t === 'otomarmara_veri' ? null : 'id';
-    const sor = (kolon: string, i: number) => { let q = sb.from(t).select(kolon); if (filtre) q = q.eq(filtre[0], filtre[1]); if (degil) q = q.neq(degil[0], degil[1]); q = q.order(order, { ascending: asc }); if (ikinci && ikinci !== order) q = q.order(ikinci, { ascending: true }); return q.range(i, i + sayfa - 1); };
+    const sor = (kolon: string, i: number) => { let q = sb.from(kaynak(t)).select(kolon); if (filtre) q = q.eq(filtre[0], filtre[1]); if (degil) q = q.neq(degil[0], degil[1]); q = q.order(order, { ascending: asc }); if (ikinci && ikinci !== order) q = q.order(ikinci, { ascending: true }); return q.range(i, i + sayfa - 1); };
     // etiket (OEM/muadil kodları): bh_ham içindeki tag alanının veritabanında hazır tutulan kopyası (ham JSON her seferinde açılmaz); okunamazsa onsuz devam edilir
     const sayfaAl = async (i: number) => { let r = await sor(t === 'urunler' ? URUN + ',etiket' : '*', i); if (r.error && t === 'urunler') r = await sor(URUN, i); return ok(r) as unknown[]; };
     for (let i = 0; i < sinir; i += sayfa * PARALEL) {
@@ -233,10 +250,14 @@ function supabaseBackend(sb: SupabaseClient): Backend {
 
   return {
     async load() {
+      const o = await oturum(); personel = o.personel;
+      onbellekSil(ESKI_ONBELLEK).catch(() => undefined);
+      // görünümler henüz kurulmadıysa (059 uygulanmadan önce) personel eskisi gibi tablolardan okur
+      if (personel && gorunumVar) { const p = await sb.from('urunler_p').select('id').limit(1); if (p.error) gorunumVar = false; }
       // Önbellek varsa yalnız değişen satırlar çekilir; 3 günde bir (ya da önbellek yoksa) her şey baştan
       const once = await onbellekOku<HamOnbellek>(ONBELLEK_ANAHTAR);
-      // tam yükleme 3 günde bir (silinen günlüğü 7 gün tutulur)
-      const gecerli = !!once && once.surum === ONBELLEK_SURUM && Date.now() - once.zaman < 72 * 3600e3 && !!once.son;
+      // tam yükleme 3 günde bir (silinen günlüğü 7 gün tutulur); önbellek başka kullanıcıya ya da başka role aitse kullanılmaz
+      const gecerli = !!once && once.surum === ONBELLEK_SURUM && Date.now() - once.zaman < 72 * 3600e3 && !!once.son && once.eposta === o.eposta && once.personel === personel;
       const ham: Ham = {}; const sonlar: Record<string, string> = {}; let sonSil = gecerli ? once!.sonSil : null; let degisti = !gecerli;
       if (!gecerli) {
         // silinen günlüğünün şu anki ucu: bundan sonraki silmeler sonraki yüklemelerde uygulanır
@@ -273,12 +294,14 @@ function supabaseBackend(sb: SupabaseClient): Backend {
       }
       ham.bh_durum = [ok(bd)]; ham.ayarlar = [ok(a)];
       // önbelleğe yaz (beklemeden; yalnız bir şey değiştiyse — her seferinde ≈20 MB yazmak telefonu yorar)
-      if (degisti) onbellekYaz(ONBELLEK_ANAHTAR, { surum: ONBELLEK_SURUM, zaman: gecerli ? once!.zaman : Date.now(), tablolar: ham, son: sonlar, sonSil } satisfies HamOnbellek).catch(() => undefined);
+      if (degisti) onbellekYaz(ONBELLEK_ANAHTAR, { surum: ONBELLEK_SURUM, zaman: gecerli ? once!.zaman : Date.now(), tablolar: ham, son: sonlar, sonSil, eposta: o.eposta, personel } satisfies HamOnbellek).catch(() => undefined);
       return hamdanDB(ham);
     },
     async onbellektenDB() {
-      const o = await onbellekOku<HamOnbellek>(ONBELLEK_ANAHTAR);
-      try { return o && o.surum === ONBELLEK_SURUM && o.tablolar?.urunler ? hamdanDB(o.tablolar) : null; } catch { return null; }
+      // önbellek yalnız aynı kullanıcıya ve şu anki rolüne aitse gösterilir (aynı tarayıcıda yönetici verisi personele görünmesin)
+      const [c, ot] = await Promise.all([onbellekOku<HamOnbellek>(ONBELLEK_ANAHTAR), oturum().catch(() => null)]);
+      if (!c || !ot || c.eposta !== ot.eposta || c.personel !== ot.personel) return null;
+      try { return c.surum === ONBELLEK_SURUM && c.tablolar?.urunler ? hamdanDB(c.tablolar) : null; } catch { return null; }
     },
     async insert(t, row) { ok(await sb.from(t).insert(row)); },
     async update(t, id, patch) { ok(await sb.from(t).update(patch as never).eq('id', id)); },
@@ -329,6 +352,17 @@ function supabaseBackend(sb: SupabaseClient): Backend {
       return { urunler: urunler.map((x) => ({ ...x, satis_fiyati: n(x.satis_fiyati), liste_fiyati: n(x.liste_fiyati), stok: n(x.stok), kdv: n(x.kdv), komisyon: n(x.komisyon) })), siparisler: siparisler.map((x) => ({ ...x, toplam: n(x.toplam), indirim: n(x.indirim) })), durum };
     },
     async tyGonderimOku(tur = 'stok') { return (ok(await sb.from('ty_gonderim').select('id,zaman,barkod,baslik,eski,yeni,durum,hata,kaynak,fiyat_eski,fiyat_yeni').eq('tur', tur).order('id', { ascending: false }).limit(100)) as TyGonderim[]).map((x) => ({ ...x, eski: x.eski === null ? null : Number(x.eski), yeni: Number(x.yeni), fiyat_eski: x.fiyat_eski == null ? null : Number(x.fiyat_eski), fiyat_yeni: x.fiyat_yeni == null ? null : Number(x.fiyat_yeni) })); },
+    async denetimOku({ limit = 200, tablo, eposta, once }) {
+      let q = sb.from('denetim').select('id,zaman,eposta,rol,tablo,islem,kayit,eski,yeni').order('id', { ascending: false }).limit(limit);
+      if (tablo) q = q.eq('tablo', tablo); if (eposta) q = q.eq('eposta', eposta); if (once) q = q.lt('zaman', once);
+      const r = await q; if (r.error) { if (/denetim/.test(r.error.message) && /exist|find/.test(r.error.message)) return []; throw new Error(r.error.message); }
+      return r.data as DenetimKaydi[];
+    },
+    async yedekKayitlari() {
+      const r = await sb.from('yedek_kayit').select('*').order('id', { ascending: false }).limit(30);
+      if (r.error) { if (/yedek_kayit/.test(r.error.message) && /exist|find/.test(r.error.message)) return []; throw new Error(r.error.message); }
+      return (r.data as YedekKaydi[]).map((x) => ({ ...x, boyut_mb: x.boyut_mb === null ? null : Number(x.boyut_mb), satir_sayisi: x.satir_sayisi === null ? null : Number(x.satir_sayisi) }));
+    },
     async eklentiAnahtar() { const d = ok(await sb.from('eklenti_anahtar').select('anahtar').eq('id', 1).maybeSingle()) as { anahtar: string } | null; return d?.anahtar ?? null; },
     async asistan(govde) {
       const { data, error } = await sb.functions.invoke('asistan', { body: govde });
@@ -632,6 +666,8 @@ function demoBackend(): Backend {
     async aracKaydet(r) { const x = { ...r, id: r.id ?? demoArac.length + 1, olusturma: new Date().toISOString(), son_islem: new Date().toISOString() } as SaseArac; demoArac = [x, ...demoArac.filter((a) => a.id !== x.id)]; return x; },
     async tedarikciFiyatAra() { return []; },
     async eklentiAnahtar() { return null; },
+    async denetimOku() { return []; },
+    async yedekKayitlari() { return []; },
     async tyIslem() { throw new Error('Demo modunda Trendyol yok'); },
     async tyEslemeOku() { return { kategori: [], marka: [], yukleme: [] }; },
     async tyOtoOzet() { return { aday: 0, duzenli: 0, bugun: 0, eslesmemis: [], atlanan: [] }; },

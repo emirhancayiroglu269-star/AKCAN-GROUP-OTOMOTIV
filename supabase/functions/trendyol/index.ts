@@ -489,7 +489,12 @@ Deno.serve(async (req) => {
   const zh = req.headers.get('x-zamanlayici');
   let zamanlayici = jwt === SERVIS;
   if (!zamanlayici && zh) { const { data: g } = await db.from('ty_gizli').select('anahtar').eq('id', 1).maybeSingle(); zamanlayici = !!g?.anahtar && g.anahtar === zh; }
-  if (!zamanlayici) { const { data: k } = await db.auth.getUser(jwt); if (!k?.user) return yanit({ ok: false, hata: 'Giriş gerekli' }, 401); }
+  if (!zamanlayici) {
+    const { data: k } = await db.auth.getUser(jwt); if (!k?.user) return yanit({ ok: false, hata: 'Giriş gerekli' }, 401);
+    // Trendyol fiyat/stok gönderir, ilan yükler ve maliyet gösterir: yalnız aktif yönetici (kullanıcı listesi boşsa kimse)
+    const { data: ku } = await db.from('kullanicilar').select('rol,aktif').ilike('eposta', k.user.email ?? '-').maybeSingle();
+    if (!ku?.aktif || ku.rol !== 'yonetici') return yanit({ ok: false, hata: 'Bu işlem için yönetici yetkisi gerekli' }, 403);
+  }
   if (!SATICI || !KEY || !SECRET) {
     const eksik = [!SATICI && 'TRENDYOL_SATICI_ID', !KEY && 'TRENDYOL_API_KEY', !SECRET && 'TRENDYOL_API_SECRET'].filter(Boolean).join(', ');
     await db.from('ty_durum').update({ son_hata: `Trendyol bilgileri eksik: ${eksik}` }).eq('id', 1);
