@@ -11,7 +11,6 @@
 --    ürün, kod, depo, ayar, hareket ve cari yalnız yönetici (BizimHesap eşitlemesi service_role ile çalışır, etkilenmez).
 -- 4) anon (giriş yapmamış) tablolara doğrudan erişemez; TRUNCATE / TRIGGER / REFERENCES izinleri kaldırılır.
 -- 5) denetim: kullanıcıların yaptığı her ekleme / değişiklik / silme, kim-ne zaman-önce-sonra ile kaydedilir (yalnız eklenir, silinemez).
--- 6) yedek_kayit: gecelik yedek ve geri yükleme testinin sonucu.
 -- =====================================================================
 
 -- ---------- 1) rol ----------
@@ -159,39 +158,4 @@ begin
   end loop;
 end $$;
 
--- ---------- 6) yedek kaydı ----------
-create table if not exists public.yedek_kayit (
-  id bigint generated always as identity primary key,
-  zaman timestamptz not null default now(),
-  durum text not null,                 -- basarili | hata
-  boyut_mb numeric,
-  tablo_sayisi int,
-  satir_sayisi bigint,
-  geri_yukleme text,                   -- basarili | fark_var | hata
-  fark jsonb,                          -- geri yüklenen ile canlı arasında satır sayısı farkı olan tablolar
-  aciklama text
-);
-alter table public.yedek_kayit enable row level security;
-drop policy if exists okuma on public.yedek_kayit;
-create policy okuma on public.yedek_kayit for select to authenticated using ((select public.benim_rolum()) = 'yonetici');
-revoke all on public.yedek_kayit from public, anon, authenticated;
-grant select on public.yedek_kayit to authenticated;
-grant select, insert on public.yedek_kayit to service_role;
-
--- 36 saattir başarılı yedek yoksa sabah önerisine yaz (asistan_oneri, 2 günde bir)
-create or replace function public.yedek_kontrol()
-returns void language plpgsql security definer set search_path = public as $$
-declare son timestamptz;
-begin
-  select max(zaman) into son from yedek_kayit where durum = 'basarili' and geri_yukleme = 'basarili';
-  if (son is null or son < now() - interval '36 hours')
-     and not exists (select 1 from asistan_oneri where kaynak = 'yedek' and zaman > now() - interval '2 days') then
-    insert into asistan_oneri (kaynak, baslik, aciklama, oncelik)
-    values ('yedek', 'Veritabanı yedeği alınamadı',
-      coalesce('Son başarılı yedek: ' || to_char(son at time zone 'Europe/Istanbul', 'DD.MM.YYYY HH24:MI') || '. ', 'Henüz başarılı yedek yok. ')
-      || 'GitHub > Actions > "Veritabanı yedeği" işinin son çalışmasına bakın; SUPABASE_DB_URL ve YEDEK_SIFRE sırları girilmiş olmalı.', 1);
-  end if;
-end $$;
-revoke all on function public.yedek_kontrol() from public, anon, authenticated;
-select cron.unschedule('yedek-kontrol') where exists (select 1 from cron.job where jobname = 'yedek-kontrol');
-select cron.schedule('yedek-kontrol', '10 5 * * *', 'select public.yedek_kontrol()');
+-- (yedek kaydı tablosu 060_yedek_kayit.sql'e taşındı; 36 saatlik yedek kontrolü 059 ile birlikte onaylanınca eklenecek)

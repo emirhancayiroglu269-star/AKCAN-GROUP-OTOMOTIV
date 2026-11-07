@@ -1,12 +1,14 @@
-# Veritabanı yedeği — her gece 03:30 (Türkiye). GitHub'da varsayılan dalda (.github/workflows/yedek.yml) durmalıdır.
-# Gerekli sırlar (Settings > Secrets and variables > Actions):
+# AKCAN veritabanı yedeği — her gece 03:30 (Türkiye).
+# Bu dosya AYRI ve GİZLİ (private) yedek deposunda .github/workflows/yedek.yml olarak durur (kaynağı: AKCAN deposu araclar/yedek/yedek.yml).
+# Gerekli sırlar (yedek deposu > Settings > Secrets and variables > Actions):
 #   SUPABASE_DB_URL : Supabase > Connect > "Session pooler" bağlantı adresi (şifre dahil)
 #   YEDEK_SIFRE     : yedek dosyalarını şifreleyen parola (en az 20 karakter; kaybolursa yedekler açılamaz)
-# Ne yapar: 1) public şemasının tamamını + giriş hesaplarını + zamanlanmış görevleri alır
-#           2) boş bir PostgreSQL 17'ye geri yükler ve her tablonun satır sayısını canlıyla karşılaştırır
-#           3) dosyayı AES-256 ile şifreleyip 30 gün saklanan "artifact" olarak yükler
-#           4) sonucu canlı veritabanındaki yedek_kayit tablosuna yazar (site: Ayarlar > Yedekler)
-# Canlı veritabanına yalnız okuma yapar; tek yazdığı yedek_kayit'e bir satırdır.
+# Güvenlik: sırlar yalnız ortam değişkeni / dosya tanıtıcısıyla kullanılır; bağlantı adresi parçalanıp her parçası
+#           loglarda maskelenir; hiçbir adım sırrı ekrana yazmaz. Canlı veritabanına yalnız okur; tek yazdığı yedek_kayit'e bir satırdır.
+# Adımlar: 1) yedek  2) AES-256 ile şifrele, SHA-256 özetini al  3) şifreyi çözüp özeti ve yedeğin içindekiler listesini doğrula
+#          4) ŞİFRESİ ÇÖZÜLEN dosyayı boş PostgreSQL 17'ye geri yükle, her tablonun satır sayısını canlıyla karşılaştır
+#          5) şifreli dosyayı 14 gün sakla  6) sonucu AKCAN'a yaz (Ayarlar > Yedekler). Herhangi bir adım hata verirse iş kırmızı biter
+#             ve GitHub hesabınıza "Run failed" e-postası gönderir.
 name: Veritabanı yedeği
 on:
   schedule: [{ cron: '30 0 * * *' }]
@@ -16,7 +18,7 @@ concurrency: { group: yedek, cancel-in-progress: false }
 jobs:
   yedek:
     runs-on: ubuntu-24.04
-    timeout-minutes: 40
+    timeout-minutes: 45
     services:
       pg:
         image: postgres:17
@@ -24,53 +26,80 @@ jobs:
         ports: ['5432:5432']
         options: --health-cmd pg_isready --health-interval 5s --health-retries 30
     env:
-      DB_URL: ${{ secrets.SUPABASE_DB_URL }}
-      SIFRE: ${{ secrets.YEDEK_SIFRE }}
       TEST_URL: postgresql://postgres:test@localhost:5432/postgres
     steps:
-      - name: Sırları kontrol et
-        id: sir
+      - name: Sırları hazırla (maskeli)
+        env:
+          DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          SIFRE: ${{ secrets.YEDEK_SIFRE }}
         run: |
-          # sırlar girilmeden iş hata vermez, yalnız uyarı yazıp atlar (her gece hata e-postası gelmesin)
-          if [ -z "$DB_URL" ] || [ -z "$SIFRE" ]; then echo "::warning::SUPABASE_DB_URL ve YEDEK_SIFRE sırları girilmemiş; yedek atlandı"; echo "var=0" >> "$GITHUB_OUTPUT"; exit 0; fi
+          set +x
+          if [ -z "$DB_URL" ] || [ -z "$SIFRE" ]; then echo "::error::SUPABASE_DB_URL ve YEDEK_SIFRE sırları girilmemiş"; exit 1; fi
           if [ ${#SIFRE} -lt 20 ]; then echo "::error::YEDEK_SIFRE en az 20 karakter olmalı"; exit 1; fi
-          echo "var=1" >> "$GITHUB_OUTPUT"
+          # bağlantı adresini libpq ortam değişkenlerine böl; her parçayı loglarda maskele (adres hiçbir komutta açık geçmez)
+          python3 - <<'PY'
+          import os, urllib.parse as u
+          p = u.urlparse(os.environ['DB_URL'])
+          v = {'PGHOST': p.hostname or '', 'PGPORT': str(p.port or 5432), 'PGUSER': u.unquote(p.username or ''),
+               'PGPASSWORD': u.unquote(p.password or ''), 'PGDATABASE': (p.path or '/postgres').lstrip('/') or 'postgres'}
+          if not all(v[k] for k in ('PGHOST', 'PGUSER', 'PGPASSWORD')): raise SystemExit('::error::SUPABASE_DB_URL biçimi hatalı (postgresql://kullanici:sifre@sunucu:5432/postgres)')
+          for k in ('PGHOST', 'PGUSER', 'PGPASSWORD'): print('::add-mask::' + v[k])
+          with open(os.environ['GITHUB_ENV'], 'a') as f:
+              for k, x in v.items(): f.write(f'{k}={x}\n')
+              f.write('PGSSLMODE=require\nPGCONNECT_TIMEOUT=30\n')
+          PY
+          # şifreleme parolası yalnız iş klasörü dışında, yalnız bu kullanıcının okuyabildiği bir dosyada
+          umask 077; printf '%s' "$SIFRE" > "$RUNNER_TEMP/yedek_sifre"
+          echo "SIFRE_DOSYA=$RUNNER_TEMP/yedek_sifre" >> "$GITHUB_ENV"
       - name: PostgreSQL 17 istemcisi
-        if: steps.sir.outputs.var == '1'
         run: |
           sudo install -d /usr/share/postgresql-common/pgdg
           sudo curl -fsSo /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc https://www.postgresql.org/media/keys/ACCC4CF8.asc
           echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt noble-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list >/dev/null
           sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client-17 >/dev/null
           echo "/usr/lib/postgresql/17/bin" >> "$GITHUB_PATH"
-      - name: Satır sayıları (önce)
-        if: steps.sir.outputs.var == '1'
+      - name: Satır sayıları (yedekten önce)
         run: |
-          psql "$DB_URL" -v ON_ERROR_STOP=1 -At -F $'\t' <<'SQL' > once.tsv
+          psql -v ON_ERROR_STOP=1 -At -F $'\t' > once.tsv <<'SQL'
           select format('select %L, count(*) from public.%I', c.relname, c.relname) from pg_class c join pg_namespace n on n.oid = c.relnamespace where n.nspname = 'public' and c.relkind = 'r' order by 1 \gexec
           SQL
-          wc -l once.tsv
+          echo "canlı tablo sayısı: $(wc -l < once.tsv)"
       - name: Yedek al
-        if: steps.sir.outputs.var == '1'
         run: |
           mkdir -p yedek
-          pg_dump "$DB_URL" -Fc -Z 9 --no-owner --no-privileges -n public -f yedek/public.dump
-          pg_dump "$DB_URL" --data-only --no-owner -t auth.users -t auth.identities -f yedek/auth_hesaplar.sql
-          psql "$DB_URL" -At -c "select jobname, schedule, command from cron.job order by 1" > yedek/cron_gorevleri.tsv
+          pg_dump -Fc -Z 9 --no-owner --no-privileges -n public -f yedek/public.dump
+          pg_dump --data-only --no-owner -t auth.users -t auth.identities -f yedek/auth_hesaplar.sql
+          psql -v ON_ERROR_STOP=1 -At -c "select jobname, schedule, command from cron.job order by 1" > yedek/cron_gorevleri.tsv
           cp once.tsv yedek/satir_sayilari.tsv
+          (cd yedek && sha256sum public.dump auth_hesaplar.sql cron_gorevleri.tsv satir_sayilari.tsv > ICERIK.sha256)
+          pg_restore -l yedek/public.dump > /dev/null   # yedeğin içindekiler listesi okunabiliyor mu
           ls -la yedek
-      - name: Satır sayıları (sonra)
-        if: steps.sir.outputs.var == '1'
+      - name: Satır sayıları (yedekten sonra)
         run: |
-          psql "$DB_URL" -v ON_ERROR_STOP=1 -At -F $'\t' <<'SQL' > sonra.tsv
+          psql -v ON_ERROR_STOP=1 -At -F $'\t' > sonra.tsv <<'SQL'
           select format('select %L, count(*) from public.%I', c.relname, c.relname) from pg_class c join pg_namespace n on n.oid = c.relnamespace where n.nspname = 'public' and c.relkind = 'r' order by 1 \gexec
           SQL
-      - name: Boş veritabanına geri yükle ve karşılaştır
+      - name: Şifrele ve bütünlüğü doğrula
+        run: |
+          T=$(date -u +%Y%m%d-%H%M); DOSYA="akcan-yedek-$T.tar.gz.gpg"
+          tar -cf - yedek | gzip -1 | gpg --batch --yes --quiet --pinentry-mode loopback --passphrase-file "$SIFRE_DOSYA" --symmetric --cipher-algo AES256 -o "$DOSYA"
+          sha256sum "$DOSYA" > "$DOSYA.sha256"
+          # şifreli mi: dosya OpenPGP şifreli paket olmalı, düz yedek imzası (PGDMP) içermemeli
+          gpg --list-packets --batch --pinentry-mode loopback --passphrase-file "$SIFRE_DOSYA" "$DOSYA" 2>/dev/null | grep -q 'symkey enc packet' || { echo "::error::dosya şifreli görünmüyor"; exit 1; }
+          if grep -a -q PGDMP "$DOSYA"; then echo "::error::şifreli dosyada düz yedek imzası bulundu"; exit 1; fi
+          # şifreyi çöz, açılan dosyaların özetini yedek anındaki özetle karşılaştır
+          rm -rf dogrula && mkdir dogrula
+          gpg --batch --quiet --pinentry-mode loopback --passphrase-file "$SIFRE_DOSYA" -d "$DOSYA" | tar -xzf - -C dogrula
+          (cd dogrula/yedek && sha256sum -c ICERIK.sha256)
+          echo "DOSYA=$DOSYA" >> "$GITHUB_ENV"
+          echo "OZET=$(cut -d' ' -f1 "$DOSYA.sha256")" >> "$GITHUB_ENV"
+          echo "BOYUT=$(python3 -c "import os;print(round(os.path.getsize('$DOSYA')/1048576,1))")" >> "$GITHUB_ENV"
+          ls -la "$DOSYA"
+      - name: Şifresi çözülen yedeği boş veritabanına geri yükle ve karşılaştır
         id: test
-        if: steps.sir.outputs.var == '1'
         run: |
           # Supabase'e özgü roller, auth fonksiyonları ve eklentiler (geri yüklenen tanımlar bunlara başvurur)
-          psql "$TEST_URL" -v ON_ERROR_STOP=1 <<'SQL'
+          psql "$TEST_URL" -v ON_ERROR_STOP=1 -q <<'SQL'
           create role anon nologin; create role authenticated nologin; create role service_role nologin bypassrls;
           create schema auth; create schema extensions; create schema cron; create schema net;
           create function auth.jwt() returns jsonb language sql stable as $$ select '{}'::jsonb $$;
@@ -80,17 +109,16 @@ jobs:
           create extension pgcrypto schema extensions; create extension "uuid-ossp" schema extensions;
           SQL
           # eklenti, yayın (realtime) ve public şemasının kendisi boş veritabanında zaten var ya da gereksiz: listeden çıkarılır
-          pg_restore -l yedek/public.dump | grep -v -E ' EXTENSION | PUBLICATION |COMMENT - EXTENSION| SCHEMA - public |COMMENT - SCHEMA public' > liste.txt
+          pg_restore -l dogrula/yedek/public.dump | grep -v -E ' EXTENSION | PUBLICATION |COMMENT - EXTENSION| SCHEMA - public |COMMENT - SCHEMA public' > liste.txt
           set +e
-          pg_restore -d "$TEST_URL" --no-owner --no-privileges -L liste.txt yedek/public.dump 2> restore_hata.txt
-          RC=$?
+          pg_restore -d "$TEST_URL" --no-owner --no-privileges -L liste.txt dogrula/yedek/public.dump 2> restore_hata.txt
           set -e
           HATA=$(grep -c 'ERROR' restore_hata.txt || true)
-          echo "pg_restore çıkış kodu $RC, hata $HATA"; head -c 3000 restore_hata.txt
-          psql "$TEST_URL" -v ON_ERROR_STOP=1 -At -F $'\t' <<'SQL' > geri.tsv
+          echo "geri yükleme hata sayısı: $HATA"; [ "$HATA" = "0" ] || head -c 2000 restore_hata.txt
+          psql "$TEST_URL" -v ON_ERROR_STOP=1 -At -F $'\t' > geri.tsv <<'SQL'
           select format('select %L, count(*) from public.%I', c.relname, c.relname) from pg_class c join pg_namespace n on n.oid = c.relnamespace where n.nspname = 'public' and c.relkind = 'r' order by 1 \gexec
           SQL
-          # her tablo: geri yüklenen satır sayısı, yedekten önceki ve sonraki sayının arasında olmalı (eşitleme o sırada yazıyor olabilir)
+          # her tablo: geri yüklenen satır sayısı, yedekten önceki ve sonraki canlı sayının arasında olmalı (eşitleme o sırada yazıyor olabilir)
           python3 - <<'PY' > sonuc.json
           import json
           def oku(f): return {a: int(b) for a, b in (l.rstrip('\n').split('\t') for l in open(f) if '\t' in l)}
@@ -102,36 +130,42 @@ jobs:
               elif not lo <= g[t] <= hi: fark[t] = f'{g[t]} (canlı {lo}-{hi})'
           print(json.dumps({'tablo': len(g), 'satir': sum(g.values()), 'fark': fark}))
           PY
-          cat sonuc.json
+          python3 -c "import json;s=json.load(open('sonuc.json'));print('geri yüklenen tablo:',s['tablo'],'satır:',s['satir'],'farklı tablo:',len(s['fark']))"
           echo "hata=$HATA" >> "$GITHUB_OUTPUT"
-      - name: Şifrele
-        if: steps.sir.outputs.var == '1'
-        run: |
-          T=$(date -u +%Y%m%d-%H%M)
-          tar -cf - yedek | gzip -1 | gpg --batch --yes --pinentry-mode loopback --passphrase-fd 3 --symmetric --cipher-algo AES256 -o "akcan-yedek-$T.tar.gz.gpg" 3<<<"$SIFRE"
-          ls -la akcan-yedek-*.gpg
-          echo "DOSYA=akcan-yedek-$T.tar.gz.gpg" >> "$GITHUB_ENV"
+          python3 -c "import json,sys;s=json.load(open('sonuc.json'));sys.exit(1 if s['fark'] else 0)" || { echo "::error::satır sayısı canlıdan farklı tablolar var"; exit 1; }
+          [ "$HATA" = "0" ] || { echo "::error::geri yüklemede hata"; exit 1; }
       - uses: actions/upload-artifact@v4
-        if: steps.sir.outputs.var == '1'
         with:
           name: ${{ env.DOSYA }}
-          path: ${{ env.DOSYA }}
-          retention-days: 30
+          path: |
+            ${{ env.DOSYA }}
+            ${{ env.DOSYA }}.sha256
+          retention-days: 14
           compression-level: 0
-      - name: Sonucu kaydet
-        if: always() && steps.sir.outputs.var == '1'
+          if-no-files-found: error
+      - name: Sonucu AKCAN'a yaz
+        if: always()
+        env:
+          IS: ${{ job.status }}
+          RUN: ${{ github.run_id }}
+          HATA: ${{ steps.test.outputs.hata }}
         run: |
-          MB=$( [ -f "$DOSYA" ] && python3 -c "import os;print(round(os.path.getsize('$DOSYA')/1048576,1))" || echo null )
-          python3 - "$MB" "${{ job.status }}" "${{ steps.test.outputs.hata }}" <<'PY' > kayit.sql
-          import json, sys, os
-          mb, durum, hata = sys.argv[1], sys.argv[2], sys.argv[3] or '0'
-          s = json.load(open('sonuc.json')) if os.path.exists('sonuc.json') else {}
-          hata_metni = open('restore_hata.txt').read()[:800] if os.path.exists('restore_hata.txt') else ''
-          gy = 'hata' if not s or hata != '0' else ('fark_var' if s.get('fark') else 'basarili')
-          q = lambda v: 'null' if v in (None, '', 'null') else "'" + str(v).replace("'", "''") + "'"
-          aciklama = ('pg_restore hatası: ' + hata_metni) if hata != '0' else ('GitHub Actions ' + os.environ.get('GITHUB_RUN_ID', ''))
-          print(f"insert into public.yedek_kayit (durum, boyut_mb, tablo_sayisi, satir_sayisi, geri_yukleme, fark, aciklama) values ("
-                f"{q('basarili' if durum == 'success' and mb != 'null' else 'hata')}, {mb}, {s.get('tablo', 'null')}, {s.get('satir', 'null')}, {q(gy)}, "
+          python3 - > kayit.sql <<'PY'
+          import json, os
+          try: s = json.load(open('sonuc.json'))
+          except Exception: s = {}
+          hata = os.environ.get('HATA') or ''
+          ozet, boyut = os.environ.get('OZET'), os.environ.get('BOYUT')
+          if not s or hata not in ('', '0'): gy = 'hata'
+          else: gy = 'fark_var' if s.get('fark') else 'basarili'
+          basarili = os.environ.get('IS') == 'success' and gy == 'basarili' and bool(ozet)
+          q = lambda v: 'null' if v in (None, '') else "'" + str(v).replace("'", "''") + "'"
+          aciklama = f"GitHub Actions çalışması {os.environ.get('RUN', '')}" + ('' if basarili else ' — başarısız; ayrıntı GitHub işinde')
+          print("insert into public.yedek_kayit (durum, boyut_mb, sha256, sifreli, tablo_sayisi, satir_sayisi, geri_yukleme, fark, aciklama) values ("
+                f"{q('basarili' if basarili else 'hata')}, {boyut or 'null'}, {q(ozet)}, {'true' if ozet else 'null'}, {s.get('tablo', 'null')}, {s.get('satir', 'null')}, {q(gy)}, "
                 f"{q(json.dumps(s['fark'], ensure_ascii=False)) if s.get('fark') else 'null'}, {q(aciklama)});")
           PY
-          psql "$DB_URL" -v ON_ERROR_STOP=1 -f kayit.sql || echo "::warning::yedek_kayit tablosuna yazılamadı (059 henüz uygulanmamış olabilir)"
+          psql -v ON_ERROR_STOP=1 -q -f kayit.sql && echo "sonuç AKCAN'a yazıldı" || echo "::warning::yedek_kayit tablosuna yazılamadı"
+      - name: Geçici dosyaları sil
+        if: always()
+        run: rm -rf yedek dogrula "$SIFRE_DOSYA" kayit.sql

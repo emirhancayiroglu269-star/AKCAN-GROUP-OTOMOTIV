@@ -130,7 +130,7 @@ export interface FiyatTeklifi { id: number; zaman: string; musteri: string | nul
   kod?: string | null; gecerlilik?: string | null; musteri_yanit?: 'onay' | 'red' | 'revizyon' | null; musteri_not?: string | null; yanit_zaman?: string | null;
   goruntulenme?: number; ilk_goruntu?: string | null; son_goruntu?: string | null }
 export interface DenetimKaydi { id: number; zaman: string; eposta: string | null; rol: string | null; tablo: string; islem: 'ekleme' | 'degisiklik' | 'silme'; kayit: string | null; eski: Record<string, unknown> | null; yeni: Record<string, unknown> | null }
-export interface YedekKaydi { id: number; zaman: string; durum: 'basarili' | 'hata'; boyut_mb: number | null; tablo_sayisi: number | null; satir_sayisi: number | null; geri_yukleme: 'basarili' | 'fark_var' | 'hata' | null; fark: Record<string, unknown> | null; aciklama: string | null }
+export interface YedekKaydi { id: number; zaman: string; durum: 'basarili' | 'hata'; boyut_mb: number | null; sha256: string | null; sifreli: boolean | null; tablo_sayisi: number | null; satir_sayisi: number | null; geri_yukleme: 'basarili' | 'fark_var' | 'hata' | null; fark: Record<string, unknown> | null; aciklama: string | null }
 export interface Sorulan { id: number; zaman: string; metin: string; urun_id: ID | null; kullanici: string | null; adet: number }
 export interface SayimSatir { depo_id: ID; urun_id: ID; sayilan: number; sistem: number | null; kullanici: string | null; zaman?: string }
 

@@ -33,19 +33,19 @@ export function GuvenlikPanel() {
     <div className="card space-y-5 p-5">
       <div>
         <h3 className="mb-1 flex items-center gap-2 font-semibold"><ShieldCheck size={18} /> Yedekler</h3>
-        <p className="mb-2 text-xs text-slate-500">Her gece 03:30'da veritabanının tamamı şifreli olarak yedeklenir, boş bir veritabanına geri yüklenip satır sayıları canlıyla karşılaştırılır. Yedek dosyaları GitHub'da 30 gün saklanır; şifresi yalnız sizdedir.</p>
+        <p className="mb-2 text-xs text-slate-500">Her gece 03:30'da veritabanının tamamı AES-256 ile şifrelenerek yedeklenir. Şifresi çözülen kopya boş bir veritabanına geri yüklenir ve her tablonun satır sayısı canlıyla karşılaştırılır. Yedekler gizli GitHub deposunda 14 gün saklanır; parolası yalnız sizdedir. Yedek başarısız olursa GitHub e-posta gönderir.</p>
         {yedek === null ? <p className="text-sm text-slate-500">Yükleniyor…</p>
-          : !yedek.length ? <p className="rounded bg-amber-50 p-2 text-sm text-amber-800 dark:bg-amber-500/10 dark:text-amber-300">Henüz yedek kaydı yok. GitHub'da SUPABASE_DB_URL ve YEDEK_SIFRE sırları girildikten sonra ilk yedek alınır.</p>
+          : !yedek.length ? <p className="rounded bg-amber-50 p-2 text-sm text-amber-800 dark:bg-amber-500/10 dark:text-amber-300">Henüz yedek kaydı yok. Gizli yedek deposuna SUPABASE_DB_URL ve YEDEK_SIFRE sırları girilip iş bir kez çalıştırılınca ilk yedek burada görünür.</p>
           : <>
             <p className={`mb-2 rounded p-2 text-sm ${sonTamam ? 'bg-emerald-50 text-emerald-800 dark:bg-emerald-500/10 dark:text-emerald-300' : 'bg-red-50 text-red-700 dark:bg-red-500/10 dark:text-red-300'}`}>
-              {son ? `Son başarılı yedek: ${tarihSaat(son.zaman)} · ${son.boyut_mb ?? '?'} MB · ${sayi(son.satir_sayisi ?? 0)} satır · geri yükleme testi ${son.geri_yukleme === 'basarili' ? 'başarılı' : son.geri_yukleme === 'fark_var' ? 'farklı çıktı' : 'yapılamadı'}` : 'Başarılı yedek yok.'}
-              {son && !sonTamam && ' — 36 saatten eski ya da test başarısız: GitHub > Actions > "Veritabanı yedeği" işine bakın.'}
+              {son ? `Son başarılı yedek: ${tarihSaat(son.zaman)} · ${son.boyut_mb ?? '?'} MB${son.sifreli ? ', şifreli' : ''} · ${sayi(son.tablo_sayisi ?? 0)} tablo, ${sayi(son.satir_sayisi ?? 0)} satır geri yüklendi · test ${son.geri_yukleme === 'basarili' ? 'başarılı' : son.geri_yukleme === 'fark_var' ? 'farklı çıktı' : 'yapılamadı'}` : 'Başarılı yedek yok.'}
+              {son && !sonTamam && ' — 36 saatten eski ya da test başarısız: gizli yedek deposunda Actions > "Veritabanı yedeği" işine bakın.'}
             </p>
-            <table className="tbl text-xs"><thead><tr><th>Zaman</th><th>Durum</th><th className="text-right">Boyut</th><th className="text-right">Satır</th><th>Geri yükleme</th><th>Not</th></tr></thead>
+            <table className="tbl text-xs"><thead><tr><th>Zaman</th><th>Durum</th><th className="text-right">Boyut</th><th className="text-right">Tablo</th><th className="text-right">Satır</th><th>Geri yükleme</th><th>Özet (SHA-256)</th></tr></thead>
               <tbody>{yedek.slice(0, 10).map((y) => <tr key={y.id}><td className="whitespace-nowrap">{tarihSaat(y.zaman)}</td><td className={y.durum === 'basarili' ? 'text-emerald-700' : 'text-red-600'}>{y.durum === 'basarili' ? 'Başarılı' : 'Hata'}</td>
-                <td className="text-right">{y.boyut_mb ?? '—'} MB</td><td className="text-right">{y.satir_sayisi !== null ? sayi(y.satir_sayisi) : '—'}</td>
+                <td className="text-right">{y.boyut_mb ?? '—'} MB{y.sifreli ? ', şifreli' : ''}</td><td className="text-right">{y.tablo_sayisi ?? '—'}</td><td className="text-right">{y.satir_sayisi !== null ? sayi(y.satir_sayisi) : '—'}</td>
                 <td className={y.geri_yukleme === 'basarili' ? 'text-emerald-700' : 'text-amber-700'}>{y.geri_yukleme === 'basarili' ? 'Başarılı' : y.geri_yukleme === 'fark_var' ? 'Fark var' : y.geri_yukleme ?? '—'}</td>
-                <td className="max-w-[16rem] truncate" title={y.aciklama ?? ''}>{y.aciklama}{y.fark ? ` · ${Object.keys(y.fark).join(', ')}` : ''}</td></tr>)}</tbody></table>
+                <td className="max-w-[12rem] truncate font-mono" title={[y.sha256, y.aciklama, y.fark ? 'Farklı: ' + Object.keys(y.fark).join(', ') : ''].filter(Boolean).join('\n')}>{y.sha256 ? y.sha256.slice(0, 12) + '…' : y.aciklama}</td></tr>)}</tbody></table>
           </>}
       </div>
 
