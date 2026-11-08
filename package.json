@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "build:test": "tsc -b && vite build --mode test --outDir dist-test"
   },
   "dependencies": {
     "@fontsource/barlow": "^5.2.8",

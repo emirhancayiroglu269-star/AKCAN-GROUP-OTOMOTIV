@@ -17,6 +17,14 @@ const TeklifMusteri = lazy(() => import('./pages/TeklifMusteri'));
 /** #t/KOD → müşterinin teklif sayfası (giriş yok, ana uygulama verisi yüklenmez) */
 const teklifKod = /^#t\/([A-Za-z0-9]{10,32})$/.exec(location.hash)?.[1];
 
+// test sitesi (/test/, ayrı akcan-test veritabanı): her sayfada kırmızı şerit, sekme adında "DENEME"
+if (import.meta.env.VITE_ORTAM === 'test') {
+  const s = document.createElement('div');
+  s.textContent = 'DENEME ORTAMI — test veritabanı (akcan-test). Buradaki işlemler canlı sisteme ve BizimHesap\'a gitmez.';
+  s.setAttribute('style', 'position:sticky;top:0;z-index:9999;background:#dc2626;color:#fff;font:600 13px system-ui;text-align:center;padding:6px 8px');
+  document.body.prepend(s);
+  document.title = 'DENEME · ' + document.title;
+}
 try { if (localStorage.getItem('tema') === 'koyu') document.documentElement.classList.add('dark'); } catch { /* yok */ }
 window.addEventListener('error', (e) => hataKaydet(e.error ?? e.message, 'window'));
 window.addEventListener('unhandledrejection', (e) => hataKaydet(e.reason, 'promise'));

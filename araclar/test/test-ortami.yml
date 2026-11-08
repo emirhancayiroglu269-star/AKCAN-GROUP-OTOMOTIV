@@ -1,0 +1,177 @@
+# AKCAN test ortamını kurar (Faz 1, 1. adım · 08.11.2026). Yalnız elle ya da bu dosya değişince çalışır; zamanlanmış değildir.
+# Ne yapar:
+#   1) Canlı veritabanının public şemasının YAPISINI (tablolar, görünümler, fonksiyonlar, tetikleyiciler, RLS politikaları, izinler) okur.
+#   2) Canlıdan yalnız şu tabloların VERİSİNİ okur: urunler, depolar, urun_depo_stok, urun_kodlari, kullanicilar, ayarlar, bh_durum.
+#      Cari, kasa, banka, fatura, masraf ve Trendyol verisi KOPYALANMAZ.
+#   3) Bunları test projesine (akcan-test) yazar; satır sayılarını ve şema nesnelerini canlıyla karşılaştırır.
+# Güvenlik:
+#   - Canlıya yalnız pg_dump ve SELECT ile bağlanır (yazma komutu yoktur).
+#   - Test adresi akcan-test projesine ait değilse ya da canlı projeye aitse iş HİÇBİR ŞEY YAPMADAN durur.
+#   - Sırlar yalnız izinleri 600 olan bir bağlantı dosyasında durur; adres parçaları loglarda maskelenir.
+# Gerekli sırlar (bu depo > Settings > Secrets and variables > Actions):
+#   SUPABASE_DB_URL : canlı (zaten var)
+#   TEST_DB_URL     : akcan-test > Connect > Session pooler adresi (şifre dahil)
+name: Test ortamı kurulumu
+on:
+  workflow_dispatch:
+    inputs:
+      yeniden:
+        description: 'Test veritabanındaki AKCAN tablolarını silip baştan kur (yalnız test projesi)'
+        type: boolean
+        default: false
+  push:
+    paths: ['.github/workflows/test-ortami.yml']
+permissions: { contents: read }
+concurrency: { group: test-ortami, cancel-in-progress: false }
+env:
+  CANLI_REF: qmafuyuocmcobrstnmbx
+  TEST_REF: phflvmtgtjxebrehzpkh
+  TABLOLAR: urunler depolar urun_depo_stok urun_kodlari kullanicilar ayarlar bh_durum
+jobs:
+  kur:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Bağlantıları hazırla (maskeli) ve hedefi doğrula
+        env:
+          CANLI: ${{ secrets.SUPABASE_DB_URL }}
+          TEST: ${{ secrets.TEST_DB_URL }}
+        run: |
+          set +x
+          if [ -z "$CANLI" ]; then echo "::error::SUPABASE_DB_URL sırrı yok"; exit 1; fi
+          if [ -z "$TEST" ]; then echo "::error::TEST_DB_URL sırrı girilmemiş (akcan-test > Connect > Session pooler adresi)"; exit 1; fi
+          python3 - <<'PY'
+          import os, re, urllib.parse as u
+          def ayir(ad, adres):
+              adres = adres.strip()
+              m = re.match(r'^postgres(?:ql)?://([^:/@]+):(.*)@([A-Za-z0-9.-]+)(?::(\d+))?/([^?#]*)', adres, re.S)
+              if not m: raise SystemExit(f'::error::{ad} biçimi tanınmadı (postgresql://kullanici:sifre@sunucu:5432/postgres bekleniyor)')
+              kul, sif, host, port, db = m.groups()
+              if re.search(r'YOUR-PASSWORD', adres, re.I): raise SystemExit(f'::error::{ad} içinde [YOUR-PASSWORD] yazısı duruyor: köşeli parantezleriyle silip yerine şifreyi yazın.')
+              if re.search(r'<[a-z-]+>', host): raise SystemExit(f'::error::{ad} sunucu kısmında yer tutucu duruyor.')
+              if not sif: raise SystemExit(f'::error::{ad} içinde şifre boş.')
+              if '%' in sif:
+                  try: sif = u.unquote(sif, errors='strict')
+                  except Exception: pass
+              if port == '6543': port = '5432'
+              for x in (host, kul, sif): print('::add-mask::' + x)
+              return dict(host=host, port=port or '5432', user=kul, password=sif, dbname=db or 'postgres')
+          c, t = ayir('SUPABASE_DB_URL', os.environ['CANLI']), ayir('TEST_DB_URL', os.environ['TEST'])
+          cr, tr = os.environ['CANLI_REF'], os.environ['TEST_REF']
+          # hedef koruması: test adresi akcan-test projesine ait olmalı, canlı projeye ait olmamalı
+          kim = lambda v: v['user'] + ' ' + v['host']
+          if tr not in kim(t): raise SystemExit('::error::TEST_DB_URL akcan-test projesine ait değil; hiçbir şey yapılmadı.')
+          if cr in kim(t): raise SystemExit('::error::TEST_DB_URL CANLI projeyi gösteriyor; hiçbir şey yapılmadı.')
+          if cr not in kim(c): raise SystemExit('::error::SUPABASE_DB_URL canlı projeye ait görünmüyor; hiçbir şey yapılmadı.')
+          yol = os.path.join(os.environ['RUNNER_TEMP'], 'pg_service.conf')
+          fd = os.open(yol, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+          with os.fdopen(fd, 'w') as f:
+              for ad, v in (('canli', c), ('test', t)):
+                  f.write(f'[{ad}]\n' + ''.join(f'{k}={x}\n' for k, x in v.items()) + 'sslmode=require\nconnect_timeout=30\n')
+          with open(os.environ['GITHUB_ENV'], 'a') as f: f.write(f'PGSERVICEFILE={yol}\n')
+          print('bağlantılar hazır: canlı yalnız okunacak, hedef akcan-test')
+          PY
+      - name: PostgreSQL 17 istemcisi
+        run: |
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -fsSo /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt noble-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list >/dev/null
+          sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client-17 >/dev/null
+          echo "/usr/lib/postgresql/17/bin" >> "$GITHUB_PATH"
+      - name: Test veritabanı boş mu
+        env:
+          YENIDEN: ${{ github.event.inputs.yeniden }}
+        run: |
+          N=$(psql service=test -At -c "select count(*) from pg_class c where c.relnamespace = 'public'::regnamespace and c.relkind in ('r','v','m') and not exists (select 1 from pg_depend d where d.objid = c.oid and d.deptype = 'e')")
+          echo "test projesinde AKCAN tablosu/görünümü: $N"
+          if [ "$N" != "0" ]; then
+            if [ "$YENIDEN" != "true" ]; then echo "::error::Test veritabanı boş değil. Baştan kurmak için işi 'yeniden' seçeneğiyle çalıştırın."; exit 1; fi
+            echo "yalnız TEST projesindeki AKCAN nesneleri siliniyor"
+            psql service=test -v ON_ERROR_STOP=1 -q <<'SQL'
+          do $$ declare r record; begin
+            for r in select c.oid::regclass n, c.relkind k from pg_class c where c.relnamespace = 'public'::regnamespace and c.relkind in ('v','m')
+                     and not exists (select 1 from pg_depend d where d.objid = c.oid and d.deptype = 'e') loop
+              execute format('drop %s if exists %s cascade', case r.k when 'm' then 'materialized view' else 'view' end, r.n); end loop;
+            for r in select c.oid::regclass n from pg_class c where c.relnamespace = 'public'::regnamespace and c.relkind in ('r','p')
+                     and not exists (select 1 from pg_depend d where d.objid = c.oid and d.deptype = 'e') loop
+              execute format('drop table if exists %s cascade', r.n); end loop;
+            for r in select p.oid::regprocedure n from pg_proc p where p.pronamespace = 'public'::regnamespace
+                     and not exists (select 1 from pg_depend d where d.objid = p.oid and d.deptype = 'e') loop
+              execute format('drop routine if exists %s cascade', r.n); end loop;
+            for r in select t.oid::regtype n from pg_type t where t.typnamespace = 'public'::regnamespace and t.typtype in ('e','d','c') and t.typrelid = 0
+                     and not exists (select 1 from pg_depend d where d.objid = t.oid and d.deptype = 'e') loop
+              execute format('drop type if exists %s cascade', r.n); end loop;
+            for r in select c.oid::regclass n from pg_class c where c.relnamespace = 'public'::regnamespace and c.relkind = 'S'
+                     and not exists (select 1 from pg_depend d where d.objid = c.oid and d.deptype = 'e') loop
+              execute format('drop sequence if exists %s cascade', r.n); end loop;
+          end $$;
+          SQL
+          fi
+      - name: Canlıdan oku (yalnız yapı + seçili tablolar)
+        run: |
+          pg_dump service=canli -Fc --schema-only --no-owner -n public -f sema.dump
+          T=""; for t in $TABLOLAR; do T="$T -t public.$t"; done
+          pg_dump service=canli -Fc --data-only --no-owner $T -f veri.dump
+          ls -la sema.dump veri.dump
+      - name: Test projesine yaz
+        id: yaz
+        run: |
+          pg_restore -l sema.dump | grep -v -E ' EXTENSION | PUBLICATION |COMMENT - EXTENSION| SCHEMA - public |COMMENT - SCHEMA public' > liste.txt
+          set +e
+          pg_restore -d service=test --no-owner -L liste.txt sema.dump 2> sema_hata.txt
+          pg_restore -d service=test --no-owner --data-only veri.dump 2> veri_hata.txt
+          set -e
+          SH=$(grep -c 'ERROR' sema_hata.txt || true); VH=$(grep -c 'ERROR' veri_hata.txt || true)
+          echo "şema hata sayısı: $SH · veri hata sayısı: $VH"
+          [ "$SH" = "0" ] || { echo '--- şema hataları ---'; grep -A2 'ERROR' sema_hata.txt | head -c 4000; }
+          [ "$VH" = "0" ] || { echo '--- veri hataları ---'; grep -A2 'ERROR' veri_hata.txt | head -c 4000; }
+          echo "sema_hata=$SH" >> "$GITHUB_OUTPUT"; echo "veri_hata=$VH" >> "$GITHUB_OUTPUT"
+          # test ortamında gerekmeyen ayarlar boşaltılır (iç cari adları, Trendyol ayarları)
+          psql service=test -v ON_ERROR_STOP=1 -q -c "update public.ayarlar set ic_cariler = null, trendyol = '{}'::jsonb"
+      - name: Canlıyla karşılaştır
+        run: |
+          cat > karsilastir.sql <<'SQL'
+          select 'nesne', k, count(*) from (
+            select 'tablo' k from pg_class c where c.relnamespace = 'public'::regnamespace and c.relkind = 'r' and not exists (select 1 from pg_depend d where d.objid = c.oid and d.deptype = 'e')
+            union all select 'gorunum' from pg_class c where c.relnamespace = 'public'::regnamespace and c.relkind in ('v','m')
+            union all select 'fonksiyon' from pg_proc p where p.pronamespace = 'public'::regnamespace and not exists (select 1 from pg_depend d where d.objid = p.oid and d.deptype = 'e')
+            union all select 'tetikleyici' from pg_trigger t join pg_class c on c.oid = t.tgrelid where c.relnamespace = 'public'::regnamespace and not t.tgisinternal
+            union all select 'politika' from pg_policies where schemaname = 'public'
+            union all select 'rls_acik' from pg_class c where c.relnamespace = 'public'::regnamespace and c.relkind = 'r' and c.relrowsecurity
+            union all select 'izin' from information_schema.role_table_grants where table_schema = 'public' and grantee in ('anon','authenticated','service_role')
+          ) x group by k;
+          SQL
+          for t in $TABLOLAR; do echo "select 'satir', '$t', count(*) from public.$t;" >> karsilastir.sql; done
+          psql service=canli -At -F $'\t' -f karsilastir.sql | sort > canli.tsv
+          psql service=test  -At -F $'\t' -f karsilastir.sql | sort > test.tsv
+          python3 - <<'PY'
+          import os
+          oku = lambda f: {(a, b): int(c) for a, b, c in (l.rstrip('\n').split('\t') for l in open(f) if l.count('\t') == 2)}
+          c, t = oku('canli.tsv'), oku('test.tsv')
+          satirlar = ['| Tür | Ad | Canlı | Test | Durum |', '| --- | --- | --- | --- | --- |']; fark = 0
+          for k in sorted(set(c) | set(t)):
+              # satır sayısı: canlı okunduktan sonra eşitleme yazmış olabilir; küçük oynama (±%1) kabul edilir
+              tol = max(2, c.get(k, 0) // 100) if k[0] == 'satir' else 0
+              ok = abs(c.get(k, -1) - t.get(k, -1)) <= tol
+              fark += not ok
+              satirlar.append(f'| {k[0]} | {k[1]} | {c.get(k, "—")} | {t.get(k, "—")} | {"aynı" if ok else "FARKLI"} |')
+          ozet = '\n'.join(['## Test ortamı · canlı karşılaştırması', ''] + satirlar)
+          print(ozet)
+          open(os.environ['GITHUB_STEP_SUMMARY'], 'a').write(ozet + '\n')
+          open('fark', 'w').write(str(fark))
+          PY
+          CRON=$(psql service=test -At -c "select count(*) from cron.job")
+          echo "test projesindeki zamanlanmış görev: $CRON (0 olmalı)"
+          [ "$CRON" = "0" ] || { echo "::error::test projesinde zamanlanmış görev var"; exit 1; }
+      - name: Sonuç
+        env:
+          SH: ${{ steps.yaz.outputs.sema_hata }}
+          VH: ${{ steps.yaz.outputs.veri_hata }}
+        run: |
+          F=$(cat fark)
+          echo "şema hatası: $SH · veri hatası: $VH · farklı satır: $F"
+          [ "$SH" = "0" ] && [ "$VH" = "0" ] && [ "$F" = "0" ] || { echo "::error::test ortamı canlıyla birebir değil (ayrıntı yukarıda)"; exit 1; }
+          echo "test ortamı hazır"
+      - name: Geçici dosyaları sil
+        if: always()
+        run: rm -f sema.dump veri.dump "$PGSERVICEFILE"

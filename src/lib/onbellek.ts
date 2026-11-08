@@ -3,7 +3,8 @@
  * Site açılınca önce buradan gösterilir, sonra sunucudan yalnız değişen satırlar alınır.
  * Supabase ücretsiz planın aylık 5 GB veri çıkış sınırı için. Erişilemezse (gizli sekme vb.) sessizce devre dışı kalır.
  */
-const DB_AD = 'bh-analiz';
+// test sitesi aynı alan adında: önbelleği canlıdan ayrı tutulur
+const DB_AD = import.meta.env?.VITE_ORTAM === 'test' ? 'bh-analiz-test' : 'bh-analiz';
 const DEPO = 'ham';
 
 function ac(): Promise<IDBDatabase | null> {

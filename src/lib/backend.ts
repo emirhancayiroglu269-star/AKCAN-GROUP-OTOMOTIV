@@ -421,7 +421,7 @@ function supabaseBackend(sb: SupabaseClient): Backend {
     },
     async rakipPazar(zorla = false) {
       // pazar listesi sunucuda yarım saatte bir yenilenir: tarayıcıda 30 dk saklanır (veri çıkışı kotası için)
-      const AN = 'rakip_pazar_v3';
+      const AN = 'rakip_pazar_v3' + (import.meta.env?.VITE_ORTAM === 'test' ? '_test' : '');
       if (!zorla) { try { const o = JSON.parse(localStorage.getItem(AN) ?? 'null'); if (o && Date.now() - o.t < 30 * 60000) return o.v; } catch { /* yok */ } }
       const v = await (async () => {
       // sunucu tek seferde en fazla 1000 satır verir: 3 parça halinde
