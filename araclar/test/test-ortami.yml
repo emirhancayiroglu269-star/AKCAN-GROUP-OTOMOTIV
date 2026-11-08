@@ -1,7 +1,7 @@
 # AKCAN test ortamını kurar (Faz 1, 1. adım · 08.11.2026). Yalnız elle ya da bu dosya değişince çalışır; zamanlanmış değildir.
 # Ne yapar:
 #   1) Canlı veritabanının public şemasının YAPISINI (tablolar, görünümler, fonksiyonlar, tetikleyiciler, RLS politikaları, izinler) okur.
-#   2) Canlıdan yalnız şu tabloların VERİSİNİ okur: urunler, depolar, urun_depo_stok, urun_kodlari, kullanicilar, ayarlar, bh_durum.
+#   2) Canlıdan yalnız şu tabloların VERİSİNİ okur: urunler, depolar, urun_depo_stok, urun_kodlari, kullanicilar, ayarlar.
 #      Cari, kasa, banka, fatura, masraf ve Trendyol verisi KOPYALANMAZ.
 #   3) Bunları test projesine (akcan-test) yazar; satır sayılarını ve şema nesnelerini canlıyla karşılaştırır.
 # Güvenlik:
@@ -26,7 +26,7 @@ concurrency: { group: test-ortami, cancel-in-progress: false }
 env:
   CANLI_REF: qmafuyuocmcobrstnmbx
   TEST_REF: phflvmtgtjxebrehzpkh
-  TABLOLAR: urunler depolar urun_depo_stok urun_kodlari kullanicilar ayarlar bh_durum
+  TABLOLAR: urunler depolar urun_depo_stok urun_kodlari kullanicilar ayarlar
 jobs:
   kur:
     runs-on: ubuntu-24.04
@@ -80,7 +80,8 @@ jobs:
           echo "/usr/lib/postgresql/17/bin" >> "$GITHUB_PATH"
       - name: Test veritabanı boş mu
         env:
-          YENIDEN: ${{ github.event.inputs.yeniden }}
+          # elle: 'yeniden' seçeneği; iş dosyası güncellenince (push): kurulum baştan yapılır — yalnız TEST projesinde (hedef koruması 1. adımda)
+          YENIDEN: ${{ github.event.inputs.yeniden == 'true' || github.event_name == 'push' }}
         run: |
           N=$(psql service=test -At -c "select count(*) from pg_class c where c.relnamespace = 'public'::regnamespace and c.relkind in ('r','v','m') and not exists (select 1 from pg_depend d where d.objid = c.oid and d.deptype = 'e')")
           echo "test projesinde AKCAN tablosu/görünümü: $N"
@@ -116,10 +117,18 @@ jobs:
       - name: Test projesine yaz
         id: yaz
         run: |
-          pg_restore -l sema.dump | grep -v -E ' EXTENSION | PUBLICATION |COMMENT - EXTENSION| SCHEMA - public |COMMENT - SCHEMA public' > liste.txt
+          pg_restore -l sema.dump | grep -v -E ' EXTENSION | PUBLICATION |COMMENT - EXTENSION| SCHEMA - public |COMMENT - SCHEMA public| DEFAULT ACL ' > liste.txt
           set +e
           pg_restore -d service=test --no-owner -L liste.txt sema.dump 2> sema_hata.txt
+          # Supabase yeni projede yeni tablolara anon/authenticated için otomatik izin verir; canlıdaki (Faz 0) izinlerin birebir aynısı olsun diye
+          # bu otomatik izinler geri alınır ve yalnız canlının izin satırları yeniden uygulanır
+          psql service=test -v ON_ERROR_STOP=1 -q -c "revoke all on all tables in schema public from anon, authenticated, service_role; revoke all on all sequences in schema public from anon, authenticated, service_role; revoke all on all functions in schema public from anon, authenticated, service_role" 2>> sema_hata.txt
+          pg_restore -l sema.dump | grep -E ' ACL ' | grep -v 'DEFAULT ACL' > izin.txt
+          pg_restore -d service=test --no-owner -L izin.txt sema.dump 2>> sema_hata.txt
+          # kopyalanan tablolarda tetikleyiciler yükleme sırasında kapalı (ör. yeni ürüne açılış stoğu yazan tetikleyici kopyayı bozmasın), sonra yeniden açılır
+          for t in $TABLOLAR; do psql service=test -q -c "alter table public.$t disable trigger user"; done
           pg_restore -d service=test --no-owner --data-only veri.dump 2> veri_hata.txt
+          for t in $TABLOLAR; do psql service=test -q -c "alter table public.$t enable trigger user"; done
           set -e
           SH=$(grep -c 'ERROR' sema_hata.txt || true); VH=$(grep -c 'ERROR' veri_hata.txt || true)
           echo "şema hata sayısı: $SH · veri hata sayısı: $VH"
@@ -127,7 +136,7 @@ jobs:
           [ "$VH" = "0" ] || { echo '--- veri hataları ---'; grep -A2 'ERROR' veri_hata.txt | head -c 4000; }
           echo "sema_hata=$SH" >> "$GITHUB_OUTPUT"; echo "veri_hata=$VH" >> "$GITHUB_OUTPUT"
           # test ortamında gerekmeyen ayarlar boşaltılır (iç cari adları, Trendyol ayarları)
-          psql service=test -v ON_ERROR_STOP=1 -q -c "update public.ayarlar set ic_cariler = null, trendyol = '{}'::jsonb"
+          psql service=test -v ON_ERROR_STOP=1 -q -c "update public.ayarlar set ic_cariler = default, trendyol = default"
       - name: Canlıyla karşılaştır
         run: |
           cat > karsilastir.sql <<'SQL'
@@ -139,6 +148,8 @@ jobs:
             union all select 'politika' from pg_policies where schemaname = 'public'
             union all select 'rls_acik' from pg_class c where c.relnamespace = 'public'::regnamespace and c.relkind = 'r' and c.relrowsecurity
             union all select 'izin' from information_schema.role_table_grants where table_schema = 'public' and grantee in ('anon','authenticated','service_role')
+            union all select 'izin_' || grantee from information_schema.role_table_grants where table_schema = 'public' and grantee in ('anon','authenticated','service_role')
+            union all select 'fonksiyon_izni_' || grantee from information_schema.routine_privileges where routine_schema = 'public' and grantee in ('PUBLIC','anon','authenticated','service_role')
           ) x group by k;
           SQL
           for t in $TABLOLAR; do echo "select 'satir', '$t', count(*) from public.$t;" >> karsilastir.sql; done
