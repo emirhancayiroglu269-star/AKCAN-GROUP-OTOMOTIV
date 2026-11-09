@@ -15,7 +15,7 @@ export default function Giris() {
     e.preventDefault(); if (!supabase) return;
     setBekle(true);
     const r = kayit
-      ? await supabase.auth.signUp({ email: eposta, password: sifre, options: { data: { ad } } })
+      ? await supabase.auth.signUp({ email: eposta, password: sifre, options: { data: { ad }, ...(import.meta.env.VITE_ORTAM === 'test' ? { emailRedirectTo: location.origin + location.pathname } : {}) } })
       : await supabase.auth.signInWithPassword({ email: eposta, password: sifre });
     setBekle(false);
     if (r.error) toast(r.error.message === 'Invalid login credentials' ? 'E-posta veya şifre hatalı' : r.error.message, 'hata');
