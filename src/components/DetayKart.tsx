@@ -11,6 +11,8 @@ import { muadilDetay, MUADIL_ESIK } from '../lib/muadil';
 import { Modal } from './ui';
 import { OtoparcasanLink } from './DisLink';
 import { OtomarmaraBolum } from './OtomarmaraBolum';
+import { AkcanStokBolum } from './AkcanStok';
+import { BELGE_MOTORU } from '../lib/belge';
 
 type Detay = { tur: 'urun'; id: string } | { tur: 'musteri'; guid: string | null; ad: string };
 let ac: ((d: Detay | null) => void) | null = null;
@@ -53,6 +55,7 @@ function UrunIcerik({ id }: { id: string }) {
       {(() => { const m = muadilDetay(db)(u); return m.length ? (
         <div><div className="mb-1 text-sm font-semibold">Muadiller <span className="text-xs font-normal text-slate-500">(en az {MUADIL_ESIK} ortak OEM kodu olan, aynı kategorideki ürünler)</span></div>
           <div className="flex flex-wrap gap-1.5">{m.slice(0, 16).map(({ v, ortak }) => <span key={v.id} className={`rozet ${v.stok > 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`} title={`${ortak} ortak OEM kodu`}><UrunLink id={String(v.id)}>{v.kod || v.ad.slice(0, 24)}</UrunLink>&nbsp;· stok {sayi(v.stok)} · {ortak} OEM</span>)}</div></div>) : null; })()}
+      {BELGE_MOTORU && <AkcanStokBolum urunId={u.id} />}
       <OtomarmaraBolum u={u} />
       <div><div className="mb-1 text-sm font-semibold">Aylık satış adedi</div><CubukGrafik veri={k.ay.map((x) => ({ etiket: ayEtiket(x.ay), deger: x.adet, alt: `${x.ay} · ${para(x.ciro)}` }))} bicim={(v) => `${sayi(v)} adet`} yukseklik={120} bos="Satış yok" /></div>
       <div className="grid gap-4 md:grid-cols-2">

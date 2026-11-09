@@ -9,10 +9,10 @@ export function rolBul(db: DB, eposta: string | null): { rol: Rol | 'yok'; kayit
 }
 
 const SAYFALAR: Record<Rol, AnaSayfa[]> = {
-  yonetici: ['panel', 'arama', 'oneriler', 'asistan', 'hareketler', 'satisanaliz', 'musteri', 'sepet', 'performans', 'kayip', 'karzarar', 'tahsilat', 'nakit', 'cariler', 'analiz', 'fiyat', 'usta', 'eritme', 'depolar', 'tedarikci', 'urunler', 'trendyol', 'ayarlar'],
+  yonetici: ['panel', 'arama', 'oneriler', 'asistan', 'hareketler', 'satisanaliz', 'musteri', 'sepet', 'performans', 'kayip', 'karzarar', 'tahsilat', 'nakit', 'cariler', 'analiz', 'fiyat', 'usta', 'eritme', 'depolar', 'tedarikci', 'urunler', 'trendyol', 'ayarlar', 'stokfis'],
   // personel: stok tarafı, maliyet görmeden (Depolar'da karşılaştırma sekmesi gizli)
-  kasiyer: ['arama', 'urunler', 'depolar'],
-  teknisyen: ['arama', 'urunler', 'depolar'],
+  kasiyer: ['arama', 'urunler', 'depolar', 'stokfis'],
+  teknisyen: ['arama', 'urunler', 'depolar', 'stokfis'],
 };
 export const sayfaIzni = (rol: Rol | 'yok', s: AnaSayfa) => rol !== 'yok' && SAYFALAR[rol].includes(s);
 

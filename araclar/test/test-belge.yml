@@ -1,4 +1,4 @@
-# Faz 1 · 2. adım — belge motoru (061) YALNIZ akcan-test projesine kurulur ve otomatik testleri çalıştırılır.
+# Faz 1 · 2–3. adım (09.11.2026) — belge motoru (061) ve ürün türü + açılış (062) YALNIZ akcan-test projesine kurulur ve otomatik testleri çalıştırılır.
 # Canlı veritabanına bağlanmaz: bu işte canlı bağlantı sırrı (SUPABASE_DB_URL) hiç kullanılmaz.
 # Sıra: (1) belge motorunu test projesinde baştan kur  (2) kural testleri (tek işlem, sonunda geri alınır)
 #       (3) eşzamanlılık testleri (aynı anda çok bağlantı)  (4) test izlerini temizle, motoru boş kur  (5) örnek belgeleri yaz
@@ -65,34 +65,48 @@ jobs:
         working-directory: kaynak/supabase
         run: |
           echo "kaynak commit: $(git rev-parse --short HEAD)" | tee -a "$GITHUB_STEP_SUMMARY"
-          psql service=test -X -q -v ON_ERROR_STOP=1 -f yedek/061_geri_al.sql
+          psql service=test -X -q -v ON_ERROR_STOP=1 -f yedek/062_geri_al.sql 2>&1 | grep -v NOTICE || true
+          psql service=test -X -q -v ON_ERROR_STOP=1 -f yedek/061_geri_al.sql 2>&1 | grep -v NOTICE || true
           psql service=test -X -q -v ON_ERROR_STOP=1 -f 061_belge_motoru.sql 2>&1 | grep -v NOTICE || true
-          psql service=test -X -At -c "select count(*) from pg_proc where proname in ('belge_kaydet','belge_onayla','belge_iptal')" | grep -qx 3
+          psql service=test -X -q -v ON_ERROR_STOP=1 -f 062_urun_turu_acilis.sql 2>&1 | grep -v NOTICE || true
+          psql service=test -X -At -c "select count(*) from pg_proc where proname in ('belge_kaydet','belge_onayla','belge_iptal','urun_turu_belirle','acilis_taslagi_olustur')" | grep -qx 5
       - name: Kural testleri
         working-directory: kaynak/supabase
         run: |
           set -o pipefail
           psql service=test -X -q -v ON_ERROR_STOP=1 -f test/061_test.sql 2>&1 | grep -v NOTICE | tee kural.txt
           { echo '## Kural testleri'; echo '```'; grep -E 'GEÇTİ|KALDI|gecen|^ *[0-9]+ *\| *[0-9]+ *\|' kural.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+      - name: Ürün türü ve açılış testleri (062)
+        working-directory: kaynak/supabase
+        run: |
+          set -o pipefail
+          psql service=test -X -q -v ON_ERROR_STOP=1 -f test/062_test.sql 2>&1 | grep -v NOTICE | tee tur.txt
+          { echo '## Ürün türü ve açılış testleri'; echo '```'; grep -E 'GEÇTİ|KALDI|gecen|^ *[0-9]+ *\| *[0-9]+ *\|' tur.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
       - name: Eşzamanlılık testleri
         working-directory: kaynak/supabase
         run: |
           set -o pipefail
           bash test/061_eszamanli.sh "service=test" 2>&1 | tee es.txt
           { echo '## Eşzamanlılık testleri'; echo '```'; grep -E 'GEÇTİ|KALDI|eşzamanlılık:' es.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
-      - name: Test izlerini temizle ve örnek belgeleri yaz
+      - name: Test izlerini temizle (belge motoru boş kurulur; kabul testi açılışla başlar)
         if: success()
         working-directory: kaynak/supabase
         run: |
-          psql service=test -X -q -v ON_ERROR_STOP=1 -f yedek/061_geri_al.sql
+          psql service=test -X -q -v ON_ERROR_STOP=1 -f yedek/062_geri_al.sql 2>&1 | grep -v NOTICE || true
+          psql service=test -X -q -v ON_ERROR_STOP=1 -f yedek/061_geri_al.sql 2>&1 | grep -v NOTICE || true
           psql service=test -X -q -v ON_ERROR_STOP=1 -f 061_belge_motoru.sql 2>&1 | grep -v NOTICE || true
-          # eşzamanlılık testinin işlem geçmişine yazdığı belge kayıtları (yalnız test projesi)
-          psql service=test -X -q -c "delete from public.denetim where tablo in ('belgeler', 'belge_satirlari')"
-          psql service=test -X -q -v ON_ERROR_STOP=1 -f test/061_ornek.sql
-          { echo '## Örnek stok hareketleri'; echo '```'
-            psql service=test -X -c "select belge_no, islem, left(u.ad, 30) urun, d.ad depo, miktar, birim_maliyet, tutar, onceki_miktar, sonraki_miktar, ort_sonraki, split_part(kullanici, '@', 1) kim from stok_defteri s join urunler u on u.id = s.urun_id join depolar d on d.id = s.depo_id order by s.id"
-            psql service=test -X -c "select left(u.ad, 30) urun, toplam_miktar, toplam_deger, ort_maliyet from urun_maliyet m join urunler u on u.id = m.urun_id"
-            echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          psql service=test -X -q -v ON_ERROR_STOP=1 -f 062_urun_turu_acilis.sql 2>&1 | grep -v NOTICE || true
+          # testlerin işlem geçmişine yazdığı belge / ürün türü kayıtları (yalnız test projesi)
+          psql service=test -X -q -c "delete from public.denetim where tablo in ('belgeler', 'belge_satirlari', 'urun_turu')"
+          psql service=test -X -At -c "select 'belge ' || (select count(*) from belgeler) || ' · defter ' || (select count(*) from stok_defteri) || ' · ürün türü ' || (select count(*) from urun_turu)" | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Test sonuçlarını test veritabanına yaz (yalnız test projesi; okumak için)
+        if: always()
+        working-directory: kaynak/supabase
+        run: |
+          cat kural.txt tur.txt es.txt 2>/dev/null | grep -E 'GEÇTİ|KALDI|gecen|eşzamanlılık:|^ *[0-9]+ *\| *[0-9]+ *\|' > ozet.txt || true
+          psql service=test -X -q -c "create table if not exists public.ci_sonuc (id bigint generated always as identity primary key, zaman timestamptz default now(), commit text, durum text, ozet text)"
+          psql service=test -X -q -c "revoke all on public.ci_sonuc from anon, authenticated"
+          psql service=test -X -q -v commit="$(git rev-parse --short HEAD)" -v durum="${{ job.status }}" -v ozet="$(cat ozet.txt)" -c "insert into public.ci_sonuc (commit, durum, ozet) values (:'commit', :'durum', :'ozet')"
       - name: Geçici dosyaları sil
         if: always()
         run: rm -f "$PGSERVICEFILE"

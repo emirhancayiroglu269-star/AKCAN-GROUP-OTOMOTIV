@@ -54,7 +54,8 @@ select pg_temp.set('K', (select eposta from kullanicilar where rol = 'kasiyer' a
 select pg_temp.set('D1', (select id::text from depolar where aktif order by ad limit 1));
 select pg_temp.set('D2', (select id::text from depolar where aktif order by ad offset 1 limit 1));
 select pg_temp.set('DP', (select id::text from depolar where not aktif limit 1));
-select pg_temp.set('U' || n, id::text) from (select id, row_number() over (order by id) n from urunler where aktif order by id limit 8) x;
+-- hizmet adayı (işçilik, yıkama…) ürünler stok belgelerine giremez: deneme ürünleri onlardan seçilmez
+select pg_temp.set('U' || n, id::text) from (select id, row_number() over (order by id) n from urunler where aktif and (upper(ad || ' ' || coalesce(kategori, '')) !~ '(İŞÇİLİK|ISCILIK|İSCİLİK|IŞÇILIK|HİZMET|HIZMET|DANIŞMANLIK|YIKAMA|MONTAJ ÜCRET|SERVİS ÜCRET|TAMİR ÜCRET)') order by id limit 8) x;
 select pg_temp.set('UP', (select id::text from urunler where not aktif limit 1));
 select pg_temp.set('IZ_ONCE', pg_temp.iz());
 select pg_temp.set('YIL', extract(year from (now() at time zone 'Europe/Istanbul'))::text);

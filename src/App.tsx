@@ -1,10 +1,12 @@
 import { asama } from './lib/hataKayit';
 import TrendyolSayfa from './pages/Trendyol';
 import AsistanSayfa from './pages/Asistan';
+import StokFisleri from './pages/StokFisleri';
+import { BELGE_MOTORU } from './lib/belge';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import {
-  Activity, ArrowLeftRight, Bot, ChevronDown, Search, ShieldAlert, ShoppingBasket, RefreshCw, Wrench, HandCoins, PackageMinus, Warehouse, Lightbulb, Medal, Store, BarChart3, Boxes, LayoutDashboard, LogOut, Menu, Moon, PieChart, Settings, Sun, Tag, Truck, UserCheck, Users, Wallet, X,
+  Activity, ArrowLeftRight, ClipboardList, Bot, ChevronDown, Search, ShieldAlert, ShoppingBasket, RefreshCw, Wrench, HandCoins, PackageMinus, Warehouse, Lightbulb, Medal, Store, BarChart3, Boxes, LayoutDashboard, LogOut, Menu, Moon, PieChart, Settings, Sun, Tag, Truck, UserCheck, Users, Wallet, X,
 } from 'lucide-react';
 import { backend, supabase, MODE, onbellekTemizle } from './lib/backend';
 import { StoreProvider, Toasts, useStore } from './lib/store';
@@ -31,7 +33,7 @@ import { tahsilatListesi } from './lib/tahsilat';
 import { ROL_AD } from './lib/types';
 import { tarihSaat } from './lib/format';
 
-export type AnaSayfa = 'panel' | 'arama' | 'oneriler' | 'asistan' | 'hareketler' | 'satisanaliz' | 'musteri' | 'sepet' | 'kayip' | 'karzarar' | 'tahsilat' | 'nakit' | 'cariler' | 'analiz' | 'fiyat' | 'usta' | 'eritme' | 'depolar' | 'tedarikci' | 'urunler' | 'performans' | 'trendyol' | 'ayarlar';
+export type AnaSayfa = 'panel' | 'arama' | 'oneriler' | 'asistan' | 'hareketler' | 'satisanaliz' | 'musteri' | 'sepet' | 'kayip' | 'karzarar' | 'tahsilat' | 'nakit' | 'cariler' | 'analiz' | 'fiyat' | 'usta' | 'eritme' | 'depolar' | 'tedarikci' | 'urunler' | 'performans' | 'trendyol' | 'ayarlar' | 'stokfis';
 /** Eski sayfa adları (birleştirilen/kaldırılan) — eski bağlantılar ve öneriler çalışmaya devam etsin diye */
 type EskiSayfa = 'aysonu' | 'arac' | 'indirim' | 'deposiparis' | 'katfiyat' | 'stoksagligi' | 'alinacaklar';
 export type Sayfa = AnaSayfa | EskiSayfa | `${AnaSayfa}/${string}`;
@@ -56,6 +58,8 @@ const MENU: { id: AnaSayfa; ad: string; ikon: typeof LayoutDashboard; grup?: Men
   { id: 'hareketler', ad: 'Satışlar & Alışlar', ikon: ArrowLeftRight, grup: 'Tezgâh' },
   { id: 'tahsilat', ad: 'Tahsilat Takip', ikon: HandCoins, grup: 'Tezgâh' },
   { id: 'cariler', ad: 'Cariler', ikon: Users, grup: 'Tezgâh' },
+  // Faz 1 belge motoru: yalnız test sitesinde (canlı derlemeye girmez)
+  ...(BELGE_MOTORU ? [{ id: 'stokfis' as AnaSayfa, ad: 'Stok Fişleri (deneme)', ikon: ClipboardList, grup: 'Stok & sipariş' as MenuGrup }] : []),
   { id: 'urunler', ad: 'Ürünler & Stok', ikon: Boxes, grup: 'Stok & sipariş' },
   { id: 'depolar', ad: 'Depolar & Sipariş', ikon: Warehouse, grup: 'Stok & sipariş' },
   { id: 'tedarikci', ad: 'Tedarikçiler', ikon: Truck, grup: 'Stok & sipariş' },
@@ -75,10 +79,11 @@ const MENU: { id: AnaSayfa; ad: string; ikon: typeof LayoutDashboard; grup?: Men
 ];
 const KAPALI_ANAHTAR = 'menuKapali';
 type Props = { git: (s: Sayfa) => void; alt?: string };
-const SAYFALAR: Record<AnaSayfa, (p: Props) => React.ReactNode> = {
+const SAYFALAR = {
   panel: Panel, arama: AramaSayfa, oneriler: Oneriler, asistan: AsistanSayfa, hareketler: Hareketler, satisanaliz: SatisAnalizi, musteri: MusteriAnalizi, sepet: BirlikteSatilan, kayip: KayipKacak, karzarar: KarZararSayfa, tahsilat: Tahsilat, nakit: NakitAkisi, cariler: Cariler,
   analiz: UrunAnalizi, fiyat: FiyatSayfa, usta: UstaFiyat, eritme: EritmeSayfa, depolar: DepolarSayfa, tedarikci: TedarikciSayfa, urunler: UrunlerSayfa, performans: PerformansSayfa, trendyol: TrendyolSayfa, ayarlar: AyarlarSayfa,
-};
+  ...(BELGE_MOTORU ? { stokfis: StokFisleri } : {}),
+} as Record<AnaSayfa, (p: Props) => React.ReactNode>;
 
 export default function App() {
   const [session, setSession] = useState<Session | null | undefined>(MODE === 'demo' ? null : undefined);

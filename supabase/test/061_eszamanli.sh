@@ -10,7 +10,7 @@ k() { if [ "$2" = "1" ]; then echo "GEÇTİ | $1 | ${3:-}"; GECEN=$((GECEN+1)); 
 
 Y=$(Q -c "select eposta from kullanicilar where rol = 'yonetici' and aktif order by eposta limit 1")
 D1=$(Q -c "select id from depolar where aktif order by ad limit 1"); D2=$(Q -c "select id from depolar where aktif order by ad offset 1 limit 1")
-mapfile -t P < <(Q -c "select id from urunler where aktif order by id offset 20 limit 5")
+mapfile -t P < <(Q -c "select id from urunler where aktif and (upper(ad || ' ' || coalesce(kategori, '')) !~ '(İŞÇİLİK|ISCILIK|İSCİLİK|IŞÇILIK|HİZMET|HIZMET|DANIŞMANLIK|YIKAMA|MONTAJ ÜCRET|SERVİS ÜCRET|TAMİR ÜCRET)') order by id offset 20 limit 5")
 CLAIMS="{\"role\":\"authenticated\",\"email\":\"$Y\"}"
 yon() { Q <<SQL
 begin;

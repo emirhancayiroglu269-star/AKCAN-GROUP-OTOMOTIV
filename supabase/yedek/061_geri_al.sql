@@ -6,6 +6,7 @@ drop function if exists public._hareket(public.belgeler, text, bigint, uuid, uui
 drop function if exists public._hareket(public.belgeler, text, bigint, uuid, uuid, numeric, numeric, text, bigint, text, uuid, numeric);
 drop function if exists public._kilitle(uuid[], jsonb), public._kim();
 drop view if exists public.belge_satirlari_p, public.stok_defteri_p;
+drop table if exists public.urun_turu cascade;
 drop table if exists public.stok_bakiye, public.urun_maliyet, public.stok_defteri, public.belge_satirlari, public.belgeler, public.belge_sayac, public.belge_turleri cascade;
 drop function if exists public._belge_koru(), public._satir_koru(), public._defter_koru(), public._motor_tablo_koru(), public._truncate_yok();
 commit;
