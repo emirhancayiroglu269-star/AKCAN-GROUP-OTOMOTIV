@@ -106,7 +106,7 @@ jobs:
           cat kural.txt tur.txt es.txt 2>/dev/null | grep -E 'GEÇTİ|KALDI|gecen|eşzamanlılık:|^ *[0-9]+ *\| *[0-9]+ *\|' > ozet.txt || true
           psql service=test -X -q -c "create table if not exists public.ci_sonuc (id bigint generated always as identity primary key, zaman timestamptz default now(), commit text, durum text, ozet text)"
           psql service=test -X -q -c "revoke all on public.ci_sonuc from anon, authenticated"
-          psql service=test -X -q -v commit="$(git rev-parse --short HEAD)" -v durum="${{ job.status }}" -v ozet="$(cat ozet.txt)" -c "insert into public.ci_sonuc (commit, durum, ozet) values (:'commit', :'durum', :'ozet')"
+          echo "insert into public.ci_sonuc (commit, durum, ozet) values (:'commit', :'durum', :'ozet');" | psql service=test -X -q -v ON_ERROR_STOP=1 -v commit="$(git rev-parse --short HEAD)" -v durum="${{ job.status }}" -v ozet="$(cat ozet.txt)"
       - name: Geçici dosyaları sil
         if: always()
         run: rm -f "$PGSERVICEFILE"
