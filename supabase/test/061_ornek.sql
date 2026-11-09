@@ -6,7 +6,7 @@ select eposta as k from kullanicilar where rol = 'kasiyer' and aktif order by ep
 select id as d1 from depolar where aktif order by ad limit 1 \gset
 select id as d2 from depolar where aktif order by ad offset 1 limit 1 \gset
 select id as pa from urunler where aktif and ad ilike '%5W30%' order by ad limit 1 \gset
-select id as pb from urunler where aktif and ad ilike '%BALATA%' and id <> :'pa' order by ad limit 1 \gset
+select id as pb from urunler where aktif and ad ilike '%FREN BALATA%' and ad not ilike '%İŞÇİLİK%' and ad not ilike '%DEĞİŞİM%' and id <> :'pa' order by ad limit 1 \gset
 begin;
 set local role authenticated;
 select set_config('request.jwt.claims', json_build_object('role', 'authenticated', 'email', :'y')::text, true);
