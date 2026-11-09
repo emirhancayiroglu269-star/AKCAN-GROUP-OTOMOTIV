@@ -1,0 +1,97 @@
+# Faz 1 · 2. adım — belge motoru (061) YALNIZ akcan-test projesine kurulur ve otomatik testleri çalıştırılır.
+# Canlı veritabanına bağlanmaz: bu işte canlı bağlantı sırrı (SUPABASE_DB_URL) hiç kullanılmaz.
+# Sıra: (1) belge motorunu test projesinde baştan kur  (2) kural testleri (tek işlem, sonunda geri alınır)
+#       (3) eşzamanlılık testleri (aynı anda çok bağlantı)  (4) test izlerini temizle, motoru boş kur  (5) örnek belgeleri yaz
+# Mevcut test verisine (ürünler, depolar, depo stokları, kodlar, kullanıcılar, ayarlar) yazılmaz; testler bunların değişmediğini de doğrular.
+name: Belge motoru testi (akcan-test)
+on:
+  workflow_dispatch:
+    inputs:
+      kaynak:
+        description: 'AKCAN deposunda dal ya da commit'
+        default: 'analiz-kaynak'
+  push:
+    paths: ['.github/workflows/test-belge.yml']
+permissions: { contents: read }
+concurrency: { group: test-belge, cancel-in-progress: false }
+env:
+  CANLI_REF: qmafuyuocmcobrstnmbx
+  TEST_REF: phflvmtgtjxebrehzpkh
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Test bağlantısı (maskeli) ve hedef koruması
+        env:
+          TEST: ${{ secrets.TEST_DB_URL }}
+        run: |
+          set +x
+          [ -n "$TEST" ] || { echo "::error::TEST_DB_URL yok"; exit 1; }
+          python3 - <<'PY'
+          import os, re, urllib.parse as u
+          a = os.environ['TEST'].strip()
+          m = re.match(r'^postgres(?:ql)?://([^:/@]+):(.*)@([A-Za-z0-9.-]+)(?::(\d+))?/([^?#]*)', a, re.S)
+          if not m: raise SystemExit('::error::TEST_DB_URL biçimi tanınmadı')
+          kul, sif, host, port, db = m.groups()
+          if '%' in sif:
+              try: sif = u.unquote(sif, errors='strict')
+              except Exception: pass
+          for x in (host, kul, sif): print('::add-mask::' + x)
+          kim = kul + ' ' + host
+          if os.environ['TEST_REF'] not in kim or os.environ['CANLI_REF'] in kim: raise SystemExit('::error::Adres akcan-test projesine ait değil; hiçbir şey yapılmadı.')
+          yol = os.path.join(os.environ['RUNNER_TEMP'], 'pg_service.conf')
+          fd = os.open(yol, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+          with os.fdopen(fd, 'w') as f:
+              f.write(f'[test]\nhost={host}\nport={"5432" if port in (None, "6543") else port}\nuser={kul}\npassword={sif}\ndbname={db or "postgres"}\nsslmode=require\nconnect_timeout=30\n')
+          open(os.environ['GITHUB_ENV'], 'a').write(f'PGSERVICEFILE={yol}\n')
+          print('hedef: akcan-test')
+          PY
+      - name: PostgreSQL 17 istemcisi
+        run: |
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -fsSo /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt noble-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list >/dev/null
+          sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client-17 >/dev/null
+          echo "/usr/lib/postgresql/17/bin" >> "$GITHUB_PATH"
+      - name: AKCAN kaynak kodu
+        uses: actions/checkout@v4
+        with:
+          repository: emirhancayiroglu269-star/AKCAN-GROUP-OTOMOTIV
+          ref: ${{ github.event.inputs.kaynak || 'analiz-kaynak' }}
+          path: kaynak
+          persist-credentials: false
+      - name: Belge motorunu test projesinde kur (061)
+        working-directory: kaynak/supabase
+        run: |
+          echo "kaynak commit: $(git rev-parse --short HEAD)" | tee -a "$GITHUB_STEP_SUMMARY"
+          psql service=test -X -q -v ON_ERROR_STOP=1 -f yedek/061_geri_al.sql
+          psql service=test -X -q -v ON_ERROR_STOP=1 -f 061_belge_motoru.sql 2>&1 | grep -v NOTICE || true
+          psql service=test -X -At -c "select count(*) from pg_proc where proname in ('belge_kaydet','belge_onayla','belge_iptal')" | grep -qx 3
+      - name: Kural testleri
+        working-directory: kaynak/supabase
+        run: |
+          set -o pipefail
+          psql service=test -X -q -v ON_ERROR_STOP=1 -f test/061_test.sql 2>&1 | grep -v NOTICE | tee kural.txt
+          { echo '## Kural testleri'; echo '```'; grep -E 'GEÇTİ|KALDI|gecen|^ *[0-9]+ *\| *[0-9]+ *\|' kural.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+      - name: Eşzamanlılık testleri
+        working-directory: kaynak/supabase
+        run: |
+          set -o pipefail
+          bash test/061_eszamanli.sh "service=test" 2>&1 | tee es.txt
+          { echo '## Eşzamanlılık testleri'; echo '```'; grep -E 'GEÇTİ|KALDI|eşzamanlılık:' es.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+      - name: Test izlerini temizle ve örnek belgeleri yaz
+        if: success()
+        working-directory: kaynak/supabase
+        run: |
+          psql service=test -X -q -v ON_ERROR_STOP=1 -f yedek/061_geri_al.sql
+          psql service=test -X -q -v ON_ERROR_STOP=1 -f 061_belge_motoru.sql 2>&1 | grep -v NOTICE || true
+          # eşzamanlılık testinin işlem geçmişine yazdığı belge kayıtları (yalnız test projesi)
+          psql service=test -X -q -c "delete from public.denetim where tablo in ('belgeler', 'belge_satirlari')"
+          psql service=test -X -q -v ON_ERROR_STOP=1 -f test/061_ornek.sql
+          { echo '## Örnek stok hareketleri'; echo '```'
+            psql service=test -X -c "select belge_no, islem, left(u.ad, 30) urun, d.ad depo, miktar, birim_maliyet, tutar, onceki_miktar, sonraki_miktar, ort_sonraki, split_part(kullanici, '@', 1) kim from stok_defteri s join urunler u on u.id = s.urun_id join depolar d on d.id = s.depo_id order by s.id"
+            echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+      - name: Geçici dosyaları sil
+        if: always()
+        run: rm -f "$PGSERVICEFILE"
