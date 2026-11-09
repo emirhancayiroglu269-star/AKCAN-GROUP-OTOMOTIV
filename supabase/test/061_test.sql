@@ -191,7 +191,7 @@ begin
      (select toplam_deger::text from urun_maliyet where urun_id = pg_temp.c('U6')::uuid));
 
   -- 14) açılış fişi ve geçmiş yıl numarası
-  r := pg_temp.kaydet('ACL', D2, jsonb_build_array(jsonb_build_object('urun_id', U2, 'miktar', 1, 'birim_maliyet', 70)), null, make_date(v_yil::int - 1, 12, 31));
+  r := pg_temp.kaydet('ACL', D1, jsonb_build_array(jsonb_build_object('urun_id', U2, 'miktar', 1, 'birim_maliyet', 70)), null, make_date(v_yil::int - 1, 12, 31));
   r := pg_temp.onayla(r->>'id');
   perform pg_temp.k('Numara belgenin yılına göre: geçen yıl tarihli açılış ACL-(yıl−1)-000001', r->>'no' = 'ACL-' || (v_yil::int - 1) || '-000001', r->>'no');
   perform pg_temp.k('Açılış girişi ortalamayı karıştırır: 2×50 + 1×70 → 56,6667', pg_temp.ort(U2) = 56.6667, pg_temp.ort(U2)::text);
