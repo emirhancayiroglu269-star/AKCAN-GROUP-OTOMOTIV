@@ -176,6 +176,19 @@ begin
      and (select (pg_temp.onayla((pg_temp.kaydet('GIR', D1, jsonb_build_array(jsonb_build_object('urun_id', U5, 'miktar', 2, 'birim_maliyet', 15))))->>'id')) ? 'no')
      and pg_temp.ort(U5) = 15, pg_temp.ort(U5)::text);
 
+  -- 13b) yuvarlama: 3 × 10,00 + 1 × 10,01 + 2 × 9,99 girişleri, 6'sı tek tek çıkarılır → değer kuruşu kuruşuna sıfırlanır
+  perform pg_temp.onayla((pg_temp.kaydet('GIR', D1, jsonb_build_array(jsonb_build_object('urun_id', pg_temp.c('U6'), 'miktar', 3, 'birim_maliyet', 10))))->>'id');
+  perform pg_temp.onayla((pg_temp.kaydet('GIR', D1, jsonb_build_array(jsonb_build_object('urun_id', pg_temp.c('U6'), 'miktar', 1, 'birim_maliyet', 10.01))))->>'id');
+  perform pg_temp.onayla((pg_temp.kaydet('GIR', D2, jsonb_build_array(jsonb_build_object('urun_id', pg_temp.c('U6'), 'miktar', 2, 'birim_maliyet', 9.99))))->>'id');
+  perform pg_temp.k('Ortalama: (30,00 + 10,01 + 19,98) / 6 = 9,9983', pg_temp.ort(pg_temp.c('U6')) = 9.9983, pg_temp.ort(pg_temp.c('U6'))::text);
+  for n in 1..4 loop perform pg_temp.onayla((pg_temp.kaydet('CIK', D1, jsonb_build_array(jsonb_build_object('urun_id', pg_temp.c('U6'), 'miktar', 1))))->>'id'); end loop;
+  perform pg_temp.onayla((pg_temp.kaydet('TRF', D2, jsonb_build_array(jsonb_build_object('urun_id', pg_temp.c('U6'), 'miktar', 2)), D1))->>'id');
+  perform pg_temp.onayla((pg_temp.kaydet('CIK', D1, jsonb_build_array(jsonb_build_object('urun_id', pg_temp.c('U6'), 'miktar', 2))))->>'id');
+  perform pg_temp.k('Stok sıfırlanınca değer de tam sıfır (kuruş artığı kalmaz), çıkışların toplamı girişlere eşit',
+     pg_temp.toplam(pg_temp.c('U6')) = 0 and (select toplam_deger from urun_maliyet where urun_id = pg_temp.c('U6')::uuid) = 0
+     and (select sum(tutar) from stok_defteri where urun_id = pg_temp.c('U6')::uuid and miktar < 0 and tur <> 'TRF') = -59.99,
+     (select toplam_deger::text from urun_maliyet where urun_id = pg_temp.c('U6')::uuid));
+
   -- 14) açılış fişi ve geçmiş yıl numarası
   r := pg_temp.kaydet('ACL', D2, jsonb_build_array(jsonb_build_object('urun_id', U2, 'miktar', 1, 'birim_maliyet', 70)), null, make_date(v_yil::int - 1, 12, 31));
   r := pg_temp.onayla(r->>'id');
@@ -270,6 +283,9 @@ do $$ begin
      where coalesce(b.miktar, 0) <> coalesce(d.s, 0)));
   perform pg_temp.k('Ürün toplamı = depo bakiyeleri toplamı', not exists (
      select 1 from urun_maliyet m left join (select urun_id, sum(miktar) s from stok_bakiye group by 1) b using (urun_id) where m.toplam_miktar <> coalesce(b.s, 0)));
+  perform pg_temp.k('Stok değeri = defterdeki tutarların toplamı (her ürün); stok 0 ise değer 0', not exists (
+     select 1 from urun_maliyet m left join (select urun_id, sum(tutar) s from stok_defteri group by 1) d using (urun_id)
+     where m.toplam_deger <> coalesce(d.s, 0) or (m.toplam_miktar = 0 and m.toplam_deger <> 0)));
   perform pg_temp.k('Defter zinciri: her satırda sonraki = önceki + miktar', not exists (select 1 from stok_defteri where sonraki_miktar <> onceki_miktar + miktar or toplam_sonraki <> toplam_onceki + miktar));
   perform pg_temp.k('Hiçbir depoda eksi stok yok', not exists (select 1 from stok_bakiye where miktar < 0));
   perform pg_temp.k('Numaralar her tür ve yılda boşluksuz ve benzersiz', not exists (

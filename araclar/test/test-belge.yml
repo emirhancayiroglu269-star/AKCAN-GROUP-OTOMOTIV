@@ -91,6 +91,7 @@ jobs:
           psql service=test -X -q -v ON_ERROR_STOP=1 -f test/061_ornek.sql
           { echo '## Örnek stok hareketleri'; echo '```'
             psql service=test -X -c "select belge_no, islem, left(u.ad, 30) urun, d.ad depo, miktar, birim_maliyet, tutar, onceki_miktar, sonraki_miktar, ort_sonraki, split_part(kullanici, '@', 1) kim from stok_defteri s join urunler u on u.id = s.urun_id join depolar d on d.id = s.depo_id order by s.id"
+            psql service=test -X -c "select left(u.ad, 30) urun, toplam_miktar, toplam_deger, ort_maliyet from urun_maliyet m join urunler u on u.id = m.urun_id"
             echo '```'; } >> "$GITHUB_STEP_SUMMARY"
       - name: Geçici dosyaları sil
         if: always()

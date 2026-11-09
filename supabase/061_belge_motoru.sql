@@ -121,10 +121,13 @@ create table if not exists public.stok_bakiye (
 );
 
 -- ---------- 7) ağırlıklı ortalama maliyet ----------
+-- ortalama = stok değeri / stok miktarı. Stok değeri defterdeki tutarların toplamıdır; girişlerin sırası sonucu değiştirmez.
+-- Stok sıfırlanırken son çıkış kalan değerin tamamını alır (kuruş artığı kalmaz).
 create table if not exists public.urun_maliyet (
   urun_id uuid primary key references public.urunler(id),
   ort_maliyet numeric(14,4) not null default 0 check (ort_maliyet >= 0),   -- KDV hariç
   toplam_miktar numeric(14,3) not null default 0 check (toplam_miktar >= 0),
+  toplam_deger numeric(18,2) not null default 0,        -- stok değeri = defterdeki tutarların toplamı (yuvarlama birikmesin diye ortalama buradan hesaplanır)
   son_hareket bigint references public.stok_defteri(id),
   guncelleme timestamptz not null default now()
 );
@@ -225,32 +228,36 @@ begin
     order by b.urun_id, b.depo_id for update of b;
 end $$;
 
-/** tek bir stok hareketi: bakiye, ortalama maliyet ve defter satırı. p_maliyet_etkisi: 'giris' (ortalamayı karıştırır), 'cikis_geri' (girişi geri alır), 'yok' */
+/** tek bir stok hareketi: bakiye, stok değeri, ortalama maliyet ve defter satırı.
+    p_maliyet_etkisi: 'giris' (ortalamayı karıştırır), 'cikis_geri' (bir girişi geri alır), 'yok' (ortalama değişmez: çıkış, transfer)
+    p_tutar: iptalde asıl satırın tutarının tersi (verilmezse miktar × birim maliyet) */
 create or replace function public._hareket(p_belge public.belgeler, p_islem text, p_satir bigint, p_urun uuid, p_depo uuid, p_miktar numeric,
-                                            p_birim numeric, p_maliyet_etkisi text, p_ters bigint, p_eposta text, p_uid uuid) returns bigint
+                                            p_birim numeric, p_maliyet_etkisi text, p_ters bigint, p_eposta text, p_uid uuid, p_tutar numeric default null) returns bigint
 language plpgsql security definer set search_path = public as $$
-declare b numeric; q numeric; a numeric; a2 numeric; q2 numeric; c numeric; id bigint; ad text; dad text;
+declare b numeric; q numeric; a numeric; v numeric; a2 numeric; q2 numeric; c numeric; cb numeric; t numeric; id bigint; ad text; dad text;
 begin
   select miktar into b from stok_bakiye where urun_id = p_urun and depo_id = p_depo;
-  select toplam_miktar, ort_maliyet into q, a from urun_maliyet where urun_id = p_urun;
+  select toplam_miktar, ort_maliyet, toplam_deger into q, a, v from urun_maliyet where urun_id = p_urun;
   if b + p_miktar < 0 then
     select u.ad into ad from urunler u where u.id = p_urun; select d.ad into dad from depolar d where d.id = p_depo;
     raise exception 'Eksi stok: % · % deposunda AKCAN stoku %, istenen %', ad, dad, b, -p_miktar using errcode = '23514';
   end if;
-  c := coalesce(p_birim, a);
   q2 := q + p_miktar;
-  if p_maliyet_etkisi = 'giris' then          -- yeni ortalama = (Q·A + q·c) / (Q + q); mevcut miktar 0 ise doğrudan c
-    a2 := case when q <= 0 then c else round((q * a + p_miktar * c) / q2, 4) end;
-  elsif p_maliyet_etkisi = 'cikis_geri' then  -- bir girişin iptali: (Q·A − q·c) / (Q − q); kalan 0 ise ortalama korunur
-    a2 := case when q2 <= 0 then a else greatest(0, round((q * a + p_miktar * c) / q2, 4)) end;
+  c := coalesce(p_birim, a);
+  t := coalesce(p_tutar, round(p_miktar * c, 2));
+  cb := c;
+  if q2 = 0 and p_miktar < 0 then t := -v; cb := round(abs(t / p_miktar), 4); end if;   -- stok sıfırlanıyor: kalan değerin tamamı çıkar
+  if p_maliyet_etkisi in ('giris', 'cikis_geri') then
+    a2 := case when q2 > 0 then greatest(0, round((v + t) / q2, 4)) else a end;   -- (Q·A ± q·c) / (Q ± q), değer üzerinden
   else a2 := a; end if;
+  if p_maliyet_etkisi = 'giris' and q <= 0 and p_birim is not null then a2 := round(p_birim, 4); end if;   -- stok yokken giriş: doğrudan c
   insert into stok_defteri (tarih, belge_id, belge_no, tur, islem, satir_id, urun_id, depo_id, miktar, birim_maliyet, tutar,
                             onceki_miktar, sonraki_miktar, toplam_onceki, toplam_sonraki, ort_onceki, ort_sonraki, ters_kayit_id, kullanici, kullanici_id)
-  values (p_belge.tarih, p_belge.id, p_belge.no, p_belge.tur, p_islem, p_satir, p_urun, p_depo, p_miktar, c, round(p_miktar * c, 2),
+  values (p_belge.tarih, p_belge.id, p_belge.no, p_belge.tur, p_islem, p_satir, p_urun, p_depo, p_miktar, cb, t,
           b, b + p_miktar, q, q2, a, a2, p_ters, p_eposta, p_uid)
   returning stok_defteri.id into id;
   update stok_bakiye set miktar = b + p_miktar, son_hareket = id, guncelleme = now() where urun_id = p_urun and depo_id = p_depo;
-  update urun_maliyet set toplam_miktar = q2, ort_maliyet = a2, son_hareket = id, guncelleme = now() where urun_id = p_urun;
+  update urun_maliyet set toplam_miktar = q2, toplam_deger = v + t, ort_maliyet = a2, son_hareket = id, guncelleme = now() where urun_id = p_urun;
   return id;
 end $$;
 
@@ -332,7 +339,7 @@ end $$;
 -- ---------- 11) belge_onayla: numara + stok hareketleri, tek işlemde ----------
 create or replace function public.belge_onayla(p_id uuid, p_surum int) returns jsonb
 language plpgsql security definer set search_path = public as $$
-declare k record; b belgeler; s record; n int; v_no text; urunler_ uuid[]; ciftler jsonb; v_sis numeric; v_fark numeric; a numeric; say int := 0;
+declare k record; b belgeler; s record; n int; v_no text; urunler_ uuid[]; ciftler jsonb; v_sis numeric; v_fark numeric; a numeric; say int := 0; v_h bigint;
 begin
   select * into k from _kim();
   if k.rol <> 'yonetici' then raise exception 'Belgeyi yalnız yönetici onaylayabilir' using errcode = '42501'; end if;
@@ -365,9 +372,10 @@ begin
       perform _hareket(b, 'onay', s.id, s.urun_id, b.depo_id, s.miktar, s.birim_maliyet, 'giris', null, k.eposta, k.uid); say := say + 1;
     elsif b.tur = 'CIK' then
       perform _hareket(b, 'onay', s.id, s.urun_id, b.depo_id, -s.miktar, null, 'yok', null, k.eposta, k.uid); say := say + 1;
-    elsif b.tur = 'TRF' then                                   -- kaynaktan düşüş ve hedefe giriş aynı işlemde
-      perform _hareket(b, 'onay', s.id, s.urun_id, b.depo_id, -s.miktar, null, 'yok', null, k.eposta, k.uid);
-      perform _hareket(b, 'onay', s.id, s.urun_id, b.hedef_depo_id, s.miktar, null, 'yok', null, k.eposta, k.uid); say := say + 2;
+    elsif b.tur = 'TRF' then                                   -- kaynaktan düşüş ve hedefe giriş aynı işlemde, aynı tutarla
+      v_h := _hareket(b, 'onay', s.id, s.urun_id, b.depo_id, -s.miktar, null, 'yok', null, k.eposta, k.uid);
+      perform _hareket(b, 'onay', s.id, s.urun_id, b.hedef_depo_id, s.miktar, null, 'yok', null, k.eposta, k.uid,
+                       -(select tutar from stok_defteri where id = v_h)); say := say + 2;
     elsif b.tur = 'SAY' then                                   -- sistem miktarı onay anındaki AKCAN bakiyesi
       select miktar into v_sis from stok_bakiye where urun_id = s.urun_id and depo_id = b.depo_id;
       v_fark := s.sayilan - v_sis;
@@ -394,7 +402,7 @@ end $$;
 -- ---------- 12) belge_iptal: ters stok hareketiyle ----------
 create or replace function public.belge_iptal(p_id uuid, p_neden text) returns jsonb
 language plpgsql security definer set search_path = public as $$
-declare k record; b belgeler; h record; urunler_ uuid[]; ciftler jsonb; say int := 0;
+declare k record; b belgeler; h record; urunler_ uuid[]; ciftler jsonb; say int := 0; v_h bigint; trf jsonb := '{}';
 begin
   select * into k from _kim();
   if k.rol <> 'yonetici' then raise exception 'Belgeyi yalnız yönetici iptal edebilir' using errcode = '42501'; end if;
@@ -412,9 +420,12 @@ begin
 
   -- önce girişlerin tersi (stok düşer, eksiye düşerse iptal reddedilir), sonra çıkışların tersi; aynı maliyetle
   for h in select * from stok_defteri where belge_id = b.id and islem = 'onay' order by (miktar < 0), urun_id, depo_id loop
-    perform _hareket(b, 'iptal', h.satir_id, h.urun_id, h.depo_id, -h.miktar, h.birim_maliyet,
+    v_h := _hareket(b, 'iptal', h.satir_id, h.urun_id, h.depo_id, -h.miktar, h.birim_maliyet,
                      case when b.tur = 'TRF' then 'yok' when h.miktar > 0 then 'cikis_geri' else 'giris' end,
-                     h.id, k.eposta, k.uid);
+                     h.id, k.eposta, k.uid,
+                     -- transferde kaynağa dönen tutar, hedeften çıkanla aynı olur (toplam stok değeri değişmez)
+                     case when b.tur = 'TRF' and h.miktar < 0 and trf ? h.satir_id::text then -(trf ->> h.satir_id::text)::numeric else -h.tutar end);
+    if b.tur = 'TRF' and h.miktar > 0 then trf := trf || jsonb_build_object(h.satir_id::text, (select tutar from stok_defteri where id = v_h)); end if;
     say := say + 1;
   end loop;
   update belgeler set durum = 'iptal', surum = surum + 1, iptal_eden = k.eposta, iptal_eden_id = k.uid, iptal_zaman = now(), iptal_nedeni = trim(p_neden)
@@ -478,6 +489,6 @@ grant select on public.belge_turleri, public.belge_sayac, public.belgeler, publi
 revoke all on function public.belge_kaydet(jsonb), public.belge_onayla(uuid, int), public.belge_iptal(uuid, text), public.belge_taslak_sil(uuid) from public, anon;
 grant execute on function public.belge_kaydet(jsonb), public.belge_onayla(uuid, int), public.belge_iptal(uuid, text), public.belge_taslak_sil(uuid) to authenticated;
 revoke all on function public._kim(), public._kilitle(uuid[], jsonb),
-  public._hareket(public.belgeler, text, bigint, uuid, uuid, numeric, numeric, text, bigint, text, uuid),
+  public._hareket(public.belgeler, text, bigint, uuid, uuid, numeric, numeric, text, bigint, text, uuid, numeric),
   public._belge_koru(), public._satir_koru(), public._defter_koru(), public._motor_tablo_koru(), public._truncate_yok()
   from public, anon, authenticated, service_role;
