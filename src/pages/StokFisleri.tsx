@@ -314,8 +314,8 @@ function FisDetay({ id, akcan, kapat, degisti, duzenle }: {
         <div>
           <div className="mb-1 text-sm font-semibold">Satırlar</div>
           <div className="overflow-x-auto"><table className="tbl text-sm">
-            <thead><tr><th>Ürün</th><th className="text-right">{sayim ? 'Sayılan' : 'Miktar'}</th>{sayim && <><th className="text-right">Sistem</th><th className="text-right">Fark</th></>}
-              {yonetici && (b.tur === 'GIR' || b.tur === 'ACL' || sayim) && <th className="text-right">Birim maliyet</th>}
+            <thead><tr><th>Ürün</th><th className="!text-right">{sayim ? 'Sayılan' : 'Miktar'}</th>{sayim && <><th className="!text-right">Sistem</th><th className="!text-right">Fark</th></>}
+              {yonetici && (b.tur === 'GIR' || b.tur === 'ACL' || sayim) && <th className="!text-right">Birim maliyet</th>}
               {b.durum === 'taslak' && <th>Önizleme (AKCAN)</th>}</tr></thead>
             <tbody>{d.satirlar.map((s) => {
               const on = onizleme.filter((x) => x.s.id === s.id);
@@ -370,7 +370,7 @@ function KarsilastirmaSekmesi({ akcan }: { akcan: ReturnType<typeof useAkcan> })
       <p className="mb-2 text-xs text-slate-500">Hizmet ürünleri karşılaştırmaya girmez. BizimHesap stoku her dakika eşitlenir; AKCAN stoku yalnız onaylı fişlerle değişir.</p>
       {!l.length ? <Bos metin="Fark yok." /> : <>
         <div className="overflow-x-auto"><table className="tbl text-sm">
-          <thead><tr><th>Ürün</th><th>Depo</th><th className="text-right">AKCAN</th><th className="text-right">BizimHesap</th><th className="text-right">Fark</th></tr></thead>
+          <thead><tr><th>Ürün</th><th>Depo</th><th className="!text-right">AKCAN</th><th className="!text-right">BizimHesap</th><th className="!text-right">Fark</th></tr></thead>
           <tbody>{l.slice(0, goster).map((x) => (
             <tr key={x.urun_id + x.depo_id}>
               <td className="min-w-[12rem]"><UrunLink id={x.urun_id}>{ad.get(x.urun_id)?.ad ?? x.urun_id}</UrunLink><div className="text-xs text-slate-500">{ad.get(x.urun_id)?.kod}</div></td>
@@ -465,7 +465,7 @@ function AcilisSekmesi({ yenile, ac, git }: { yenile: () => void; ac: (id: strin
         {!istisna ? <p className="text-sm text-slate-500"><Loader2 size={14} className="mr-1 inline animate-spin" />Yükleniyor…</p> : !istisna.length ? <Bos metin="İstisna yok." /> : <>
           <div className="mb-2 flex flex-wrap gap-1.5">{gruplar.map(([n, c]) => <span key={n} className="rozet bg-slate-100 text-slate-700">{n}: {c}</span>)}</div>
           <div className="max-h-[28rem] overflow-auto"><table className="tbl text-xs">
-            <thead><tr><th>Ürün</th><th className="text-right">BizimHesap stoku</th><th className="text-right">Alış (KDV hariç)</th><th className="text-right">Satış (KDV hariç)</th><th>Neden</th></tr></thead>
+            <thead><tr><th>Ürün</th><th className="!text-right">BizimHesap stoku</th><th className="!text-right">Alış (KDV hariç)</th><th className="!text-right">Satış (KDV hariç)</th><th>Neden</th></tr></thead>
             <tbody>{istisna.map((x) => <tr key={x.urun_id}><td className="min-w-[12rem]"><UrunLink id={x.urun_id}>{x.ad}</UrunLink> <span className="text-slate-400">{x.kod}</span></td>
               <td className="text-right">{sayi(x.bh_miktar)}</td><td className="text-right">{para(x.alis_net)}</td><td className="text-right">{para(x.satis_net)}</td><td>{x.neden}</td></tr>)}</tbody></table></div>
         </>}

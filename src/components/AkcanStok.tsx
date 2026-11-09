@@ -10,8 +10,8 @@ const kisaEposta = (e?: string | null) => (e ? e.split('@')[0] : '—');
 export function HareketTablosu({ l, yonetici, urunAdi, depoAdi, belgeNo = true }: { l: DefterSatir[]; yonetici: boolean; urunAdi?: (id: string) => string; depoAdi: (id: string) => string; belgeNo?: boolean }) {
   return (
     <div className="overflow-x-auto"><table className="tbl text-xs">
-      <thead><tr><th>Zaman</th>{belgeNo && <th>Belge</th>}{urunAdi && <th>Ürün</th>}<th>Depo</th><th className="text-right">Miktar</th><th className="text-right">Önce → sonra</th>
-        {yonetici && <><th className="text-right">Birim</th><th className="text-right">Tutar</th><th className="text-right">Ort. maliyet</th></>}<th>Kim</th></tr></thead>
+      <thead><tr><th>Zaman</th>{belgeNo && <th>Belge</th>}{urunAdi && <th>Ürün</th>}<th>Depo</th><th className="!text-right">Miktar</th><th className="!text-right">Önce → sonra</th>
+        {yonetici && <><th className="!text-right">Birim</th><th className="!text-right">Tutar</th><th className="!text-right">Ort. maliyet</th></>}<th>Kim</th></tr></thead>
       <tbody>{l.map((h) => (
         <tr key={h.id} className={h.islem === 'iptal' ? 'bg-red-50/60 dark:bg-red-500/5' : ''}>
           <td className="whitespace-nowrap">{tarihSaat(h.zaman)}</td>
@@ -53,7 +53,7 @@ export function AkcanStokBolum({ urunId }: { urunId: string }) {
       <div className="mb-2 flex flex-wrap items-center gap-2 text-sm font-semibold">AKCAN stoku <span className="rozet bg-red-100 text-red-700">deneme</span>
         <span className={`rozet ${v.tur === 'hizmet' ? 'bg-violet-100 text-violet-800' : v.tur === 'belirsiz' ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'}`}>{v.tur === 'hizmet' ? 'Hizmet: stok tutulmaz' : v.tur === 'belirsiz' ? 'Hizmet adayı: tür bekleniyor' : 'Stoklu ürün'}</span></div>
       {v.tur !== 'hizmet' && <div className="mb-2 overflow-x-auto"><table className="tbl text-sm">
-        <thead><tr><th>Depo</th><th className="text-right">AKCAN</th><th className="text-right">BizimHesap</th><th className="text-right">Fark</th></tr></thead>
+        <thead><tr><th>Depo</th><th className="!text-right">AKCAN</th><th className="!text-right">BizimHesap</th><th className="!text-right">Fark</th></tr></thead>
         <tbody>{depolar.map((d) => { const a = v.bakiye.find((x) => x.depo_id === d.id)?.miktar ?? 0; const b = Number(db.urun_depo_stok.find((x) => x.urun_id === urunId && x.depo_id === d.id)?.miktar ?? 0); const f = Math.round((a - b) * 1000) / 1000;
           return <tr key={d.id}><td>{depoAd(d.id)}</td><td className="text-right font-semibold">{sayi(a)}</td><td className="text-right">{sayi(b)}</td><td className={`text-right ${f ? 'font-semibold text-red-600' : 'text-slate-400'}`}>{f > 0 ? '+' : ''}{sayi(f)}</td></tr>; })}</tbody></table></div>}
       {yonetici && v.maliyet && v.tur !== 'hizmet' && <div className="mb-2 text-xs text-slate-600 dark:text-slate-400">Ağırlıklı ortalama maliyet <b>{para(v.maliyet.ort_maliyet)}</b> (KDV hariç) · stok değeri {para(v.maliyet.toplam_deger)}</div>}
