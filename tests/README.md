@@ -219,18 +219,45 @@ Müşteri iade edilen satıştan geliyor:
 
 **9 test** bu kuralı kilitliyor.
 
-### Merkezî fiyat çözümlemesi — son durum
+### 10. Stok.tsx bölündü — 5.007 satırdan 9 dosyaya
 
-| Ekran | Durum |
-|---|---|
-| `SatisSayfasi` | ✅ |
-| `MusteriSiparisiSayfasi` | ✅ |
-| `TekliflerSayfasi` | ✅ |
-| `IadeSayfasi` (değişim sepeti) | ✅ |
-| `Musteri.tsx` ("tekrar sat") | ✅ |
+**Sorun:** `src/modules/Stok.tsx` tek başına **5.007 satır** ve **6 sayfa bileşeni**
+barındırıyordu (`StokSayfasi`, `HizliAramaSayfasi`, `SiparisOnerisiSayfasi`,
+`SayimSayfasi`, `BarkodBulunamadiModal`, `TopluFiyatSayfasi`). Tek dosyada 170+ state,
+~60 handler ve ~20 modal — hiçbir parçası tek başına anlaşılamıyordu.
 
-Artık sepete/teklife/siparişe giren her fiyat tek bir yerden
-(`parcaFiyatiHesapla`) geçiyor.
+**Sonuç:** 5.007 → **1.579 satır** (%68 küçülme), 8 yeni dosya:
+
+| Dosya | Satır | İçerik |
+|---|---:|---|
+| `Stok.tsx` | 1.579 | `StokSayfasi` (state + iş kuralları) + `HizliAramaSayfasi` |
+| `StokModallari.tsx` | 955 | Stok girişi, düzeltme, raf taşıma, hareket defteri, tedarikçi karşılaştırması, alış/fiyat geçmişi, OEM/muadil kod, barkod, araç uyumluluğu |
+| `SayimSayfasi.tsx` | 712 | Sayım ekranı |
+| `SiparisOnerisiSayfasi.tsx` | 434 | Sipariş önerisi / ölü stok |
+| `UrunDetayPaneli.tsx` | 427 | Ürün detayı (fotoğraf, teknik bilgi, OEM, muadil, uyumluluk, doküman) + silme onayı |
+| `UrunFormu.tsx` | 404 | Ürün kartı ekle/düzenle modalı |
+| `TopluFiyatSayfasi.tsx` | 368 | Toplu fiyat güncelleme |
+| `UrunListesi.tsx` | 240 | Ürün kartı ızgarası (salt sunum) |
+| `UrunDetayKarti.tsx` | 186 | Hızlı aramada ürün detay paneli |
+| `BarkodBulunamadiModal.tsx` | 113 | Barkod bulunamadı modalı |
+
+**Yaklaşım:** Bölme sırasında **tek satır iş mantığı değişmedi**. Sadece:
+
+1. Bağımsız sayfalar (`SiparisOnerisi`, `Sayim`, `TopluFiyat`, `BarkodModal`)
+   kendi dosyalarına taşındı — `App.tsx` değişmesin diye `Stok.tsx` bunları
+   yeniden dışa aktarıyor.
+2. `StokSayfasi`'nın JSX'i beş parçaya ayrıldı: liste, form, modallar, detay paneli,
+   hızlı arama kartı. **State hâlâ `StokSayfasi`'nda** — alt bileşenler yalnızca
+   çiziyor, prop alıyor. Bu sayede iş kuralları tek yerde kalıyor.
+3. Her adımda `tsc --noEmit` + `npm run build` + `npm test` + eski smoke testler
+   çalıştırıldı: **0 tip hatası, 361 test, 118 smoke geçti.**
+
+**Neden Context/Provider'a geçilmedi:** prop sayısı yüksek (81 prop'lu `StokModallari`)
+ama bu geçici bir ara adım. Context'e geçmek iş mantığını da taşımayı gerektirir;
+o ayrı bir iş. Şimdilik "state tek yerde, JSX parçalı" sınırı korundu — en az riskli bölme.
+
+**Sıradaki adım:** `StokModallari.tsx` (955 satır, 81 prop) hâlâ büyük. Her modal
+kendi dosyasına ayrılıp kendi state'ini taşıyabilir; o zaman prop sayısı düşer.
 
 ### `tests/gercek/audit-log.test.ts` — 101 test
 `src/lib/audit-log.ts` (denetim izi hash zinciri)
