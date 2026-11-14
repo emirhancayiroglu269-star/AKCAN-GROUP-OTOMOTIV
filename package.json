@@ -125,7 +125,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:gercek": "vitest run tests/gercek",
-    "test:eski-smoke": "for f in tests/*.mjs; do node \"$f\" > /dev/null || exit 1; done; echo 'eski smoke testler bitti'"
+    "test:eski-smoke": "node tests/eski-smoke-calistir.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.57.4",

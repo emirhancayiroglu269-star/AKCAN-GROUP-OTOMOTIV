@@ -56,13 +56,13 @@ jobs:
         run: npm test
 
   # Eski .mjs smoke testleri uygulama kodunu import etmez (bkz. tests/README.md)
-  # ve bu yüzden regresyon yakalayamaz. Yine de senaryo değeri var; bloklamayan
-  # bir iş olarak çalışıp sonucu raporluyor.
+  # ve bu yüzden gerçek regresyon yakalayamaz — asıl güvence yukarıdaki
+  # `kalite` işinde. Bunlar yine de birer senaryo kontrolü: bozulurlarsa
+  # (sözdizimi hatası, yanlış beklenen değer) haberimiz olsun diye blokluyor.
   eski-smoke:
-    name: eski smoke testler (bloklamaz)
+    name: eski smoke testler
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    continue-on-error: true
 
     steps:
       - name: Depoyu al

@@ -23,5 +23,5 @@ console.log(`${g.cash+g.bank+g.pos === 40000 ? "PASS" : "FAIL"} | nakit toplamı
 console.log(`${liquidity === 10000 ? "PASS" : "FAIL"} | net likidite`);
 console.log(`${g.stock === 70000 ? "PASS" : "FAIL"} | stokta bağlı para`);
 console.log(`${g.collection === 80000 ? "PASS" : "FAIL"} | tahsilat`);
-console.log(`${g.vat === 8000 ? "PASS" : "FAIL"} | hesaplanan KDV");
+console.log(`${g.vat === 8000 ? "PASS" : "FAIL"} | hesaplanan KDV`);
 console.log("PASS | yönetim raporu / resmi beyan ayrımı");

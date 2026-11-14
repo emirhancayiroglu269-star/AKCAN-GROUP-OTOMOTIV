@@ -26,6 +26,34 @@ Yani bu testler yeşil yansa da **hiçbir regresyonu yakalayamaz**.
 Bu dosyalar **silinmedi** (geçmiş ve senaryo listesi değerli). Yeni gerçek testler
 `tests/gercek/` altında ayrı yaşıyor ve `npm test` yalnızca onları çalıştırıyor.
 
+## Sürekli entegrasyon (CI)
+
+`.github/workflows/ci.yml` — her **push** ve **pull request**'te çalışır:
+
+| İş | Adımlar | Bloklar mı |
+|---|---|---|
+| `kalite` | `npm ci` → `npm run typecheck` → `npm run build` → `npm test` | ✅ Evet |
+| `eski-smoke` | `npm ci` → `npm run test:eski-smoke` (118 senaryo) | ✅ Evet |
+
+Node 24 (vitest 5.1.0 ve vite 8.2.1'in ortak desteklediği sürüm).
+`package.json` içine `engines: { node: ">=24" }` eklendi.
+
+**Neden `typecheck` ayrı adım:** `npm run build` (vite) tip kontrolü **yapmaz**.
+Tip hatası build'i kırmaz; yalnızca `tsc --noEmit` yakalar. İkisi ayrı çalışıyor.
+
+**İlk çalıştırmada 2 gerçek sorun bulundu ve düzeltildi:**
+
+1. `tests/finansal-dashboard-smoke.mjs` — **sözdizimi hatası**:
+   `console.log(\`... KDV");` → ters tik açılıp normal tırnakla kapatılmış.
+   Dosya hiç çalışmıyordu (`SyntaxError: Unexpected end of input`).
+2. `tests/v111-alis-smoke.mjs` — **yanlış beklenen değer**: 10×100−50 + 5×200 = **1950**
+   iken test **19950** bekliyordu (10 kat şişik). Test her zaman kırmızıydı.
+
+Ayrıca `test:eski-smoke` betiği `for f in tests/*.mjs; do …` kabuk döngüsüyle
+yazılmıştı — **Windows'ta `cmd.exe` bunu çalıştıramıyor** ("f was unexpected").
+Platformdan bağımsız `tests/eski-smoke-calistir.mjs` ile değiştirildi; artık
+kaç testin geçtiğini/başarısız olduğunu da raporluyor.
+
 ## Komutlar
 
 ```bash
