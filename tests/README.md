@@ -4,7 +4,7 @@
 
 | | Sayı | Uygulama kodunu çalıştırıyor mu? |
 |---|---|---|
-| `tests/gercek/*.test.ts` (**yeni**) | 9 dosya / **320 test** | ✅ Evet — `src/` import ediyor |
+| `tests/gercek/*.test.ts` (**yeni**) | 9 dosya / **328 test** | ✅ Evet — `src/` import ediyor |
 | `tests/*.mjs` (eski "smoke") | 118 dosya | ❌ **Hayır** |
 
 ### Eski smoke testler hakkında uyarı
@@ -104,7 +104,7 @@ npm run test:eski-smoke   # eski .mjs dosyalarını çalıştırır (bilgi amaç
 - `vadeGrubuBul`: geçmiş/gelecek ayrımı, deterministik
 - `musteriAcikFaturalariFifo`: iptal atlama, **FIFO sıralama**, müşteri izolasyonu, isimle eşleşme (harf duyarsız), tahsilat havuzunun faturalara eskiden yeniye dağıtılması, fazla tahsilatın taşmaması, `vadeGunu` ile vade tarihi türetimi
 
-### `tests/gercek/fiyatlandirma.test.ts` — 80 test
+### `tests/gercek/fiyatlandirma.test.ts` — 88 test
 `src/lib/fiyatlandirma.ts` (fiyat çözümleme motoru — satış ekranının her ürün
 eklerken çağırdığı fonksiyon)
 
@@ -144,49 +144,49 @@ başka kampanya/iptal hariç, kalem iskontosu + genel iskonto payı cirodan dü�
 satır iskontosu önce → genel iskonto **net** üzerinden (bileşik). %10 + %10 = **%19**
 (toplam %20 değil). Tutar bazlı satır iskontosu adetle çarpılmaz.
 
-## 6. ✅ GERÇEK HATA — sepette adet artırılınca fiyat yenilenmiyordu (düzeltildi)
+## 7. ✅ GERÇEK HATA — müşteri siparişi merkezî fiyat çözümlemesini atlıyordu (düzeltildi)
 
-**Dosya:** `src/modules/satis/SatisSayfasi.tsx`
+**Dosya:** `src/modules/satis/MusteriSiparisiSayfasi.tsx`
 
-`adetGuncelle` yalnızca `adet` alanını güncelliyordu, `birimFiyat`'ı yeniden
-hesaplamıyordu. `sepeteEkle` de `parcaFiyatiHesapla`'yı **adet geçmeden**
-(varsayılan 1) çağırıyordu.
+Sipariş fiyatı `String(p.satisFiyati || 0)` ile **ham normal fiyattan** alınıyordu.
+Satış ekranı ise `parcaFiyatiHesapla` üzerinden müşteriye özel fiyat / fiyat grubu
+/ kampanya uyguluyor. Sonuç: **aynı müşteri aynı ürün için satışta indirimli,
+siparişte indirimsiz fiyat görüyordu** — hem de ürünün satış ekranından sipariş
+olarak sepete atıldığı akışta.
 
-**Sonuç:** miktar bazlı kampanyalar sepette **hiç uygulanmıyordu**:
+**Çözüm:** yeni `parcaIcinFiyat(p, adet)` yardımcısı, üç yerde devrede:
 
-| Kampanya | Önce (10 adette) | Sonra |
-|---|---|---|
-| Kademeli %20 (min 10 adet) | 100,00 ₺ | **80,00 ₺** |
-| 3 Al 2 Öde (min 3 adet) | 100,00 ₺ | **66,67 ₺** |
+1. `baslangicUrun` ile sipariş formu açıldığında
+2. `parcaSec` — ürün aramadan seçildiğinde
+3. `adetGirdisiGuncelle` — adet yazılınca (miktar bazlı kampanya için)
 
-Müşteri 10 adet alıyor, indirimi görmüyordu. Yüzde/tutar/sabitFiyat kampanyaları
-adetten bağımsız olduğu için etkilenmiyordu — hata bu yüzden fark edilmemişti.
+Müşteri adı kayıtlı bir cariyle eşleşiyorsa o cariye göre hesaplanıyor
+(`formMusteri`). Kullanıcı sonradan fiyatı elle değiştirirse kendi değeri geçerli.
 
-**Çözüm:** yeni `fiyatiAdedeGoreYenile(s, parca, adet)` yardımcısı, üç yerde
-devreye giriyor:
+**8 test** bu kuralı kilitliyor.
 
-1. `adetGuncelle` — adet +/- veya elle yazıldığında
-2. `sepeteEkle` — mevcut satırın adedi artırıldığında
-3. "Sepetteki fiyatları bu müşteriye göre yeniden hesapla" — artık `s.adet`
-   geçiyor (eskiden 1 geçiyordu, aynı hata orada da vardı)
+### ⚠️ BİLİNEN AÇIK — teklif fiyatı hâlâ merkezî çözümlemeyi kullanmıyor
 
-**Korunan davranışlar** (test edildi):
+`TekliflerSayfasi.tsx` → `kalemEkle`:
 
-| Durum | Davranış |
-|---|---|
-| Elle değiştirilmiş fiyat (`fiyatElleDegistirildi`) | **Ezilmez** — kullanıcı kararı |
-| Müşteriye özel fiyat | Ezilmez (adetten bağımsız) |
-| Fiyat grubu fiyatı | Ezilmez (adetten bağımsız) |
-| Yalnızca yüzde/tutar/sabitFiyat kampanyası var | Gereksiz yeniden hesap **yapılmaz** |
-| Pasif / süresi geçmiş adet bazlı kampanya | Yenileme tetiklemez |
-| Müşteri grubu hedefli kampanya | Yalnızca o gruptaki müşteride |
+```ts
+birimFiyat: p.satisFiyati || 0   // müşteriye özel fiyat / grup / kampanya YOK
+```
 
-`birimFiyatDegisikliginiUygula` artık `fiyatElleDegistirildi: true` ve
-`fiyatKaynagi: "Elle Değiştirildi"` işaretlerini de yazıyor — arayüzde rozet
-doğru görünüyor ve sonraki adet değişiminde fiyat ezilmiyor.
+**Bilinçli olarak dokunulmadı** — üç nedenle:
 
-**13 test** bu kuralı kilitliyor (`fiyatiAdedeGoreYenile`'ın birebir kopyası
-üzerinden).
+1. Teklifte müşteri **kalem eklendikten sonra** yazılıyor; kalem eklenirken
+   müşteri henüz bilinmiyor (sadece serbest metin).
+2. Tekliflerde kendine ait satır iskontosu akışı var (`iskontoTuru`/`iskontoDeger`).
+3. Personelin teklifi serbestçe fiyatlaması iş pratiği olabilir — otomatik indirim
+   istenmeyebilir.
+
+Bağlamak için `musteriAdi` alanı değiştiğinde mevcut kalemlerin `birimFiyat`'ını
+`parcaFiyatiHesapla` ile tazelemek gerekir. **Bu bir iş kararı** — onay gerekir.
+
+**Aynı durumdaki yerler** (bilerek bırakıldı):
+- `IadeSayfasi.tsx` → `degisimSepeteEkle`: `p.satisFiyati || 0` (değişim ürününün
+  fiyatı — iade farkı hesabı, kural farklı olabilir)
 
 ### `tests/gercek/audit-log.test.ts` — 101 test
 `src/lib/audit-log.ts` (denetim izi hash zinciri)

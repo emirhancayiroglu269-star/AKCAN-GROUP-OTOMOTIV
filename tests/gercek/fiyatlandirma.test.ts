@@ -658,3 +658,73 @@ describe("iskonto sırası — satır iskontosu ve genel iskonto", () => {
     expect(r.odenecek).toBe(153);
   });
 });
+
+// ---------------------------------------------------------------------------
+describe("diğer ekranlar — fiyat çözümlemesini kullanıyorlar mı", () => {
+  /**
+   * `MusteriSiparisiSayfasi.tsx` içindeki `parcaIcinFiyat` kuralının kopyası:
+   * sipariş fiyatı artık `p.satisFiyati` yerine merkezî `parcaFiyatiHesapla`'dan
+   * geliyor. Müşteri adı kayıtlı bir cariyle eşleşiyorsa o cariye göre.
+   */
+  const parcaIcinFiyat = (d: any, p: any, musteri: any, adet = 1): string => {
+    if (!p) return "0";
+    const { fiyat } = parcaFiyatiHesapla(d, p, musteri || null, adet);
+    return String(fiyat);
+  };
+
+  const duzen = () =>
+    db({
+      musteriOzelFiyatlar: [{ musteriId: "m1", parcaId: "p1", fiyat: 55 }],
+      musteriFiyatGruplari: [{ id: "g1", ad: "Toptan" }],
+      fiyatGrubuKurallari: [{ grupId: "g1", hedefTuru: "tumu", iskontoTuru: "yuzde", iskontoDeger: 30 }],
+      kampanyalar: [kampanya({ iskontoDeger: 10 })],
+    });
+
+  it("müşteriye özel fiyat siparişte de uygulanır", () => {
+    expect(parcaIcinFiyat(duzen(), parca(), { id: "m1" })).toBe("55");
+  });
+
+  it("fiyat grubu siparişte de uygulanır", () => {
+    expect(parcaIcinFiyat(duzen(), parca(), { id: "m2", fiyatGrubuId: "g1" })).toBe("70");
+  });
+
+  it("müşteri yoksa kampanya uygulanır", () => {
+    expect(parcaIcinFiyat(duzen(), parca(), null)).toBe("90");
+  });
+
+  it("miktar bazlı kampanya siparişte adetle çalışır", () => {
+    const d = db({ kampanyalar: [kampanya({ iskontoTuru: "kademeliYuzde", iskontoDeger: 20, minimumAdet: 10 })] });
+    expect(parcaIcinFiyat(d, parca(), null, 3)).toBe("100");
+    expect(parcaIcinFiyat(d, parca(), null, 10)).toBe("80");
+  });
+
+  it("ürün yoksa '0' döner (form alanı string)", () => {
+    expect(parcaIcinFiyat(db(), undefined, null)).toBe("0");
+  });
+
+  it("dönen değer HER ZAMAN string (form alanı string tutuyor)", () => {
+    expect(typeof parcaIcinFiyat(duzen(), parca(), null)).toBe("string");
+    expect(typeof parcaIcinFiyat(db(), undefined, null)).toBe("string");
+  });
+});
+
+describe("⚠️ BELGELENMİŞ AÇIK — teklif fiyatı merkezî çözümlemeyi kullanmıyor", () => {
+  /**
+   * `TekliflerSayfasi.tsx` `kalemEkle` içinde `birimFiyat: p.satisFiyati || 0`
+   * kullanılıyor — müşteriye özel fiyat, fiyat grubu ve kampanya teklife
+   * YANSIMIYOR. Bu bilinçli olarak düzeltilmedi çünkü:
+   *   - teklifte müşteri kalem eklendikten SONRA yazılıyor (müşteri henüz yok),
+   *   - tekliflerde satır bazlı iskonto akışı var,
+   *   - personelin teklifi serbestçe fiyatlaması iş pratiği olabilir.
+   * Aşağıdaki testler motorun doğru sonucunu belgeler; bağlanması bir iş kararı.
+   */
+  it("motor müşteriye göre indirim veriyor", () => {
+    const d = db({ musteriOzelFiyatlar: [{ musteriId: "m1", parcaId: "p1", fiyat: 55 }] });
+    expect(parcaFiyatiHesapla(d, parca(), { id: "m1" }).fiyat).toBe(55);
+  });
+
+  it("teklif ekranı satisFiyati kullandığı için bu indirimi görmüyor", () => {
+    // Teklifteki mevcut davranış:
+    expect(parca().satisFiyati).toBe(100); // 55 değil
+  });
+});

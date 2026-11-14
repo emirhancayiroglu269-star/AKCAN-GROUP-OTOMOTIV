@@ -21,12 +21,27 @@ export function MusteriSiparisiSayfasi({ db, updateDb, aktifKullanici, baslangic
   const [iptalHedef, setIptalHedef] = R.useState(null);
   const [iptalNedeniMetin, setIptalNedeniMetin] = R.useState("");
 
+  // Sipariş fiyatı da satışla aynı merkezî çözümlemeden geçmeli:
+  // müşteriye özel fiyat → fiyat grubu → aktif kampanya → normal fiyat.
+  // Müşteri adı kayıtlı bir cariyle eşleşiyorsa o cariye göre hesaplanır.
+  const formMusteri = db.cariler.find(
+    (c) => c.aktif !== false && c.ad.toLowerCase() === String(form.musteriAdi || "").trim().toLowerCase()
+  );
+  // Dönüş tipi AÇIKÇA string: form alanı `siparisFiyati` string tutuyor,
+  // `String()` çağrısı TS'i ikna etmiyor (R `any` olduğu için çıkarım geniş).
+  const parcaIcinFiyat = (p, adet = 1): string => {
+    if (!p) return "0";
+    const { fiyat } = R.parcaFiyatiHesapla(db, p, formMusteri || null, adet);
+    return String(fiyat);
+  };
+
   R.useEffect(() => {
     if (baslangicUrun) {
       const p = db.parcalar.find((x) => x.id === baslangicUrun);
       if (p) {
         setSeciliParca(p);
-        setForm((f) => ({ ...f, parcaId: p.id, siparisFiyati: String(p.satisFiyati || 0) }));
+        const siparisFiyati = parcaIcinFiyat(p, 1);
+        setForm((f) => ({ ...f, parcaId: p.id, siparisFiyati }));
         setFormAcik(true);
       }
     }
@@ -43,9 +58,21 @@ export function MusteriSiparisiSayfasi({ db, updateDb, aktifKullanici, baslangic
   };
   const parcaSec = (p) => {
     setSeciliParca(p);
-    setForm((f) => ({ ...f, parcaId: p.id, siparisFiyati: String(p.satisFiyati || 0) }));
+    setForm((f) => ({ ...f, parcaId: p.id, siparisFiyati: parcaIcinFiyat(p, parseFloat(f.adet) || 1) }));
     setParcaArama("");
     setParcaAramaAcik(false);
+  };
+
+  // Adet yazılınca sipariş fiyatı da tazelenir — miktar bazlı kampanyalar
+  // (Kademeli %, X Al Y Öde) birim fiyatı ADEDE göre değiştirir.
+  // Kullanıcı sonradan fiyatı elle değiştirirse kendi değeri geçerli olur.
+  const adetGirdisiGuncelle = (yeniAdet) => {
+    const adet = parseFloat(yeniAdet);
+    setForm((f) => ({
+      ...f,
+      adet: yeniAdet,
+      siparisFiyati: seciliParca && adet > 0 ? parcaIcinFiyat(seciliParca, adet) : f.siparisFiyati,
+    }));
   };
 
   const kaydet = () => {
@@ -386,7 +413,7 @@ export function MusteriSiparisiSayfasi({ db, updateDb, aktifKullanici, baslangic
                 </p>
               )}
               <div className="grid grid-cols-2 gap-3">
-                <R.Girdi label="Adet *" type="number" value={form.adet} onChange={(e) => setForm({ ...form, adet: e.target.value })} />
+                <R.Girdi label="Adet *" type="number" value={form.adet} onChange={(e) => adetGirdisiGuncelle(e.target.value)} />
                 <R.Girdi label="Sipariş Fiyatı" type="number" value={form.siparisFiyati} onChange={(e) => setForm({ ...form, siparisFiyati: e.target.value })} />
               </div>
               <div className="grid grid-cols-2 gap-3">
