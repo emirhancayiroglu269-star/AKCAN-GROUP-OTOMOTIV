@@ -27,7 +27,7 @@ export const devirHiziSinifBul = (yillikDevirHizi, satisAdedi) => {
 // yaklaşık göstergesi olarak kullanılır — perakende yedek parçada stok
 // seviyeleri günlük büyük dalgalanma göstermediğinden kabul edilebilir bir
 // basitleştirmedir, ama gerçek ortalamanın YERİNE GEÇMEZ.
-export const urunDevirHiziHesapla = (db, parca, baslangic, bitis) => {
+export const urunDevirHiziHesapla = (db: any, parca, baslangic, bitis) => {
   const satisKalemleri = db.satislar
     .filter((s) => s.durum !== "İptal Edildi" && s.tarih.slice(0, 10) >= baslangic && s.tarih.slice(0, 10) <= bitis)
     .flatMap((s) => s.kalemler.filter((k) => k.parcaId === parca.id));
@@ -56,7 +56,7 @@ export const urunDevirHiziHesapla = (db, parca, baslangic, bitis) => {
 };
 
 // Bir grup ürün (marka/kategori) için toplu devir hızı — 5 ve 6. madde.
-export const grupDevirHiziHesapla = (db, urunler, baslangic, bitis) => {
+export const grupDevirHiziHesapla = (db: any, urunler, baslangic, bitis) => {
   const satisKalemleri = db.satislar
     .filter((s) => s.durum !== "İptal Edildi" && s.tarih.slice(0, 10) >= baslangic && s.tarih.slice(0, 10) <= bitis)
     .flatMap((s) => s.kalemler)

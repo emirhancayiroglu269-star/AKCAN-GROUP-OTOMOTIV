@@ -35,7 +35,7 @@ import { tl } from "../lib/format";
 // Brüt Kâr (liste fiyatı üzerinden) → İskonto Sonrası Kâr (gerçek satış
 // fiyatı üzerinden — asıl "kâr" budur) → POS Komisyonu Sonrası Kâr →
 // Giderler Sonrası Net Faaliyet Kârı.
-export const karKademeleriHesapla = (db, kalemler, baslangic, bitis) => {
+export const karKademeleriHesapla = (db: any, kalemler, baslangic, bitis) => {
   const bruteKar = kalemler.reduce((t, k) => t + satisKalemiListeKari(k), 0);
   const iskontoSonrasiKar = kalemler.reduce((t, k) => t + satisKalemiKarBilgisi(k).karToplam, 0);
   const satisIdleri = new Set(kalemler.map((k) => k.satisId).filter(Boolean));
@@ -58,7 +58,7 @@ export const karKademeleriHesapla = (db, kalemler, baslangic, bitis) => {
 /* ------------------------------------------------------------------ */
 // Bir ürünün tüm satış kalemlerini (iskonto, o satıştaki tarihsel maliyet ve
 // kâr dahil) en yeniden eskiye sıralı döner.
-export const parcaSatisGecmisi = (db, parcaId) =>
+export const parcaSatisGecmisi = (db: any, parcaId) =>
   db.satislar
     .filter((s) => s.durum !== "İptal Edildi" && s.kalemler.some((k) => k.parcaId === parcaId))
     .flatMap((s) =>
@@ -71,7 +71,7 @@ export const parcaSatisGecmisi = (db, parcaId) =>
 // Bir ürünün TÜM geçmiş olaylarını (stok hareketleri + fiyat değişiklikleri)
 // tek, kronolojik bir zaman çizelgesinde birleştirir — "05.08 14:20 → 10
 // adet alış yapıldı" tarzı okunabilir satırlar üretir.
-export const parcaZamanCizelgesi = (db, parcaId) => {
+export const parcaZamanCizelgesi = (db: any, parcaId) => {
   const parca = db.parcalar.find((p) => p.id === parcaId);
   if (!parca) return [];
   const olaylar = [];

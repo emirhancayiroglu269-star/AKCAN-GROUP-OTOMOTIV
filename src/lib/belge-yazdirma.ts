@@ -5,7 +5,7 @@ import { bildirimGoster } from "./bildirim";
 // ürün/marka/kod detayları ve (iptal edildiyse) iptal damgasıyla birlikte
 // eksiksiz bir belge üretir. Hem Satış ekranından hem Belgeler sayfasından
 // aynı fonksiyon çağrılır.
-export const belgeYazdir = (db, satis) => {
+export const belgeYazdir = (db: any, satis) => {
   const pencere = window.open("", "_blank", "width=420,height=680");
   if (!pencere) {
     bildirimGoster("Yazdırma penceresi açılamadı — pop-up engelleyiciyi kontrol edin.", "hata");

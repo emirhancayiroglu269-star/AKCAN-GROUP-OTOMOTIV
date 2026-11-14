@@ -160,7 +160,7 @@ export const VARSAYILAN_ARACLAR = () =>
 // rol üzerinden kontrol eder. Henüz giriş yapılmamışsa (aktifKullanici=null,
 // örn. kullanıcı sistemi daha kurulmadan önceki geçiş dönemi) tüm kontroller
 // serbest bırakılır — böylece mevcut tek-kullanıcılı akışlar kırılmaz.
-export const yetkiVarMi = (db, aktifKullanici, anahtar) => {
+export const yetkiVarMi = (db: any, aktifKullanici, anahtar) => {
   if (!aktifKullanici) return true;
   const rol = db.roller.find((r) => r.id === aktifKullanici.rolId);
   return !!(rol && rol.yetkiler[anahtar]);

@@ -6,7 +6,7 @@ import { yetkiVarMi } from "./constants";
 // hiç kullanıcı tanımlanmadıysa (geçiş dönemi / ilk kurulum), eski basit PIN
 // mekanizmasına geri döner — böylece kullanıcı sistemi kurulmadan önce de
 // uygulama kilitlenmez.
-export const yoneticiOnayiAl = (db, mesaj) => {
+export const yoneticiOnayiAl = (db: any, mesaj) => {
   const yoneticiler = (db.kullanicilar || []).filter((k) => k.aktif !== false && yetkiVarMi(db, k, "kullaniciYonetebilir"));
   if (yoneticiler.length === 0) {
     const kayitliPin = localStorage.getItem("akcan-yonetici-pin");

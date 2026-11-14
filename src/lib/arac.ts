@@ -8,7 +8,7 @@ export const uyumlulukGorseli = { "Kesin Uyumlu": { emoji: "🟢", ton: "green" 
 export const aracEtiketi = (a) => `${a.marka} ${a.model} ${a.kasa ? a.kasa + " " : ""}${a.motor} (${a.yilBaslangic}–${a.yilBitis})`;
 
 // Bir ürünün bağlı olduğu tüm araçları, uyumluluk durumuyla birlikte döner.
-export const parcaUyumluAraclari = (db, parcaId) =>
+export const parcaUyumluAraclari = (db: any, parcaId) =>
   db.uyumluluklar
     .filter((u) => u.parcaId === parcaId)
     .map((u) => ({ ...u, arac: db.araclar.find((a) => a.id === u.aracId) }))
@@ -16,7 +16,7 @@ export const parcaUyumluAraclari = (db, parcaId) =>
 
 // Bir araca uyumlu, stokta bulunan (veya tüm) parçaları — Kesin/Kontrol
 // öncelikli sırayla, kategoriye göre gruplamaya hazır biçimde döner.
-export const aracUyumluParcalari = (db, aracId, sadeceStoklu = true) =>
+export const aracUyumluParcalari = (db: any, aracId, sadeceStoklu = true) =>
   db.uyumluluklar
     .filter((u) => u.aracId === aracId && u.durum !== "Uyumsuz")
     .map((u) => ({ ...u, parca: db.parcalar.find((p) => p.id === u.parcaId) }))

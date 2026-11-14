@@ -160,11 +160,67 @@ Bu profil açıldığında çıkan **5 hata** düzeltildi:
 
 Sonuç: **0 hata**, build ✅.
 
-### Sonraki aşama (öneri)
+## 5. Varlık (entity) tipleri — `src/lib/domain/entity-types.ts`
 
-1. `strictNullChecks: true` — 184 hata. Bunların 161'i `'ev.target' is possibly 'null'`
-   (FileReader) ve `possibly undefined` erişimleri. Mekanik olarak düzeltilebilir,
-   ~1-2 saatlik iş. **En yüksek getirili adım bu.**
-2. `noImplicitAny: true` — 2963 hata. `src/lib/domain/*` altındaki varlık tiplerini
-   tanımlayıp `db`'yi tiplendirmekle başlanmalı; ekranlar sonra.
+`noImplicitAny`'yi açabilmenin ön koşulu `db` şemasının tiplenmesiydi. **Yeni dosya:**
+`src/lib/domain/entity-types.ts` (~640 satır, sıfır çalışma zamanı maliyeti — sadece tip).
+
+### Tanımlanan tipler
+
+| Grup | Tipler |
+|---|---|
+| Takma adlar | `Para`, `Fiyat`, `Kimlik`, `ZamanDamgasi`, `IsoGun` |
+| Ürün | `Parca`, `BarkodKaydi`, `AlisGecmisiKaydi`, `FiyatGecmisiKaydi`, `DepoStogu`, `SetBileseni`, `PaketBirimi` |
+| Cari | `Cari`, `CariHareket`, `Tedarikci`, `TedarikciHareket` |
+| Satış | `Satis`, `SatisKalemi`, `OdemeSatiri`, `EFaturaBilgisi` |
+| Stok | `StokHareketi` |
+| Finans | `Hesap`, `KasaIslemi`, `PosCihazi` |
+| Satın alma | `MalAlimi`, `SatinAlmaSiparisi` |
+| Depo | `Depo`, `Transfer` |
+| Tanım | `Kategori`, `Marka`, `Arac`, `Uyumluluk` |
+| Vardiya | `Vardiya`, `GunSonu` |
+| Yetki | `Rol`, `Kullanici`, `IslemGecmisiKaydi`, `AuditGecmisiKaydi` |
+| Fiyat | `MusteriFiyatGrubu`, `FiyatGrubuKurali`, `Kampanya`, `Teklif`, `TeklifKalemi` |
+| Sipariş | `Rezerv`, `MusteriSiparisi`, `Iade` |
+| Kök | `VeriTabani` (60 koleksiyon, `bosVeritabani()` şemasıyla birebir) |
+
+### Tasarım kararları
+
+1. **Bilinçli `optional`** — gerçekte her kayıtta olan alanlar zorunlu (`stok`, `ad`,
+   `satisFiyati`…), eski kayıtlarda bulunmayanlar `?` (`barkodlar`, `depoStoklari`,
+   `fiyatGecmisi`…). Tip şemayı yalan söylemiyor.
+2. **`[anahtar: string]: any` index signature** her arayüzde var — geçiş sırasında mevcut
+   dinamik erişimleri kırmıyor, kademeli sıkılaştırmaya izin veriyor.
+3. **Ad çakışması yok** — dosya yeni, hiçbir mevcut dosya bunu import etmiyor.
+   `erp-domain-models.ts` (Fransızca adlandırılmış, kullanılmayan) yerine geçmek üzere
+   hazır ama devreye alınmadı.
+4. `bosVeritabani()` şemasıyla **birebir**: 60 koleksiyonun tamamı `VeriTabani` içinde.
+
+### `noImplicitAny` denemesi
+
+Tipler yazıldıktan sonra `noImplicitAny: true` açılıp ölçüldü: **3197 hata** kaldı
+(2963'ten 234 azalma). Kalanların dağılımı:
+
+| Kod | Hata | Ne demek |
+|---|---|---|
+| TS7006 | 2599 | Fonksiyon parametresi tipsiz — **`db` değil**, `(e)`, `(p)`, `(k)`, `(x)` gibi yerel callback'ler |
+| TS7031 | 297 | Destructuring binding tipsiz — `const { ad, kod } = kayit` |
+| TS7053 | 121 | `obj[anahtar]` — index signature yok |
+| TS7018 | 84 | Nesne literal alanı `null`/`undefined`'dan `any` çıkarımı |
+| TS7005/7034/7011 | 23 | Değişken / nesne / fonksiyon tipsiz |
+
+**Yani kalan iş `db` tiplendirmesi değil, 3000+ yerel callback parametresinin
+tiplenmesi.** Bu, dosya dosya elle yapılması gereken bir iş (~75 dosya); tek oturumda
+güvenle tamamlanamaz. `noImplicitAny` bu yüzden **kapalı bırakıldı** — açık bırakılsaydı
+`npm run typecheck` sürekli kırmızı olur ve sinyal değerini yitirirdi.
+
+### Devreye alma planı (öneri)
+
+1. `VeriTabani` tipini `database.ts`'teki `bosVeritabani()` dönüşüne bağla:
+   `export const bosVeritabani = (): VeriTabani => ({ ... })`
+2. `db` alan bir yardımcı fonksiyon imzasına `db: VeriTabani` yaz (yukarıdaki 70 imza
+   zaten `db: any` ile işaretlendi — bunlar `db: VeriTabani`'ye çevrilebilir).
+3. Ekranları tek tek `noImplicitAny` ile derle (dosya bazlı `// @ts-check` benzeri
+   aşamalı geçiş), callback parametrelerini tiple.
+4. 75 dosya bitince `noImplicitAny: true`.
 

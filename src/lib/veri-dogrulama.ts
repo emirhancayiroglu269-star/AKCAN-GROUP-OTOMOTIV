@@ -27,7 +27,7 @@ export const metinBenzerligiYuzde = (a, b) => {
 // bulur — Stok Kodu / Üretici Kodu / Barkod TAM eşleşmesi arar (bunlar
 // UNIQUE olmalıdır). OEM kasıtlı olarak bu kontrole DAHİL EDİLMEZ, çünkü
 // aynı OEM'e birden fazla marka/ürün bağlanabilir (bkz. 39. adım #2).
-export const mukerrerUrunBul = (db, aday, haricTutulanId) => {
+export const mukerrerUrunBul = (db: any, aday, haricTutulanId) => {
   const stokKoduNorm = kodNormalize(aday.stokKodu);
   const ureticiKoduNorm = kodNormalize(aday.ureticiKodu);
   const barkodDeger = (aday.barkod || "").trim();
@@ -42,7 +42,7 @@ export const mukerrerUrunBul = (db, aday, haricTutulanId) => {
 
 // "Benzer ürün önerisi" — yazım hatalarını yakalamak için ürün adı bazında
 // yüksek benzerlikli (>=%85) ama TAM AYNI olmayan kayıtları bulur.
-export const benzerUrunleriBul = (db, ad, haricTutulanId) => {
+export const benzerUrunleriBul = (db: any, ad, haricTutulanId) => {
   if (!ad || ad.trim().length < 4) return [];
   return db.parcalar
     .filter((p) => p.id !== haricTutulanId)

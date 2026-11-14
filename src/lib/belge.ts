@@ -5,7 +5,7 @@ import { BELGE_TUR_ONEKLERI } from "./constants";
 // hiç özelleştirilmediyse yukarıdaki varsayılanlar kullanılır. Sayaç yıl+tür
 // bazında ayrı tutulur, saf bir fonksiyondur — updateDb içinde hem numara
 // üretimi hem sayaç güncellemesi TEK adımda yapılmalıdır.
-export const yeniBelgeNumarasiUret = (db, belgeTuru) => {
+export const yeniBelgeNumarasiUret = (db: any, belgeTuru) => {
   const onEk = db.ayarlar?.belgeOnekleri?.[belgeTuru] || BELGE_TUR_ONEKLERI[belgeTuru] || "ST";
   const yil = new Date().getFullYear();
   const anahtar = `${onEk}-${yil}`;

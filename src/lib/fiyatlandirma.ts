@@ -36,7 +36,7 @@ export const enSpesifikKural = (kurallar, parca) =>
 
 // Bir kampanyanın hedeflediği TÜM ürünleri bulur — önizleme, satış raporu
 // ve stok kontrolü bunu kullanır.
-export const kampanyaHedefUrunleri = (db, kampanya) =>
+export const kampanyaHedefUrunleri = (db: any, kampanya) =>
   db.parcalar.filter((p) => {
     if (p.aktif === false) return false;
     if (kampanya.hedefTuru === "tumu") return true;
@@ -49,7 +49,7 @@ export const kampanyaHedefUrunleri = (db, kampanya) =>
 
 // Kampanya önizlemesi — Ürün | Eski Fiyat | Kampanya Fiyatı | Kâr | Kâr Marjı
 // (6. madde) + maliyet altı (5. madde) + stok yetersizliği (8. madde) uyarıları.
-export const kampanyaOnizlemesiHesapla = (db, kampanyaTaslak) =>
+export const kampanyaOnizlemesiHesapla = (db: any, kampanyaTaslak) =>
   kampanyaHedefUrunleri(db, kampanyaTaslak).map((p) => {
     const kampanyaliFiyat = Math.round(iskontoUygula(p.satisFiyati, kampanyaTaslak.iskontoTuru, kampanyaTaslak.iskontoDeger, kampanyaTaslak.minimumAdet || 1, kampanyaTaslak) * 100) / 100;
     const maliyet = gecerliMaliyet(p, db);
@@ -62,7 +62,7 @@ export const kampanyaOnizlemesiHesapla = (db, kampanyaTaslak) =>
 // Kampanya Satış Raporu (7. madde) — satış kalemlerinde kalıcı olarak
 // saklanan fiyatKaynagi ("Kampanya: <ad>") üzerinden, bu kampanyadan
 // gerçekleşen TÜM satışları bulup özetler.
-export const kampanyaSatisRaporu = (db, kampanya) => {
+export const kampanyaSatisRaporu = (db: any, kampanya) => {
   const kalemler = db.satislar
     .filter((s) => s.durum !== "İptal Edildi")
     .flatMap((s) => s.kalemler.map((k) => ({ ...k, satisTarihi: s.tarih })))
@@ -83,7 +83,7 @@ export const kampanyaSatisRaporu = (db, kampanya) => {
 // Satış ekranı bir ürünü sepete eklerken HER ZAMAN bu fonksiyonu kullanır.
 // adet parametresi opsiyoneldir (varsayılan 1) — miktar bazlı kampanya
 // türleri (Kademeli %, X Al Y Öde) için kullanılır.
-export const parcaFiyatiHesapla = (db, parca, musteri, adet = 1) => {
+export const parcaFiyatiHesapla = (db: any, parca, musteri, adet = 1) => {
   if (musteri) {
     const ozel = db.musteriOzelFiyatlar.find((f) => f.musteriId === musteri.id && f.parcaId === parca.id);
     if (ozel) return { fiyat: ozel.fiyat, kaynak: "Müşteriye Özel Fiyat" };

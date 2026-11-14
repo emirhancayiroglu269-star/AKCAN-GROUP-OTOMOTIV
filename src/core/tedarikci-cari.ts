@@ -57,7 +57,7 @@ export const tedarikciCariBakiyesiHesapla = (tedarikci) => {
 // Bir tedarikçinin açık (kalan borçlu) faturalarını bulur.
 // Bu liste yalnızca fatura/tahsis detayında kullanılır; tedarikçinin
 // ödeme yapılabilir olup olmadığını belirlemez.
-export const tedarikciAcikFaturalari = (db, tedarikciAdi) =>
+export const tedarikciAcikFaturalari = (db: any, tedarikciAdi) =>
   db.malAlimlari
     .filter((m) => m.tedarikci.toLowerCase() === tedarikciAdi.toLowerCase())
     .map((m) => ({ ...m, kalanBorc: Math.round(((m.faturaGirilenToplam ?? m.hesaplananGenelToplam) - (m.odenenTutar || 0)) * 100) / 100 }))

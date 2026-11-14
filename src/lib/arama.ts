@@ -8,7 +8,7 @@ import { metinBenzerligiYuzde } from "./veri-dogrulama";
 // "03L115562" / "03L 115 562" / "03L-115-562" hepsi aynı sonucu getirir.
 // Bir OEM koduna doğrudan eşleşme bulununca, o OEM'e bağlı diğer TÜM markalı
 // muadiller de (çapraz referans) otomatik sonuca eklenir.
-export const hizliAramaYap = (db, sorgu) => {
+export const hizliAramaYap = (db: any, sorgu) => {
   const qMetin = sorgu.trim().toLowerCase();
   const qNorm = kodNormalize(sorgu);
   if (!qMetin) return [];
@@ -58,7 +58,7 @@ export const hizliAramaYap = (db, sorgu) => {
 // "Bunu mu demek istediniz?" — tam/alt-dize eşleşmesi sonuç getirmediğinde,
 // yazım hatalarını (39. adımdaki benzerlik fonksiyonuyla) tolere ederek en
 // yakın ürün adı/stok kodu eşleşmelerini önerir.
-export const yakinEslesmeOner = (db, sorgu) => {
+export const yakinEslesmeOner = (db: any, sorgu) => {
   const q = sorgu.trim();
   if (q.length < 3) return [];
   return db.parcalar
@@ -77,7 +77,7 @@ export const stokDurumuHesapla = (p) => {
 
 // İade ekranında eski satışı bulmak için: Fiş/Belge No, Telefon, Müşteri adı
 // veya Ürün Kodu/OEM üzerinden arar.
-export const satisAramaYap = (db, sorgu) => {
+export const satisAramaYap = (db: any, sorgu) => {
   const q = sorgu.trim().toLowerCase();
   const qNorm = kodNormalize(sorgu);
   const telefonHane = sorgu.replace(/\D/g, "");

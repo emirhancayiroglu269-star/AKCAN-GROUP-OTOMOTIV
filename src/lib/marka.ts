@@ -2,9 +2,9 @@ import { gecerliMaliyet, satisKalemiKarBilgisi } from "./maliyet";
 
 export const MARKA_GRUPLARI = ["OEM", "Premium", "Orta", "Ekonomik"];
 
-export const markaUrunleriBul = (db, marka) => db.parcalar.filter((p) => p.marka === marka.ad);
+export const markaUrunleriBul = (db: any, marka) => db.parcalar.filter((p) => p.marka === marka.ad);
 
-export const markaOzetHesapla = (db, marka) => {
+export const markaOzetHesapla = (db: any, marka) => {
   const urunler = markaUrunleriBul(db, marka);
   const toplamStok = urunler.reduce((t, p) => t + (p.stok || 0), 0);
   const stokMaliyeti = urunler.reduce((t, p) => t + (p.stok || 0) * gecerliMaliyet(p), 0);

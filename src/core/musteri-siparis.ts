@@ -16,10 +16,10 @@ export const musteriSiparisDurumGorseli = {
 /* ------------------------------------------------------------------ */
 // Bir kullanıcının görebileceği favoriler: mağaza ortak favorileri (kullaniciId
 // boş) + kendi kişisel favorileri.
-export const gorunurFavoriler = (db, aktifKullanici) => {
+export const gorunurFavoriler = (db: any, aktifKullanici) => {
   const kullaniciId = aktifKullanici?.id || null;
   return db.favoriler.filter((f) => !f.kullaniciId || f.kullaniciId === kullaniciId);
 };
 
 
-export const parcaFavoriMi = (db, parcaId, aktifKullanici) => gorunurFavoriler(db, aktifKullanici).some((f) => f.parcaId === parcaId);
+export const parcaFavoriMi = (db: any, parcaId, aktifKullanici) => gorunurFavoriler(db, aktifKullanici).some((f) => f.parcaId === parcaId);

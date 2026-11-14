@@ -12,7 +12,7 @@ import { fiyatDegisimYuzdesi } from "./stok-service";
 // Bir satırın KDV HARİÇ, iskonto sonrası birim net maliyeti.
 // FIFO simülasyonuyla her satış için yaklaşık bir "ödenen/kalan" tablosu
 // üretir; toplamı her zaman müşterinin gerçek güncel bakiyesiyle tutarlıdır.
-export const musteriAcikFaturalariFifo = (db, musteri) => {
+export const musteriAcikFaturalariFifo = (db: any, musteri) => {
   const acikHesapSatislari = db.satislar
     .filter((s) => s.durum !== "İptal Edildi" && (musteri.id ? s.musteriId === musteri.id : s.musteriAdi.toLowerCase() === musteri.ad.toLowerCase()))
     .filter((s) => (s.odemeler || []).some((o) => o.yontem === "Açık Hesap" && o.tutar > 0))
@@ -52,7 +52,7 @@ export const vadeRenkGorseli = (vadeTarihi) => {
 
 // Bir müşterinin alacak özeti: Toplam Borç / Vadesi Gelen (henüz geçmemiş) /
 // Vadesi Geçen / Son Ödeme tarihi.
-export const musteriAlacakOzeti = (db, musteri) => {
+export const musteriAlacakOzeti = (db: any, musteri) => {
   const faturalar = musteriAcikFaturalariFifo(db, musteri).filter((f) => f.kalan > 0.01);
   const vadesiGecen = faturalar.filter((f) => f.vadeTarihi && vadeGrubuBul(f.vadeTarihi) === "Vadesi Geçmiş").reduce((t, f) => t + f.kalan, 0);
   const vadesiGelen = faturalar.reduce((t, f) => t + f.kalan, 0) - vadesiGecen;
@@ -61,7 +61,7 @@ export const musteriAlacakOzeti = (db, musteri) => {
 };
 
 // Bir tedarikçinin borç özeti — aynı mantık, tedarikciAcikFaturalari üzerinden.
-export const tedarikciBorcOzeti = (db, tedarikci) => {
+export const tedarikciBorcOzeti = (db: any, tedarikci) => {
   const faturalar = tedarikciAcikFaturalari(db, tedarikci.ad);
   const vadesiGecen = faturalar.filter((m) => m.vadeTarihi && vadeGrubuBul(m.vadeTarihi) === "Vadesi Geçmiş").reduce((t, m) => t + m.kalanBorc, 0);
   const vadesiGelen = faturalar.reduce((t, m) => t + m.kalanBorc, 0) - vadesiGecen;
@@ -71,7 +71,7 @@ export const tedarikciBorcOzeti = (db, tedarikci) => {
 
 // Önümüzdeki `gunSayisi` gün içinde beklenen tahsilat/ödeme toplamlarını ve
 // net beklenen nakit akışını hesaplar — "Beklenen tahsilat − Beklenen ödeme".
-export const nakitAkisiHesapla = (db, gunSayisi) => {
+export const nakitAkisiHesapla = (db: any, gunSayisi) => {
   const bugunIso = isoGun(new Date());
   const sonTarihIso = new Date(Date.now() + gunSayisi * 86400000).toLocaleDateString("en-CA");
   const beklenenTahsilat = db.cariler
@@ -91,7 +91,7 @@ export const nakitAkisiHesapla = (db, gunSayisi) => {
 // Bir günün TÜM dükkân genelindeki finansal özetini tek yerde toplar —
 // satış, iskonto, iade, kâr, ödeme türü kırılımı, tahsilat, gider, tedarikçi
 // ödemesi. Gün Sonu ekranı VE kapatılmış bir günün raporu bunu kullanır.
-export const gunSonuOzetiHesapla = (db, tarih) => {
+export const gunSonuOzetiHesapla = (db: any, tarih) => {
   const satislar = db.satislar.filter((s) => s.tarih.slice(0, 10) === tarih && s.durum !== "İptal Edildi");
   const kalemler = satislar.flatMap((s) => s.kalemler);
   const brutCiro = satislar.reduce((t, s) => t + s.araToplam, 0);
@@ -131,7 +131,7 @@ export const gunSonuOzetiHesapla = (db, tarih) => {
 // Bir tarihin GÜN SONU olarak kapatılıp kapatılmadığını söyler — kapalıysa
 // o güne ait satış/gider gibi kritik işlemler normal kullanıcı tarafından
 // yapılamaz (5. adım).
-export const gunKapaliMi = (db, tarih) => db.gunSonlari.some((g) => g.tarih === tarih && g.durum === "Kapalı");
+export const gunKapaliMi = (db: any, tarih) => db.gunSonlari.some((g) => g.tarih === tarih && g.durum === "Kapalı");
 
 /* ------------------------------------------------------------------ */
 /* MÜŞTERİ / TEDARİKÇİ NOT VE İLETİŞİM SİSTEMİ                         */
@@ -139,7 +139,7 @@ export const gunKapaliMi = (db, tarih) => db.gunSonlari.some((g) => g.tarih === 
 
 // Tüm müşteri/tedarikçi notlarından, henüz tamamlanmamış ve tarihi gelmiş
 // (bugün veya geçmiş) hatırlatmaları toplar — Bildirim Merkezi bunu kullanır.
-export const bekleyenNotHatirlatmalari = (db) => {
+export const bekleyenNotHatirlatmalari = (db: any) => {
   const bugunIso = isoGun(new Date());
   const musteriHatirlatmalari = db.musteriNotlari
     .filter((n) => n.hatirlatmaTarihi && !n.hatirlatmaTamamlandi && n.hatirlatmaTarihi <= bugunIso)
@@ -162,7 +162,7 @@ export const satisAcikHesapKalan = (s) => {
 
 /** Merkezi dönem kâr özeti: KDV dahil satış, iade, KDV, SMM, brüt kâr,
  * POS komisyonu ve KDV hariç faaliyet giderlerini tek standartta hesaplar. */
-export const donemKarOzetiHesapla = (db, baslangic, bitis) => {
+export const donemKarOzetiHesapla = (db: any, baslangic, bitis) => {
   const aktifSatislar = (db.satislar || []).filter((s) => s.durum !== "İptal Edildi" && s.tarih.slice(0, 10) >= baslangic && s.tarih.slice(0, 10) <= bitis);
   const iadeler = (db.iadeler || []).filter((i) => i.tarih.slice(0, 10) >= baslangic && i.tarih.slice(0, 10) <= bitis);
   const satisCiroKdvDahil = aktifSatislar.reduce((t, s) => t + Number(s.genelToplam || 0), 0);
@@ -224,13 +224,13 @@ export const TARIH_ARALIGI_HESAPLA = (secim, ozelBaslangic, ozelBitis) => {
 // Bir hesabın (kasanın) şu an açık bir vardiya tarafından kullanılıp
 // kullanılmadığını bulur — "Kasa 1 → Emirhan, Kasa 2 → Personel B" gibi
 // personel bazlı kasa ayrımını (48. adım, 5. madde) mümkün kılar.
-export const hesabinAktifVardiyasi = (db, hesapId) => db.vardiyalar.find((v) => v.hesapId === hesapId && v.durum === "Açık");
+export const hesabinAktifVardiyasi = (db: any, hesapId) => db.vardiyalar.find((v) => v.hesapId === hesapId && v.durum === "Açık");
 
 // Bir vardiyanın açılışından (kapanışına ya da şu ana kadar) o PERSONELİN
 // yaptığı satış/tahsilat/iade/gider toplamlarını otomatik hesaplar (48.
 // adım, 2. ve 3. madde) — vardiya ekranı ve personel performans raporu
 // bunu kullanır.
-export const vardiyaOzetiHesapla = (db, vardiya) => {
+export const vardiyaOzetiHesapla = (db: any, vardiya) => {
   const baslangic = vardiya.acilisZamani;
   const bitis = vardiya.kapanisZamani || zamanDamgasi();
   const satislar = db.satislar.filter((s) => s.satisiYapan === vardiya.kullaniciAdi && s.durum !== "İptal Edildi" && s.tarih >= baslangic && s.tarih <= bitis);
@@ -273,7 +273,7 @@ export const yoneticiPaneliDonemAraligi = (donemId) => {
 };
 
 // İki dönemi karşılaştırıp % değişim döner (10. madde).
-export const donemKarsilastir = (db, b1, s1, b2, s2) => {
+export const donemKarsilastir = (db: any, b1, s1, b2, s2) => {
   const satislar1 = db.satislar.filter((s) => s.durum !== "İptal Edildi" && s.tarih.slice(0, 10) >= b1 && s.tarih.slice(0, 10) <= s1);
   const satislar2 = db.satislar.filter((s) => s.durum !== "İptal Edildi" && s.tarih.slice(0, 10) >= b2 && s.tarih.slice(0, 10) <= s2);
   const ciro1 = satislar1.reduce((t, s) => t + s.genelToplam, 0);

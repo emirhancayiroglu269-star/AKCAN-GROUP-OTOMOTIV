@@ -20,7 +20,7 @@ export const teklifGenelToplam = (teklif) => teklif.kalemler.reduce((t, k) => t 
 
 // Geçerlilik tarihi geçmiş ama hâlâ Taslak/Gönderildi'de kalan teklifleri
 // otomatik "Süresi Doldu" yapar — sayfa her açıldığında çalıştırılır.
-export const teklifSureleriGuncelle = (db) => {
+export const teklifSureleriGuncelle = (db: any) => {
   const bugunIso = isoGun(new Date());
   const guncellenecek = db.teklifler.filter((t) => (t.durum === "Taslak" || t.durum === "Gönderildi") && t.gecerlilikTarihi && t.gecerlilikTarihi < bugunIso);
   if (guncellenecek.length === 0) return db;

@@ -18,7 +18,7 @@ export const onerilenSiparisAdedi = (p) => Math.max(0, Math.round(gecerliHedefSt
 /* ------------------------------------------------------------------ */
 // Bir ürünün, henüz gelmemiş (Sipariş Verildi / Kısmi Geldi durumundaki)
 // satın alma siparişlerindeki bekleyen adedini toplar.
-export const parcaAcikSatinAlmaAdedi = (db, parcaId) =>
+export const parcaAcikSatinAlmaAdedi = (db: any, parcaId) =>
   db.satinAlmaSiparisleri
     .filter((s) => s.durum === "Sipariş Verildi" || s.durum === "Kısmi Geldi")
     .flatMap((s) => s.kalemler)
@@ -30,7 +30,7 @@ export const parcaAcikSatinAlmaAdedi = (db, parcaId) =>
 // adım). Basit onerilenSiparisAdedi()'nin YERİNİ ALMAZ — o hâlâ hafif
 // yerlerde (örn. tekliften sipariş aktarma) kullanılabilir; bu fonksiyon
 // ise TAM karar destek ekranı (SiparisOnerisiSayfasi) için kullanılır.
-export const akilliSiparisOnerisiHesapla = (db, parca) => {
+export const akilliSiparisOnerisiHesapla = (db: any, parca) => {
   const sinif = satisHiziSiniflandir(db, parca);
   const son30 = sonNGunSatisAdedi(db, parca.id, 30);
   const son60 = sonNGunSatisAdedi(db, parca.id, 60);
@@ -98,12 +98,12 @@ export const depoStogu = (p, depoId) => (p.depoStoklari || []).find((d) => d.dep
 
 // Bir ürünün şu an "yolda" (gönderildi ama henüz teslim alınmadı) toplam
 // adedi — kaynak depodan düşülmüş, hedef depoya henüz eklenmemiş miktardır.
-export const parcaAcikTransferAdedi = (db, parcaId) =>
+export const parcaAcikTransferAdedi = (db: any, parcaId) =>
   db.transferler.filter((t) => t.parcaId === parcaId && (t.durum === "Gönderildi" || t.durum === "Yolda")).reduce((t, x) => t + x.adet, 0);
 
 // Bir tedarikçinin geçmiş siparişlerinden teslimat performansını çıkarır:
 // ortalama teslimat süresi (gün), zamanında teslim oranı, eksik teslim oranı.
-export const tedarikciTeslimatPerformansi = (db, tedarikciAdi) => {
+export const tedarikciTeslimatPerformansi = (db: any, tedarikciAdi) => {
   const siparisler = db.satinAlmaSiparisleri.filter((s) => s.tedarikci === tedarikciAdi && s.durum !== "Taslak" && s.durum !== "İptal");
   if (siparisler.length === 0) return null;
   let teslimatGunToplami = 0;
@@ -158,7 +158,7 @@ export const teklifNetMaliyetHesapla = (teklif) => {
 
 // Geçerlilik tarihi geçmiş tedarikçi tekliflerini otomatik "Süresi Doldu"
 // yapar (8. madde).
-export const tedarikciTeklifSureleriGuncelle = (db) => {
+export const tedarikciTeklifSureleriGuncelle = (db: any) => {
   const bugunIso = isoGun(new Date());
   const guncellenecek = db.tedarikciTeklifleri.filter((t) => t.durum === "Geçerli" && t.gecerlilikTarihi && t.gecerlilikTarihi < bugunIso);
   if (guncellenecek.length === 0) return db;
@@ -167,7 +167,7 @@ export const tedarikciTeklifSureleriGuncelle = (db) => {
 
 // Bir ürünün alış geçmişinden Son Alış / En Düşük / En Yüksek / Ortalama /
 // Son 3-5-10 Alış / Tedarikçiye göre kırılım istatistiklerini çıkarır (2. madde).
-export const urunAlisIstatistikleri = (db, parcaId) => {
+export const urunAlisIstatistikleri = (db: any, parcaId) => {
   const parca = db.parcalar.find((p) => p.id === parcaId);
   const gecmis = [...(parca?.alisGecmisi || [])].sort((a, b) => new Date(b.tarih).getTime() - new Date(a.tarih).getTime());
   if (gecmis.length === 0) return null;
@@ -203,7 +203,7 @@ export const urunAlisIstatistikleri = (db, parcaId) => {
 // değil, o değişiklik anındaki fiyat) benzer istatistikleri çıkarır (3. madde).
 // Ayrıca gerçek satış KALEMLERİNDEN (satılan fiyat, sepet iskontosu dahil)
 // bir ikinci veri kümesi de sunar — daha doğru "gerçekte kaça sattım" bilgisi.
-export const urunSatisIstatistikleri = (db, parcaId) => {
+export const urunSatisIstatistikleri = (db: any, parcaId) => {
   const satisKalemleri = db.satislar
     .filter((s) => s.durum !== "İptal Edildi")
     .flatMap((s) => s.kalemler.map((k) => ({ ...k, satisTarihi: s.tarih })))
@@ -246,7 +246,7 @@ export interface TedarikciKarsilastirmaSatiri {
   netMaliyet: number;
 }
 
-export const urunTedarikciKarsilastirmasi = (db, parcaId): TedarikciKarsilastirmaSatiri[] => {
+export const urunTedarikciKarsilastirmasi = (db: any, parcaId): TedarikciKarsilastirmaSatiri[] => {
   const parca = db.parcalar.find((p) => p.id === parcaId);
   if (!parca) return [];
   const teklifler = db.tedarikciTeklifleri.filter((t) => t.parcaId === parcaId && t.durum === "Geçerli");
@@ -265,7 +265,7 @@ export const urunTedarikciKarsilastirmasi = (db, parcaId): TedarikciKarsilastirm
 };
 
 // Sipariş önerisi ekranı için: "En uygun tedarikçi: ABC" (5. madde).
-export const enUygunTedarikciBul = (db, parcaId) => {
+export const enUygunTedarikciBul = (db: any, parcaId) => {
   const k = urunTedarikciKarsilastirmasi(db, parcaId);
   return k.length > 0 ? k[0] : null;
 };
@@ -287,7 +287,7 @@ export const enUygunTedarikciBul = (db, parcaId) => {
 // Barkodu olmayan ürünler için dahili (mağaza içi) EAN-13 üretir — "20" ile
 // başlayan öneki, gerçek üretici barkodlarıyla çakışmasın diye GS1'in
 // "kısıtlı dağıtım / iç kullanım" için ayırdığı 20-29 aralığından seçildi.
-export const otomatikBarkodUret = (db) => {
+export const otomatikBarkodUret = (db: any) => {
   const kullanilanlar = new Set(db.parcalar.flatMap((p) => parcaTumBarkodlari(p)));
   let sira = db.parcalar.length + 1;
   let aday;
@@ -317,15 +317,15 @@ export const otomatikBarkodUret = (db) => {
 /* ------------------------------------------------------------------ */
 // Bir Set ürünün bileşen listesini, her bileşenin gerçek ürün kaydıyla
 // birlikte döner (silinmiş bir bileşen varsa listeden düşer).
-export const setBilesenDetaylari = (db, parca) => (parca.setBilesenleri || []).map((b) => ({ ...b, parca: db.parcalar.find((p) => p.id === b.parcaId) })).filter((b) => b.parca);
+export const setBilesenDetaylari = (db: any, parca) => (parca.setBilesenleri || []).map((b) => ({ ...b, parca: db.parcalar.find((p) => p.id === b.parcaId) })).filter((b) => b.parca);
 
 // Bir Set ürünün TOPLAM parça maliyeti — kendi stoğu olmadığından maliyeti
 // her zaman bileşenlerinden anlık olarak hesaplanır.
-export const setMaliyetiHesapla = (db, parca) => setBilesenDetaylari(db, parca).reduce((t, b) => t + gecerliMaliyet(b.parca) * b.adet, 0);
+export const setMaliyetiHesapla = (db: any, parca) => setBilesenDetaylari(db, parca).reduce((t, b) => t + gecerliMaliyet(b.parca) * b.adet, 0);
 
 // Bir Set'ten "adet" kadar satılabilir mi? — tüm bileşenlerin satılabilir
 // stoğu yeterli olmalı (rezerv sistemiyle uyumlu, ham stok değil).
-export const setSatilabilirMi = (db, parca, adet) => setBilesenDetaylari(db, parca).every((b) => parcaSatilabilirStok(db, b.parca) >= b.adet * adet);
+export const setSatilabilirMi = (db: any, parca, adet) => setBilesenDetaylari(db, parca).every((b) => parcaSatilabilirStok(db, b.parca) >= b.adet * adet);
 
 // Perakende Satış Fiyatı KDV DAHİL girilir, maliyet (ortalama/son alış) ise
 // KDV HARİÇ tutulur. Kârı doğru hesaplayabilmek için ikisini aynı zemine
@@ -359,7 +359,7 @@ export const fiyatYuvarla = (fiyat, birim) => (birim > 0 ? Math.ceil(fiyat / bir
 /* ------------------------------------------------------------------ */
 // Bir ürün için tüm zamanlar (iptal hariç) toplam satış adedi — "hiç satış
 // geçmişi var mı" sorusuna hızlı cevap vermek için (Stoksuz ürün önceliği).
-export const parcaTumZamanlarSatisAdedi = (db, parcaId) =>
+export const parcaTumZamanlarSatisAdedi = (db: any, parcaId) =>
   db.satislar
     .filter((s) => s.durum !== "İptal Edildi")
     .flatMap((s) => s.kalemler)
@@ -369,7 +369,7 @@ export const parcaTumZamanlarSatisAdedi = (db, parcaId) =>
 // Marka/kategori/depo analizleri için tek bir ürün satırının tüm metriklerini
 // bir arada üreten merkezi fonksiyon — Stok Analiz Merkezi'ndeki tüm alt
 // sekmeler aynı hesaplamayı (tek doğruluk kaynağı) kullanır.
-export const stokAnalizSatiriHesapla = (db, p) => {
+export const stokAnalizSatiriHesapla = (db: any, p) => {
   const maliyet = gecerliMaliyet(p, db);
   const rezerveAdet = parcaRezerveAdedi(db, p.id) + parcaKarsilanmisMusteriSiparisiAdedi(db, p.id);
   const satilabilir = parcaSatilabilirStok(db, p);
@@ -393,7 +393,7 @@ export const stokAnalizSatiriHesapla = (db, p) => {
 
 // Marka ya da kategoriye göre (alan adı parametreyle verilir) stok
 // değeri / satış / kâr / devir hızı özetleyen genel amaçlı gruplama.
-export const markaKategoriAnaliziYap = (db, satirlar, alan) => {
+export const markaKategoriAnaliziYap = (db: any, satirlar, alan) => {
   const bugunIso = isoGun(new Date());
   const yilOncesiIso = isoGun(new Date(Date.now() - 365 * 86400000));
   const son365Kalemler = db.satislar

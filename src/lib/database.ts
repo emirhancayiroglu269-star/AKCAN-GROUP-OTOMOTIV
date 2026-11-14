@@ -331,7 +331,7 @@ export const bosVeritabani = () => ({
   },
 });
 
-export const veriyiOnar = (db) => ({
+export const veriyiOnar = (db: any) => ({
   ...db,
   parcalar: (db.parcalar || []).map((p) => ({
     ...p,

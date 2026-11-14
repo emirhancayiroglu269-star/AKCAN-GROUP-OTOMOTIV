@@ -1,5 +1,5 @@
 // Bir ürünün en son satıldığı tarihi (iptal edilmemiş satışlardan) bulur.
-export const sonSatisTarihiBul = (db, parcaId) => {
+export const sonSatisTarihiBul = (db: any, parcaId) => {
   for (const s of db.satislar) {
     if (s.durum === "İptal Edildi") continue;
     if (s.kalemler.some((k) => k.parcaId === parcaId)) return s.tarih;
@@ -8,7 +8,7 @@ export const sonSatisTarihiBul = (db, parcaId) => {
 };
 
 // Son N gündeki toplam satılan adedi hesaplar (iptal edilmiş satışlar hariç).
-export const sonNGunSatisAdedi = (db, parcaId, gunSayisi) => {
+export const sonNGunSatisAdedi = (db: any, parcaId, gunSayisi) => {
   const esikTarih = new Date(Date.now() - gunSayisi * 86400000);
   let toplam = 0;
   db.satislar.forEach((s) => {
@@ -29,7 +29,7 @@ export const SATIS_HIZI_SINIF_GORSELI = {
 };
 
 // Bir ürünün en son satış tarihini bulur (hiç satılmadıysa null).
-export const parcaSonSatisTarihi = (db, parcaId) => {
+export const parcaSonSatisTarihi = (db: any, parcaId) => {
   let sonTarih = null;
   db.satislar.forEach((s) => {
     if (s.durum === "İptal Edildi") return;
@@ -42,7 +42,7 @@ export const parcaSonSatisTarihi = (db, parcaId) => {
 // Satış hızına göre sınıflandırma (1. ve 10. madde) — eşikler Ayarlar'dan
 // özelleştirilebilir. "Ölü stok" sadece "hiç satmayan" değil, belirlenen gün
 // eşiğinden UZUN SÜREDİR satılmayan anlamına gelir (10. madde).
-export const satisHiziSiniflandir = (db, parca) => {
+export const satisHiziSiniflandir = (db: any, parca) => {
   const esik = db.ayarlar?.satisHiziEsikleri || { hizliEsigi: 10, normalEsigiMin: 3, yavasEsigiMin: 1, oluStokGunEsigi: 90 };
   const son30 = sonNGunSatisAdedi(db, parca.id, 30);
   const sonSatisTarihi = parcaSonSatisTarihi(db, parca.id);
@@ -55,7 +55,7 @@ export const satisHiziSiniflandir = (db, parca) => {
 };
 
 // Stok yaşı (4. madde) — ürünün ilk stok girişinden bu yana geçen süreye göre.
-export const stokYasiGunu = (db, parcaId) => {
+export const stokYasiGunu = (db: any, parcaId) => {
   const ilkHareket = [...db.stokHareketleri].filter((h) => h.parcaId === parcaId && h.giris > 0).sort((a, b) => new Date(a.tarih).getTime() - new Date(b.tarih).getTime())[0];
   if (!ilkHareket) return null;
   return Math.floor((Date.now() - new Date(ilkHareket.tarih).getTime()) / 86400000);
@@ -72,7 +72,7 @@ export const stokYasiGrubu = (gun) => {
 
 // Ölü/yavaş stok için aksiyon önerileri (6. madde) — kural tabanlı, basit
 // ama işe yarar öneriler; kullanıcı bunlardan istediğini uygular.
-export const oluStokAksiyonOnerileri = (db, parca, sinif) => {
+export const oluStokAksiyonOnerileri = (db: any, parca, sinif) => {
   const oneriler = [];
   if (sinif === "Ölü Stok" || sinif === "Yavaş") {
     oneriler.push("İndirim yap / Kampanyaya al");
