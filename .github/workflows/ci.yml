@@ -1,0 +1,81 @@
+name: CI
+
+# Her push ve her pull request'te kalite kapısı:
+#   1) typecheck  — npx tsc -p tsconfig.json --noEmit
+#   2) build      — npm run build (vite)
+#   3) test       — npm test (vitest, tests/gercek)
+#
+# Not: `npm run build` (vite) tip kontrolü YAPMAZ; tip hataları yalnızca
+# `typecheck` adımında yakalanır. İkisi ayrı adım olarak çalışıyor.
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: ["**"]
+  workflow_dispatch:
+
+# Aynı dalda yeni bir push gelirse önceki çalışmayı iptal et — boşa
+# dakika harcamayalım.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  kalite:
+    name: typecheck + build + test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Depoyu al
+        uses: actions/checkout@v4
+
+      # vitest 5.1.0 → node ^22.12 || ^24 || >=26
+      # vite 8.2.1  → node ^20.19 || >=22.12
+      # İkisinin kesişimi: 24
+      - name: Node.js kur
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: "npm"
+
+      - name: Bağımlılıkları kur
+        run: npm ci
+
+      - name: Tip kontrolü (tsc --noEmit)
+        run: npm run typecheck
+
+      - name: Üretim derlemesi (vite build)
+        run: npm run build
+
+      - name: Gerçek testler (vitest)
+        run: npm test
+
+  # Eski .mjs smoke testleri uygulama kodunu import etmez (bkz. tests/README.md)
+  # ve bu yüzden regresyon yakalayamaz. Yine de senaryo değeri var; bloklamayan
+  # bir iş olarak çalışıp sonucu raporluyor.
+  eski-smoke:
+    name: eski smoke testler (bloklamaz)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    continue-on-error: true
+
+    steps:
+      - name: Depoyu al
+        uses: actions/checkout@v4
+
+      - name: Node.js kur
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: "npm"
+
+      - name: Bağımlılıkları kur
+        run: npm ci
+
+      - name: Eski smoke testler
+        run: npm run test:eski-smoke
