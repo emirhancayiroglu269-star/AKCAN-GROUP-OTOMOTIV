@@ -4,7 +4,7 @@
 
 | | Sayı | Uygulama kodunu çalıştırıyor mu? |
 |---|---|---|
-| `tests/gercek/*.test.ts` (**yeni**) | 9 dosya / **352 test** | ✅ Evet — `src/` import ediyor |
+| `tests/gercek/*.test.ts` (**yeni**) | 9 dosya / **361 test** | ✅ Evet — `src/` import ediyor |
 | `tests/*.mjs` (eski "smoke") | 118 dosya | ❌ **Hayır** |
 
 ### Eski smoke testler hakkında uyarı
@@ -104,7 +104,7 @@ npm run test:eski-smoke   # eski .mjs dosyalarını çalıştırır (bilgi amaç
 - `vadeGrubuBul`: geçmiş/gelecek ayrımı, deterministik
 - `musteriAcikFaturalariFifo`: iptal atlama, **FIFO sıralama**, müşteri izolasyonu, isimle eşleşme (harf duyarsız), tahsilat havuzunun faturalara eskiden yeniye dağıtılması, fazla tahsilatın taşmaması, `vadeGunu` ile vade tarihi türetimi
 
-### `tests/gercek/fiyatlandirma.test.ts` — 112 test
+### `tests/gercek/fiyatlandirma.test.ts` — 121 test
 `src/lib/fiyatlandirma.ts` (fiyat çözümleme motoru — satış ekranının her ürün
 eklerken çağırdığı fonksiyon)
 
@@ -194,12 +194,43 @@ yok). `fiyatElleDegistirildi` yalnızca form içi işaret — **kayda yazılmaz*
 
 **12 test** bu kuralı kilitliyor.
 
-### ⚠️ Hâlâ açık — `IadeSayfasi` değişim sepeti
+## 9. ✅ GERÇEK HATA — iade değişim sepeti merkezî çözümlemeyi atlıyordu (düzeltildi)
 
-`IadeSayfasi.tsx` → `degisimSepeteEkle` hâlâ `p.satisFiyati || 0` kullanıyor.
-Bilerek bırakıldı: değişim ürününün fiyatı **iade farkı** hesabına giriyor ve
-kural satıştan farklı olabilir (müşteri zaten ödeme yapmış bir ürünü değiştiriyor;
-kampanya indirimi uygulanmalı mı, iş kararı). Bağlanması gerekirse aynı desen.
+**Dosya:** `src/modules/finans/IadeSayfasi.tsx`
+
+`degisimSepeteEkle` içinde `birimFiyat: p.satisFiyati || 0` kullanılıyordu.
+Müşteri iade ederken yeni ürün alıyorsa, o ürün **indirimsiz** fiyatla
+hesaplanıyordu — fark tutarı müşterinin aleyhine şişiyordu.
+
+**Çözüm:** `degisimMusteri` + `degisimIcinFiyat(p, adet)`.
+
+Müşteri iade edilen satıştan geliyor:
+1. `seciliSatis.musteriId` varsa o cari
+2. yoksa `musteriAdi` ile kayıtlı cari eşleşmesi (büyük/küçük harf duyarsız)
+3. hiçbiri yoksa `null` → normal fiyat / kampanya
+
+`degisimSepetiGuncelle` artık:
+- `birimFiyat` yazılınca → `fiyatElleDegistirildi: true`
+- `adet` yazılınca → yalnızca **adet bazlı kampanya** varsa fiyat tazelenir
+  (yüzde/tutar/sabitFiyat adetten bağımsız olduğu için gereksiz hesap yapılmaz,
+  elle değiştirilmiş fiyat korunur)
+
+`fiyatElleDegistirildi` iade kaydına yazılmıyor — sepet içi işaret.
+
+**9 test** bu kuralı kilitliyor.
+
+### Merkezî fiyat çözümlemesi — son durum
+
+| Ekran | Durum |
+|---|---|
+| `SatisSayfasi` | ✅ |
+| `MusteriSiparisiSayfasi` | ✅ |
+| `TekliflerSayfasi` | ✅ |
+| `IadeSayfasi` (değişim sepeti) | ✅ |
+| `Musteri.tsx` ("tekrar sat") | ✅ |
+
+Artık sepete/teklife/siparişe giren her fiyat tek bir yerden
+(`parcaFiyatiHesapla`) geçiyor.
 
 ### `tests/gercek/audit-log.test.ts` — 101 test
 `src/lib/audit-log.ts` (denetim izi hash zinciri)

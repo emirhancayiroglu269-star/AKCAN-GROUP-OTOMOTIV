@@ -37,16 +37,75 @@ export function IadeSayfasi({ db, updateDb, aktifKullanici }) {
       }, 0)
     : 0;
 
+  // Değişim sepeti de satışla aynı merkezî fiyat çözümlemesinden geçer:
+  // müşteriye özel fiyat → müşteri fiyat grubu → aktif kampanya → normal fiyat.
+  // Müşteri, iade edilen satıştan geliyor (`seciliSatis.musteriId`); satışta
+  // müşteri kaydı yoksa serbest metin ada göre eşleşme deneniyor.
+  const degisimMusteri = (() => {
+    if (!seciliSatis) return null;
+    if (seciliSatis.musteriId) {
+      const kayit = db.cariler.find((c) => c.id === seciliSatis.musteriId);
+      if (kayit) return kayit;
+    }
+    const ad = String(seciliSatis.musteriAdi || "").trim().toLowerCase();
+    if (!ad) return null;
+    return db.cariler.find((c) => c.aktif !== false && c.ad.toLowerCase() === ad) || null;
+  })();
+
+  const degisimIcinFiyat = (p, adet = 1): number => {
+    if (!p) return 0;
+    return R.parcaFiyatiHesapla(db, p, degisimMusteri, adet).fiyat;
+  };
+
   const degisimSepeteEkle = (p) => {
     setDegisimSepeti((prev) => {
       if (prev.some((s) => s.parcaId === p.id)) return prev;
-      return [...prev, { parcaId: p.id, ad: p.ad, stokKodu: p.stokKodu, adet: 1, birimFiyat: p.satisFiyati || 0, kdvOrani: p.kdvOrani || 0 }];
+      return [
+        ...prev,
+        {
+          parcaId: p.id,
+          ad: p.ad,
+          stokKodu: p.stokKodu,
+          adet: 1,
+          birimFiyat: degisimIcinFiyat(p, 1),
+          fiyatElleDegistirildi: false,
+          kdvOrani: p.kdvOrani || 0,
+        },
+      ];
     });
     setDegisimArama("");
     setDegisimAramaAcik(false);
   };
+
+  // Elle değiştirilmiş fiyat kullanıcı kararıdır — adet veya müşteri değişince
+  // ezilmez. Fiyat yalnızca adet bazlı kampanya (Kademeli %, X Al Y Öde) için
+  // yeniden hesaplanır; yüzde/tutar/sabitFiyat adetten bağımsızdır.
   const degisimSepetiGuncelle = (parcaId, alan, deger) =>
-    setDegisimSepeti((prev) => prev.map((s) => (s.parcaId === parcaId ? { ...s, [alan]: deger } : s)));
+    setDegisimSepeti((prev) =>
+      prev.map((s) => {
+        if (s.parcaId !== parcaId) return s;
+        if (alan === "birimFiyat") {
+          return { ...s, birimFiyat: parseFloat(deger) || 0, fiyatElleDegistirildi: true };
+        }
+        if (alan !== "adet") return { ...s, [alan]: deger };
+        const adet = parseFloat(deger) || 0;
+        const p = db.parcalar.find((x) => x.id === parcaId);
+        const yeni = { ...s, adet: deger };
+        if (!p || s.fiyatElleDegistirildi) return yeni;
+        const bugunIso = R.isoGun(new Date());
+        const adetBazliVar = db.kampanyalar.some(
+          (k) =>
+            k.aktif !== false &&
+            k.baslangicTarihi <= bugunIso &&
+            k.bitisTarihi >= bugunIso &&
+            ["kademeliYuzde", "xAlYOde"].includes(k.iskontoTuru) &&
+            (!k.hedefMusteriGrubuId || (degisimMusteri && degisimMusteri.fiyatGrubuId === k.hedefMusteriGrubuId))
+        );
+        if (!adetBazliVar) return yeni;
+        return { ...yeni, birimFiyat: degisimIcinFiyat(p, adet || 1) };
+      })
+    );
+
   const degisimSepetindenSil = (parcaId) => setDegisimSepeti((prev) => prev.filter((s) => s.parcaId !== parcaId));
 
   const degisimToplam = degisimSepeti.reduce((t, s) => t + (parseFloat(s.adet) || 0) * (parseFloat(s.birimFiyat) || 0), 0);
@@ -123,7 +182,11 @@ export function IadeSayfasi({ db, updateDb, aktifKullanici }) {
       kapatmaYontemi,
       hesapId: hesapId || null,
       tutar: Math.round(iadeToplamTutar * 100) / 100,
-      degisimKalemleri: kapatmaYontemi === "Değişim" ? degisimSepeti : [],
+      // `fiyatElleDegistirildi` yalnızca sepet içi bir işaret — kayda yazılmaz.
+      degisimKalemleri:
+        kapatmaYontemi === "Değişim"
+          ? degisimSepeti.map(({ fiyatElleDegistirildi, ...k }) => k)
+          : [],
       fark: kapatmaYontemi === "Değişim" ? farkTutari : 0,
       iadeyiAlan: iadeyiAlan.trim(),
     };

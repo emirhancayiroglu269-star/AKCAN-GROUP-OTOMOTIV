@@ -953,3 +953,91 @@ describe("⚠️ BELGELENMİŞ AÇIK — teklif fiyatı merkezî çözümlemeyi 
     expect(parca().satisFiyati).toBe(100); // 55 değil
   });
 });
+
+describe("iade değişim sepeti — merkezî çözümleme (düzeltildi)", () => {
+  /**
+   * `IadeSayfasi.tsx` kurallarının birebir kopyası:
+   *  - `degisimMusteri` → iade edilen satışın müşterisi (id, yoksa ada göre)
+   *  - `degisimIcinFiyat(p, adet)` → parcaFiyatiHesapla
+   *  - `degisimSepetiGuncelle` → elle fiyat işaretlenir, adet tazelenir
+   */
+  const degisimMusteriBul = (d: any, satis: any) => {
+    if (!satis) return null;
+    if (satis.musteriId) {
+      const kayit = d.cariler.find((c: any) => c.id === satis.musteriId);
+      if (kayit) return kayit;
+    }
+    const ad = String(satis.musteriAdi || "").trim().toLowerCase();
+    if (!ad) return null;
+    return d.cariler.find((c: any) => c.aktif !== false && c.ad.toLowerCase() === ad) || null;
+  };
+
+  const degisimIcinFiyat = (d: any, p: any, musteri: any, adet = 1): number => {
+    if (!p) return 0;
+    return parcaFiyatiHesapla(d, p, musteri, adet).fiyat;
+  };
+
+  const duzen = () =>
+    db({
+      cariler: [
+        { id: "c1", ad: "Ahmet Oto", aktif: true, fiyatGrubuId: "g1" },
+        { id: "c2", ad: "Mehmet Ticaret", aktif: true },
+      ],
+      musteriOzelFiyatlar: [{ musteriId: "c1", parcaId: "p1", fiyat: 55 }],
+      musteriFiyatGruplari: [{ id: "g1", ad: "Toptan" }],
+      fiyatGrubuKurallari: [{ grupId: "g1", hedefTuru: "tumu", iskontoTuru: "yuzde", iskontoDeger: 30 }],
+      kampanyalar: [kampanya({ iskontoDeger: 10 })],
+    });
+
+  it("iade edilen satışın müşterisi musteriId ile bulunur", () => {
+    const d = duzen();
+    expect(degisimMusteriBul(d, { musteriId: "c1", musteriAdi: "Ahmet Oto" })?.id).toBe("c1");
+  });
+
+  it("musteriId yoksa ada göre eşleşir (büyük/küçük harf duyarsız)", () => {
+    const d = duzen();
+    expect(degisimMusteriBul(d, { musteriId: null, musteriAdi: "  mehmet ticaret " })?.id).toBe("c2");
+  });
+
+  it("müşteri bulunamazsa null (fiyat normal/kampanya)", () => {
+    const d = duzen();
+    expect(degisimMusteriBul(d, { musteriId: null, musteriAdi: "Kayıtsız Müşteri" })).toBeNull();
+    expect(degisimMusteriBul(d, null)).toBeNull();
+  });
+
+  it("değişim ürünü müşteriye özel fiyatla gelir", () => {
+    const d = duzen();
+    const m = degisimMusteriBul(d, { musteriId: "c1" });
+    expect(degisimIcinFiyat(d, parca(), m)).toBe(55);
+  });
+
+  it("değişim ürünü fiyat grubu indirimiyle gelir", () => {
+    const d = db({
+      musteriFiyatGruplari: [{ id: "g1", ad: "Toptan" }],
+      fiyatGrubuKurallari: [{ grupId: "g1", hedefTuru: "tumu", iskontoTuru: "yuzde", iskontoDeger: 30 }],
+    });
+    expect(degisimIcinFiyat(d, parca(), { id: "c2", fiyatGrubuId: "g1" })).toBe(70);
+  });
+
+  it("müşteri yoksa aktif kampanya uygulanır", () => {
+    const d = duzen();
+    expect(degisimIcinFiyat(d, parca(), null)).toBe(90);
+  });
+
+  it("miktar bazlı kampanya değişimde de adetle çalışır", () => {
+    const d = db({ kampanyalar: [kampanya({ iskontoTuru: "kademeliYuzde", iskontoDeger: 20, minimumAdet: 10 })] });
+    expect(degisimIcinFiyat(d, parca(), null, 3)).toBe(100);
+    expect(degisimIcinFiyat(d, parca(), null, 10)).toBe(80);
+  });
+
+  it("ürün yoksa 0 döner", () => {
+    expect(degisimIcinFiyat(db(), undefined, null)).toBe(0);
+  });
+
+  it("fiyatElleDegistirildi işareti kayda yazılmaz", () => {
+    const sepet = [{ parcaId: "p1", ad: "Fren", adet: 1, birimFiyat: 55, fiyatElleDegistirildi: true, kdvOrani: 20 }];
+    const kayit = sepet.map(({ fiyatElleDegistirildi, ...k }) => k);
+    expect(kayit[0]).not.toHaveProperty("fiyatElleDegistirildi");
+    expect(kayit[0]).toMatchObject({ parcaId: "p1", birimFiyat: 55, kdvOrani: 20 });
+  });
+});
