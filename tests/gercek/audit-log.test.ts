@@ -223,21 +223,25 @@ describe("auditZincirKontrolu — sadece hash'siz kayıtlarda sessiz", () => {
 
 describe("auditKategoriBelirle", () => {
   it.each([
-    ["Kullanıcı girişi yapıldı", "Giriş"],
+    ["Kullanıcı girişi yapıldı", "Kullanıcı"],
     ["Satış oluşturuldu", "Satış"],
     ["Mal alışı kaydedildi", "Alış"],
     ["Tahsilat yapıldı", "Tahsilat"],
-    ["Tedarikçi ödemesi", "Ödeme"],
+    ["Tedarikçi ödemesi", "Tedarikçi"],
     ["Kasa açılışı", "Kasa"],
     ["Banka havalesi", "Banka"],
     ["POS komisyonu", "POS"],
-    // NOT: kontrol sırası "satış" önce geldiği için "Satış iadesi" → Satış.
-    // İade kategorisi yalnızca "satış" kelimesi geçmeyen işlemlerde çıkar.
-    ["Satış iadesi", "Satış"],
+    // DÜZELTME: "iade" kontrolü "satış"tan önce → artık İade.
+    ["Satış iadesi", "İade"],
+    ["Satış iadesi alındı", "İade"],
     ["Müşteri iadesi alındı", "İade"],
-    // NOT: "giriş" kontrolü "stok"tan önce → "Stok girişi" Giriş sayılır.
-    ["Stok girişi", "Giriş"],
+    ["Alış iadesi yapıldı", "İade"],
+    ["Alış İadesi", "İade"],
+    // DÜZELTME: "stok" kontrolü "giriş"ten önce → artık Stok.
+    ["Stok girişi", "Stok"],
+    ["Manuel Stok Girişi", "Stok"],
     ["Stok düzeltmesi", "Stok"],
+    ["Stok düzeltildi (Manuel Stok Girişi)", "Stok"],
     ["Sayım tamamlandı", "Sayım"],
     ["Depo transferi", "Transfer"],
     ["Müşteri eklendi", "Müşteri"],
@@ -265,6 +269,98 @@ describe("auditKategoriBelirle", () => {
   it("döndürülen her kategori AUDIT_KATEGORILERI listesinde var", () => {
     for (const t of ["Satış", "Alış", "Kasa", "Bilinmeyen", "", "xyz"]) {
       expect(AUDIT_KATEGORILERI).toContain(auditKategoriBelirle(t));
+    }
+  });
+});
+
+
+describe("auditKategoriBelirle — öncelik kuralları (düzeltilmiş sıra)", () => {
+  it("iade, satıştan ve alıştan önce gelir", () => {
+    expect(auditKategoriBelirle("Satış iadesi alındı")).toBe("İade");
+    expect(auditKategoriBelirle("Alış iadesi yapıldı")).toBe("İade");
+  });
+
+  it("stok, girişten ve sayımdan önce gelir", () => {
+    expect(auditKategoriBelirle("Stok girişi")).toBe("Stok");
+    expect(auditKategoriBelirle("Sayım Fazlası")).toBe("Stok");
+    expect(auditKategoriBelirle("Sayım Eksiği")).toBe("Stok");
+    expect(auditKategoriBelirle("Hasarlı / Fire Ürün")).toBe("Stok");
+  });
+
+  it("satın alma ve mal kabul Alış sayılır (satış değil)", () => {
+    expect(auditKategoriBelirle("Satın alma siparişi oluşturuldu")).toBe("Alış");
+    expect(auditKategoriBelirle("Mal kabul yapıldı")).toBe("Alış");
+  });
+
+  it("kart silme işlemleri kendi kategorisini korur (Silme'ye düşmez)", () => {
+    expect(auditKategoriBelirle("Müşteri kartı kalıcı olarak silindi")).toBe("Müşteri");
+    expect(auditKategoriBelirle("Tedarikçi kartı silindi")).toBe("Tedarikçi");
+    expect(auditKategoriBelirle("Ürün kartı silindi")).toBe("Silme"); // başka kategori yok
+    expect(auditKategoriBelirle("Kayıt silindi")).toBe("Silme");
+  });
+
+  it("oturum açma işlemleri Kullanıcı sayılır (Giriş değil)", () => {
+    expect(auditKategoriBelirle("Kullanıcı girişi yapıldı")).toBe("Kullanıcı");
+    expect(auditKategoriBelirle("Giriş yapıldı")).toBe("Kullanıcı");
+    expect(auditKategoriBelirle("Şifre değiştirildi")).toBe("Kullanıcı");
+  });
+
+  it("kasa açılışı Kasa, banka havalesi Banka", () => {
+    expect(auditKategoriBelirle("Kasa açılışı")).toBe("Kasa");
+    expect(auditKategoriBelirle("Banka havalesi")).toBe("Banka");
+    expect(auditKategoriBelirle("Hesaplar arası transfer")).toBe("Transfer");
+  });
+
+  it("iskonto Fiyat kategorisinde", () => {
+    expect(auditKategoriBelirle("İskonto uygulandı")).toBe("Fiyat");
+    expect(auditKategoriBelirle("Fiyat grubu kuralı eklendi")).toBe("Fiyat");
+  });
+});
+
+describe("auditKategoriBelirle — uygulamadaki gerçek işlem türleri", () => {
+  // Bu metinler src/ içindeki gerçek `islemTuru:` değerlerinden alındı.
+  it.each([
+    ["Kullanıcı girişi yapıldı", "Kullanıcı"],
+    ["Satış oluşturuldu", "Satış"],
+    ["Satış Fişi oluşturuldu", "Satış"],
+    ["Satış iptal edildi", "Satış"],
+    ["Satış iadesi alındı", "İade"],
+    ["Alış iadesi yapıldı", "İade"],
+    ["Mal alışı kaydedildi", "Alış"],
+    ["Mal kabul yapıldı", "Alış"],
+    ["Satın alma siparişi oluşturuldu", "Alış"],
+    ["Tahsilat yapıldı", "Tahsilat"],
+    ["Tedarikçi ödemesi", "Tedarikçi"],
+    ["Kasa açılışı", "Kasa"],
+    ["Banka havalesi", "Banka"],
+    ["POS komisyonu", "POS"],
+    ["Stok girişi", "Stok"],
+    ["Stok düzeltildi (Manuel Stok Girişi)", "Stok"],
+    ["Sayım tamamlandı", "Sayım"],
+    ["Transfer gönderildi", "Transfer"],
+    ["Hesaplar arası transfer", "Transfer"],
+    ["Müşteri siparişi oluşturuldu", "Müşteri"],
+    ["Müşteri pasife alındı", "Müşteri"],
+    ["Tedarikçi pasifleştirildi (silme yerine)", "Tedarikçi"],
+    ["Fiyat güncellendi", "Fiyat"],
+    ["Satış fiyatı değiştirildi", "Satış"], // "satış" önce geldiği için
+    ["Personel eklendi", "Kullanıcı"],
+    ["Rol yetkileri değiştirildi", "Yetki"],
+    ["Ayar kaydedildi", "Ayar"],
+    ["Ürün kartı silindi", "Silme"],
+    ["Kayıt silindi", "Silme"],
+    ["Bilinmeyen işlem", "Diğer"],
+  ])("%s → %s", (girdi, beklenen) => {
+    expect(auditKategoriBelirle(girdi)).toBe(beklenen);
+  });
+
+  it("her örnek AUDIT_KATEGORILERI listesinde geçerli bir kategori döner", () => {
+    const ornekler = [
+      "Satış iadesi", "Stok girişi", "Mal kabul yapıldı", "İskonto uygulandı",
+      "Kullanıcı girişi yapıldı", "Ürün kartı silindi", "xyz", "",
+    ];
+    for (const o of ornekler) {
+      expect(AUDIT_KATEGORILERI).toContain(auditKategoriBelirle(o));
     }
   });
 });

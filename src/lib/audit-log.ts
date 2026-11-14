@@ -25,27 +25,47 @@ const zincirHash = (girdi: string) => {
   return (h >>> 0).toString(16).padStart(8, "0");
 };
 
+// Kategori eşlemesi SIRAYA DUYARLI — bir alt dize diğerini gölgeleyebilir.
+// Sıra şu ilkeye göre kuruldu:
+//   1) ÖNCE EN ÖZEL (dar) kalıplar, sonra genel olanlar.
+//      "Satış iadesi" → İade (Satış değil), "Stok girişi" → Stok (Giriş değil).
+//   2) "giriş" tek başına çok geniş bir kelime: "Stok girişi", "Manuel Stok
+//      Girişi", "Kasa girişi", "Mal girişi" hepsi içinde geçiyor. Bu yüzden
+//      oturum açma dışındaki "giriş" kalıpları kendi kategorisini bulmalı;
+//      genel "giriş" kontrolü EN SONA yakın duruyor.
+const SIRA: [string[], string][] = [
+  // --- özel / dar kalıplar -------------------------------------------
+  [["iade"], "İade"],
+  [["tahsilat"], "Tahsilat"],
+  [["stok", "sayım fazlası", "sayım eksiği", "fire", "hasarlı"], "Stok"],
+  [["sayım"], "Sayım"],
+  [["transfer"], "Transfer"],
+  [["oturum", "çıkış yap", "çıkış yapıldı"], "Giriş"],
+  [["satış"], "Satış"],
+  [["satın alma", "mal kabul", "mal alış", "alış"], "Alış"],
+  [["tedarikçi"], "Tedarikçi"],
+  [["müşteri"], "Müşteri"],
+  [["ödeme"], "Ödeme"],
+  [["kasa"], "Kasa"],
+  [["banka"], "Banka"],
+  [["pos"], "POS"],
+  [["fiyat", "iskonto"], "Fiyat"],
+  [["kullanıcı", "personel", "şifre", "giriş yap", "oturum aç"], "Kullanıcı"],
+  [["yetki", "rol"], "Yetki"],
+  [["ayar"], "Ayar"],
+  // "silindi" kendi kategorisini (Müşteri, Ürün, Tedarikçi…) bulmalı; bu
+  // yüzden genel "sil" kontrolü en sonda. Yalnızca başka kategoriye
+  // uymayan silme işlemleri buraya düşer.
+  [["sil"], "Silme"],
+  // --- en genel: oturum açma ----------------------------------------
+  [["giriş"], "Giriş"],
+];
+
 export const auditKategoriBelirle = (islemTuru = "") => {
   const t = String(islemTuru).toLocaleLowerCase("tr-TR");
-  if (t.includes("giriş") || t.includes("oturum")) return "Giriş";
-  if (t.includes("satış")) return "Satış";
-  if (t.includes("alış")) return "Alış";
-  if (t.includes("tahsilat")) return "Tahsilat";
-  if (t.includes("ödeme")) return "Ödeme";
-  if (t.includes("kasa")) return "Kasa";
-  if (t.includes("banka")) return "Banka";
-  if (t.includes("pos")) return "POS";
-  if (t.includes("iade")) return "İade";
-  if (t.includes("stok")) return "Stok";
-  if (t.includes("sayım")) return "Sayım";
-  if (t.includes("transfer")) return "Transfer";
-  if (t.includes("müşteri")) return "Müşteri";
-  if (t.includes("tedarikçi")) return "Tedarikçi";
-  if (t.includes("fiyat")) return "Fiyat";
-  if (t.includes("kullanıcı") || t.includes("personel")) return "Kullanıcı";
-  if (t.includes("yetki") || t.includes("rol")) return "Yetki";
-  if (t.includes("ayar")) return "Ayar";
-  if (t.includes("sil")) return "Silme";
+  for (const [kalıplar, kategori] of SIRA) {
+    if (kalıplar.some((k) => t.includes(k))) return kategori;
+  }
   return "Diğer";
 };
 

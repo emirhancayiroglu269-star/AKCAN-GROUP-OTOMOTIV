@@ -4,7 +4,7 @@
 
 | | Sayı | Uygulama kodunu çalıştırıyor mu? |
 |---|---|---|
-| `tests/gercek/*.test.ts` (**yeni**) | 8 dosya / **197 test** | ✅ Evet — `src/` import ediyor |
+| `tests/gercek/*.test.ts` (**yeni**) | 8 dosya / **240 test** | ✅ Evet — `src/` import ediyor |
 | `tests/*.mjs` (eski "smoke") | 118 dosya | ❌ **Hayır** |
 
 ### Eski smoke testler hakkında uyarı
@@ -76,7 +76,7 @@ npm run test:eski-smoke   # eski .mjs dosyalarını çalıştırır (bilgi amaç
 - `vadeGrubuBul`: geçmiş/gelecek ayrımı, deterministik
 - `musteriAcikFaturalariFifo`: iptal atlama, **FIFO sıralama**, müşteri izolasyonu, isimle eşleşme (harf duyarsız), tahsilat havuzunun faturalara eskiden yeniye dağıtılması, fazla tahsilatın taşmaması, `vadeGunu` ile vade tarihi türetimi
 
-### `tests/gercek/audit-log.test.ts` — 58 test
+### `tests/gercek/audit-log.test.ts` — 101 test
 `src/lib/audit-log.ts` (denetim izi hash zinciri)
 
 Amaç: denetim izinin **gerçekten kurcalanamaz** olduğunu kanıtlamak.
@@ -104,22 +104,68 @@ Amaç: denetim izinin **gerçekten kurcalanamaz** olduğunu kanıtlamak.
 
 **Uçtan uca** — 100 kayıt temiz çıkar; 50. kayıt bozulunca tam o `id` ile yakalanır
 
-## ⚠️ `auditKategoriBelirle` — kontrol sırası sürprizleri (belgelendi)
+## 5. ✅ GERÇEK HATA — `auditKategoriBelirle` yanlış kategoriye atıyordu (düzeltildi)
 
-Kategori eşlemesi `if` zinciriyle yapılıyor ve **sıra önemli**. Testler yazılırken
-iki sürpriz çıktı; kod değiştirilmedi, testler gerçek davranışı belgeliyor:
+**Dosya:** `src/lib/audit-log.ts`
 
-| İşlem türü | Beklenen | Gerçek | Neden |
-|---|---|---|---|
-| `"Satış iadesi"` | İade | **Satış** | `t.includes("satış")` kontrolü `iade`'den önce |
-| `"Stok girişi"` | Stok | **Giriş** | `t.includes("giriş")` kontrolü `stok`'tan önce |
+Kategori eşlemesi sıraya duyarlı bir `if` zinciriydi ve **genel kalıplar özel
+kalıpları gölgeliyordu**:
 
-`"Müşteri iadesi alındı"` → İade (doğru, çünkü "satış" geçmiyor).
-`"Stok düzeltmesi"` → Stok (doğru).
+| İşlem türü | Önce | Sonra |
+|---|---|---|
+| `"Satış iadesi"` | Satış ❌ | **İade** ✅ |
+| `"Satış iadesi alındı"` | Satış ❌ | **İade** ✅ |
+| `"Alış iadesi yapıldı"` | Alış ❌ | **İade** ✅ |
+| `"Stok girişi"` | Giriş ❌ | **Stok** ✅ |
+| `"Manuel Stok Girişi"` | Giriş ❌ | **Stok** ✅ |
+| `"Sayım Fazlası"` / `"Sayım Eksiği"` | Sayım ❌ | **Stok** ✅ |
+| `"Satın alma siparişi oluşturuldu"` | Satış ❌ | **Alış** ✅ |
+| `"Mal kabul yapıldı"` | Diğer ❌ | **Alış** ✅ |
+| `"Kullanıcı girişi yapıldı"` | Giriş ❌ | **Kullanıcı** ✅ |
+| `"Şifre değiştirildi"` | Diğer ❌ | **Kullanıcı** ✅ |
+| `"İskonto uygulandı"` | Diğer ❌ | **Fiyat** ✅ |
+| `"Müşteri kartı kalıcı olarak silindi"` | Silme ❌ | **Müşteri** ✅ |
+| `"Ürün kartı silindi"` | Silme | **Silme** ✅ |
 
-Bu bir hata değil ama **raporlarda kategori dağılımını etkiler**: iade işlemleri
-"Satış" kategorisinde, stok girişleri "Giriş" kategorisinde birikir. Düzeltmek
-için `if` zincirinin sırası değiştirilmeli — veri kararı olduğu için ayrı iş.
+Özellikle `"Alış iadesi"` → **Alış** olması ciddiydi: iade işlemleri alış cirosu
+gibi görünüyordu. `"Satın alma siparişi"` → **Satış** olması da öyle.
+
+**Çözüm:** `if` zinciri, sırası yorumla belgelenmiş bir kural tablosuna çevrildi:
+
+```ts
+const SIRA: [string[], string][] = [
+  [["iade"], "İade"],                     // satış/alış'tan ÖNCE
+  [["tahsilat"], "Tahsilat"],
+  [["stok", "sayım fazlası", "sayım eksiği", "fire", "hasarlı"], "Stok"],  // "giriş"ten ÖNCE
+  [["sayım"], "Sayım"],
+  [["transfer"], "Transfer"],
+  [["oturum", "çıkış yap"], "Giriş"],
+  [["satış"], "Satış"],
+  [["satın alma", "mal kabul", "mal alış", "alış"], "Alış"],
+  [["tedarikçi"], "Tedarikçi"],
+  [["müşteri"], "Müşteri"],
+  [["ödeme"], "Ödeme"],
+  // ...
+  [["kullanıcı", "personel", "şifre", "giriş yap", "oturum aç"], "Kullanıcı"],
+  [["sil"], "Silme"],                     // en sonda: kart silme kendi kategorisini korur
+  [["giriş"], "Giriş"],                   // en genel
+];
+```
+
+İlke: **en özel kalıp önce, en genel kalıp sonra.** "giriş" tek başına çok geniş
+bir kelime olduğu için (stok girişi, kasa girişi, manuel stok girişi…) neredeyse
+en sonda duruyor.
+
+**Testler:** 43 yeni test — öncelik kuralları (7) + `src/` içindeki **gerçek**
+`islemTuru` metinleri (30) + güncellenmiş temel eşleme tablosu.
+
+### ⚠️ Geçmiş kayıtlar
+
+`auditKategoriBelirle` yalnızca **yeni** kayıtlar için çalışır; `auditGecmisi`'ne
+yazılmış kayıtların `kategori` alanı sabittir. Yani **eski kayıtlar eski
+kategoride kalır**. Kategori bazlı bir rapor geçmişle karşılaştırılacaksa bunu
+bilmek gerekir. (Zincir hash'i kategori alanını da kapsadığı için geçmiş
+kayıtları toplu "düzeltmek" zinciri bozar — yapılmamalı.)
 
 ### `tests/gercek/finans-islem.test.ts` — 49 test
 `src/lib/finans-islem.ts` (para hareketi motoru — tahsilat / ödeme)
