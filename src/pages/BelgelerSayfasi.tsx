@@ -33,7 +33,7 @@ export function BelgelerSayfasi({ db, updateDb, aktifKullanici, setSekme, belgeH
   const filtreliBelgeler = (() => {
     let sonuc = aramaMetin.trim()
       ? satisAramaYap(db, aramaMetin)
-      : [...db.satislar].sort((a, b) => new Date(b.tarih) - new Date(a.tarih)).slice(0, 60);
+      : [...db.satislar].sort((a, b) => Number(new Date(b.tarih)) - Number(new Date(a.tarih))).slice(0, 60);
     if (baslangicTarih) sonuc = sonuc.filter((s) => s.tarih.slice(0, 10) >= baslangicTarih);
     if (bitisTarih) sonuc = sonuc.filter((s) => s.tarih.slice(0, 10) <= bitisTarih);
     if (minTutar) sonuc = sonuc.filter((s) => s.genelToplam >= parseFloat(minTutar));

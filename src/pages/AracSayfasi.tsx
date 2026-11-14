@@ -88,8 +88,8 @@ export function AracSayfasi({ db, updateDb, sepet, setSepet }) {
   const [secilenAracId, setSecilenAracId] = useState("");
 
   const aktifAraclar = db.araclar.filter((a) => a.aktif !== false);
-  const markaSecenekleri = [...new Set(aktifAraclar.map((a) => a.marka))].sort();
-  const modelSecenekleri = secilenMarka ? [...new Set(aktifAraclar.filter((a) => a.marka === secilenMarka).map((a) => a.model))].sort() : [];
+  const markaSecenekleri = [...new Set<string>(aktifAraclar.map((a) => a.marka).filter(Boolean) as string[])].sort();
+  const modelSecenekleri = secilenMarka ? [...new Set<string>(aktifAraclar.filter((a) => a.marka === secilenMarka).map((a) => a.model).filter(Boolean) as string[])].sort() : [];
   const yilAdayAraclari = secilenModel
     ? aktifAraclar.filter((a) => a.marka === secilenMarka && a.model === secilenModel && (!secilenYil || (parseInt(secilenYil) >= a.yilBaslangic && parseInt(secilenYil) <= a.yilBitis)))
     : [];
@@ -104,7 +104,7 @@ export function AracSayfasi({ db, updateDb, sepet, setSepet }) {
 
   const eslesenler = secilenArac ? aracUyumluParcalari(db, secilenArac.id, true) : [];
   const kategoriGruplari = (() => {
-    const harita = {};
+    const harita: Record<string, any> = {};
     eslesenler.forEach((e) => {
       const kat = e.parca.kategori || e.parca.anaKategori || "Diğer";
       if (!harita[kat]) harita[kat] = [];

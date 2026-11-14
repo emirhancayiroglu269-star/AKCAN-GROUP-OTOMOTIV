@@ -229,7 +229,7 @@ export function IadeSayfasi({ db, updateDb, aktifKullanici }) {
             musteriAdi: seciliSatis.musteriAdi,
             tutar: Math.abs(paraTutari),
             tur: paraTutari < 0 ? "ödeme" : "borç", // iade → alacaklandırma (borcu azaltır/alacak oluşturur), fark pozitifse ek borç
-            aciklama: `İade: Satış #${belgeNo}${kapatmaYontemi === "Değişim" ? " (değişim farkı)" : ""}`,
+            aciklama: `İade: Satış #${belgeNo}${String(kapatmaYontemi) === "Değişim" ? " (değişim farkı)" : ""}`,
             belgeNo,
             kaynakSatisId: seciliSatis.id,
           });

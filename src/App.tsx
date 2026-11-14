@@ -474,7 +474,7 @@ export default function App() {
     const okuyucu = new FileReader();
     okuyucu.onload = (ev) => {
       try {
-        const yuklenenVeri = JSON.parse(ev.target.result);
+        const yuklenenVeri = JSON.parse(String(ev.target.result ?? ""));
         if (typeof yuklenenVeri !== "object" || yuklenenVeri === null) {
           R.bildirimGoster("Bu dosya geçerli bir AKCAN GROUP yedeği gibi görünmüyor.", "hata");
           return;
@@ -597,7 +597,7 @@ export default function App() {
     const kis = db.ayarlar.klavyeKisayollari || R.VARSAYILAN_KISAYOLLAR;
     const dinleyici = (e) => {
       const etiket = document.activeElement?.tagName;
-      const editableAlanda = etiket === "TEXTAREA" || document.activeElement?.isContentEditable;
+      const editableAlanda = etiket === "TEXTAREA" || !!(document.activeElement as HTMLElement | null)?.isContentEditable;
       if (editableAlanda && e.key.length === 1) return; // normal yazı girişini engelleme
       switch (e.key) {
         case kis.yeniSatis:

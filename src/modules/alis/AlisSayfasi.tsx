@@ -297,7 +297,7 @@ export function AlisSayfasi({ db, updateDb, aktifKullanici }) {
         faturaNo: belgeNo,
         faturaTutari,
         odenenTutar,
-        hesapId: form.odemeHesapId || form.hesapId || null,
+        hesapId: form.odemeHesapId || null,
         odemeYontemi: form.odemeYontemi || "Nakit",
         kullanici: islemiYapan.trim(),
         tarih: malAlim.olusturmaTarihi,

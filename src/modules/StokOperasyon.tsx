@@ -68,7 +68,7 @@ export function StokTransferSayfasi({ db, updateDb, aktifKullanici }) {
   const [iptalHedef, setIptalHedef] = R.useState(null);
   const [iptalNedeniMetin, setIptalNedeniMetin] = R.useState("");
 
-  const filtreliTransferler = db.transferler.filter((t) => durumFiltre === "tumu" || t.durum === durumFiltre).sort((a, b) => new Date(b.tarih) - new Date(a.tarih));
+  const filtreliTransferler = db.transferler.filter((t) => durumFiltre === "tumu" || t.durum === durumFiltre).sort((a, b) => Number(new Date(b.tarih)) - Number(new Date(a.tarih)));
   const urunAramaSonuclari = urunArama.trim() ? R.hizliAramaYap(db, urunArama).slice(0, 6) : [];
 
   const formuAc = () => {
@@ -502,7 +502,7 @@ export function KargoSayfasi({ db, updateDb, aktifKullanici, belgeyeGit }) {
       if (durumFiltre === "aktif") return t.durum !== "Teslim Edildi" && t.durum !== "İptal" && t.durum !== "İade Edildi";
       return t.durum === durumFiltre;
     })
-    .sort((a, b) => new Date(b.olusturmaTarihi) - new Date(a.olusturmaTarihi));
+    .sort((a, b) => Number(new Date(b.olusturmaTarihi)) - Number(new Date(a.olusturmaTarihi)));
 
   const durumDegistir = (teslimat, yeniDurum) => {
     updateDb((prev) => {
@@ -814,7 +814,7 @@ export function EtiketSayfasi({ db, updateDb, aktifKullanici }) {
   const [birimGoster, setBirimGoster] = R.useState(false);
 
   const aktifParcalar = db.parcalar.filter((p) => p.aktif !== false);
-  const markalar = [...new Set(aktifParcalar.map((p) => p.marka).filter(Boolean))].sort();
+  const markalar = [...new Set<string>(aktifParcalar.map((p) => p.marka).filter(Boolean) as string[])].sort();
 
   const filtreliParcalar = aktifParcalar.filter((p) => {
     const q = ara.trim().toLowerCase();
@@ -1348,7 +1348,7 @@ export function YedekGuvenlikSayfasi({ db, updateDb, aktifKullanici, yedekIndirV
       return;
     }
     const okuyucu = new FileReader();
-    okuyucu.onload = (ev) => setMagazaForm((f) => ({ ...f, logo: ev.target.result }));
+    okuyucu.onload = (ev) => setMagazaForm((f) => ({ ...f, logo: String(ev.target.result ?? "") }));
     okuyucu.readAsDataURL(dosya);
     e.target.value = "";
   };

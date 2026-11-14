@@ -17,7 +17,7 @@ export function RaporStok({ db, aktifParcalar }) {
   const fazlaStok = aktifParcalar.filter((p) => p.hedefStok > 0 && p.stok > p.hedefStok);
 
   const rafBazinda = (() => {
-    const harita = {};
+    const harita: Record<string, any> = {};
     aktifParcalar.forEach((p) => {
       R.parcaRafListesi(p).forEach((k) => {
         harita[k.kod] = (harita[k.kod] || 0) + k.adet;

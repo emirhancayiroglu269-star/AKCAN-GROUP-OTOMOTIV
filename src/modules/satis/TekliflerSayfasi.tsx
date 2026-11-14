@@ -1,6 +1,7 @@
 /* Extracted from Satis.tsx — public component kept self-contained. */
 import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import * as R from "../../core/akcan-runtime";
+import { TopluFiyatListesi } from "./TopluFiyatListesi";
 
 export function TekliflerSayfasi({ db, updateDb, aktifKullanici, setSekme, setSepet }) {
   R.useEffect(() => {
@@ -188,7 +189,7 @@ export function TekliflerSayfasi({ db, updateDb, aktifKullanici, setSekme, setSe
     return net < k.maliyet ? net - k.maliyet : null;
   };
 
-  const filtreliTeklifler = db.teklifler.filter((t) => durumFiltre === "tumu" || t.durum === durumFiltre).sort((a, b) => new Date(b.tarih) - new Date(a.tarih));
+  const filtreliTeklifler = db.teklifler.filter((t) => durumFiltre === "tumu" || t.durum === durumFiltre).sort((a, b) => Number(new Date(b.tarih)) - Number(new Date(a.tarih)));
 
   return (
     <div className="flex flex-col gap-5">
@@ -256,13 +257,13 @@ export function TekliflerSayfasi({ db, updateDb, aktifKullanici, setSekme, setSe
                   </div>
                   <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
                     {t.durum === "Taslak" && (
-                      <button onClick={() => durumDegistir(t, "Gönderildi")} className="text-xs font-semibold px-2.5 py-1.5 rounded-md" style={{ background: R.T.steel100, color: R.T.ink900 }}>
+                      <button onClick={() => durumDegistir(t, "Gönderildi", "")} className="text-xs font-semibold px-2.5 py-1.5 rounded-md" style={{ background: R.T.steel100, color: R.T.ink900 }}>
                         Gönderildi İşaretle
                       </button>
                     )}
                     {(t.durum === "Taslak" || t.durum === "Gönderildi") && (
                       <>
-                        <button onClick={() => durumDegistir(t, "Onaylandı")} className="text-xs font-semibold px-2.5 py-1.5 rounded-md" style={{ background: R.T.green, color: "#fff" }}>
+                        <button onClick={() => durumDegistir(t, "Onaylandı", "")} className="text-xs font-semibold px-2.5 py-1.5 rounded-md" style={{ background: R.T.green, color: "#fff" }}>
                           Onaylandı
                         </button>
                         <button onClick={() => setReddetHedef(t)} className="text-xs font-semibold px-2.5 py-1.5 rounded-md" style={{ background: "#F9DEDE", color: R.T.red }}>

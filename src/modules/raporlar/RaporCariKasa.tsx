@@ -15,7 +15,7 @@ export function RaporCariKasa({ db }) {
     .filter((c) => c.bakiye > 0 && c.vadeGunu > 0)
     .filter((c) => {
       const sonBorc = c.hareketler.find((h) => h.tur === "borç");
-      return sonBorc && Math.floor((new Date(bugunIso) - new Date(sonBorc.tarih)) / 86400000) > c.vadeGunu;
+      return sonBorc && Math.floor((Number(new Date(bugunIso)) - Number(new Date(sonBorc.tarih))) / 86400000) > c.vadeGunu;
     })
     .reduce((t, c) => t + c.bakiye, 0);
 

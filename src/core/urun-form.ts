@@ -1,4 +1,6 @@
-export const bosForm = {
+export type UrunFormu = Record<string, any>;
+
+export const bosForm: UrunFormu = {
   stokKodu: "",
   ad: "",
   marka: "",
@@ -8,7 +10,7 @@ export const bosForm = {
   altKategoriId: "",
   kategoriOzelDegerler: {},
   birim: "Adet",
-  kdvOrani: 20,
+  kdvOrani: "20",
   alisFiyati: "",
   satisFiyati: "",
   minimumSatisFiyati: "",

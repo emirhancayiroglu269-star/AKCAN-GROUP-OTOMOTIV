@@ -239,7 +239,14 @@ export const fiyatDegisimYuzdesi = (eski, yeni) => (eski > 0 ? Math.round(((yeni
 // Bir ürün için TÜM tedarikçileri (geçerli tekliflerden + geçmiş
 // alışlardan) tek listede, en düşük gerçek maliyete göre sıralı toplar (1.
 // ve 5. madde) — "Program en düşük gerçek maliyeti otomatik işaretlesin."
-export const urunTedarikciKarsilastirmasi = (db, parcaId) => {
+export interface TedarikciKarsilastirmaSatiri {
+  tedarikciAdi: string;
+  sonAlisFiyati: number | null;
+  teklif: any;
+  netMaliyet: number;
+}
+
+export const urunTedarikciKarsilastirmasi = (db, parcaId): TedarikciKarsilastirmaSatiri[] => {
   const parca = db.parcalar.find((p) => p.id === parcaId);
   if (!parca) return [];
   const teklifler = db.tedarikciTeklifleri.filter((t) => t.parcaId === parcaId && t.durum === "Geçerli");
@@ -251,7 +258,7 @@ export const urunTedarikciKarsilastirmasi = (db, parcaId) => {
       const sonAlislar = (parca.alisGecmisi || []).filter((g) => g.tedarikci === ad).sort((a, b) => new Date(b.tarih).getTime() - new Date(a.tarih).getTime());
       const sonAlisFiyati = sonAlislar[0]?.birimFiyat ?? null;
       const netMaliyet = enSonTeklif ? teklifNetMaliyetHesapla(enSonTeklif) : sonAlisFiyati;
-      return { tedarikciAdi: ad, sonAlisFiyati, teklif: enSonTeklif, netMaliyet };
+      return { tedarikciAdi: String(ad), sonAlisFiyati, teklif: enSonTeklif, netMaliyet };
     })
     .filter((s) => s.netMaliyet !== null)
     .sort((a, b) => a.netMaliyet - b.netMaliyet);

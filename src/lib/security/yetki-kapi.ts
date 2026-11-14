@@ -1,3 +1,4 @@
+import { yetkiliMi } from "./auth-yetki-model";
 import type { KullaniciRol, Yetki } from "./auth-yetki-model";
 
 export interface YetkiliKullanici {
@@ -13,7 +14,6 @@ export function islemYetkiliMi(
 
   // Gerçek yetki kaynağı server/RLS olmalıdır.
   // Bu fonksiyon UI ve servis katmanında erken kontrol içindir.
-  const { yetkiliMi } = require("./auth-yetki-model") as typeof import("./auth-yetki-model");
   return yetkiliMi(kullanici.rol, yetki);
 }
 

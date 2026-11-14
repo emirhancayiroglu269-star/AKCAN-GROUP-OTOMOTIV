@@ -256,7 +256,7 @@ function SistemSagligiPanel({ db, setSekme }) {
               </div>
               <div className="flex flex-wrap gap-1.5">
                 {seciliBulgu.refs.slice(0, 12).map((ref, idx) => (
-                  <span key={`${ref}-${idx}`} className="text-[11px] px-2 py-1 rounded" style={{ background: "#f8fafc", color: R.T.ink700 }}>
+                  <span key={`${ref}-${idx}`} className="text-[11px] px-2 py-1 rounded" style={{ background: "#f8fafc", color: R.T.ink900 }}>
                     {ref}
                   </span>
                 ))}
@@ -288,7 +288,7 @@ function SistemSagligiPanel({ db, setSekme }) {
               type="button"
               onClick={() => setSeciliBulgu(null)}
               className="px-3 py-2 rounded-md border text-sm"
-              style={{ borderColor: R.T.steel300, color: R.T.ink700 }}
+              style={{ borderColor: R.T.steel300, color: R.T.ink900 }}
             >
               Detayı Kapat
             </button>
@@ -1227,7 +1227,7 @@ export function IceDisaAktarmaSayfasi({ db, updateDb, aktifKullanici }) {
     if (!dosya) return;
     const okuyucu = new FileReader();
     okuyucu.onload = (ev) => {
-      const { basliklar, satirlar } = R.csvAyristir(ev.target.result);
+      const { basliklar, satirlar } = R.csvAyristir(String(ev.target.result ?? ""));
       if (basliklar.length === 0) {
         R.bildirimGoster("Dosya okunamadı veya boş görünüyor.", "hata");
         return;
@@ -1303,7 +1303,7 @@ export function IceDisaAktarmaSayfasi({ db, updateDb, aktifKullanici }) {
         return;
       }
 
-      const veriler = { stokKodu };
+      const veriler: Record<string, any> = { stokKodu };
       R.ICE_AKTARMA_ALANLARI.forEach((alan) => {
         if (alan.anahtar === "stokKodu") return;
         const v = degerAl(satir, alan.anahtar);
@@ -1452,7 +1452,7 @@ export function IceDisaAktarmaSayfasi({ db, updateDb, aktifKullanici }) {
     if (!dosya) return;
     const okuyucu = new FileReader();
     okuyucu.onload = (ev) => {
-      const { basliklar, satirlar } = R.csvAyristir(ev.target.result);
+      const { basliklar, satirlar } = R.csvAyristir(String(ev.target.result ?? ""));
       if (basliklar.length === 0) {
         R.bildirimGoster("Dosya okunamadı veya boş görünüyor.", "hata");
         return;

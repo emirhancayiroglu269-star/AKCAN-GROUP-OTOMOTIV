@@ -22,11 +22,11 @@ export function TedarikciKarsilastirmaSayfasi({ db, updateDb, aktifKullanici, se
 
   // --- Marka Karşılaştırma --------------------------------------------------------
   const [markaFiltre, setMarkaFiltre] = R.useState("");
-  const markalar = [...new Set(db.parcalar.map((p) => p.marka).filter(Boolean))].sort();
+  const markalar = [...new Set<string>(db.parcalar.map((p) => p.marka).filter(Boolean) as string[])].sort();
   const markaKarsilastirmasi = markaFiltre
     ? (() => {
         const urunler = db.parcalar.filter((p) => p.marka === markaFiltre && p.aktif !== false);
-        const tedarikciToplamlari = {};
+        const tedarikciToplamlari: Record<string, { tedarikciAdi: any; enUcuzOlduguUrunSayisi: number }> = {};
         urunler.forEach((p) => {
           const k = R.urunTedarikciKarsilastirmasi(db, p.id);
           if (k.length > 0) {
@@ -131,7 +131,7 @@ export function TedarikciKarsilastirmaSayfasi({ db, updateDb, aktifKullanici, se
     if (setSekme) setSekme("satinalma");
   };
 
-  const filtreliTeklifler = db.tedarikciTeklifleri.filter((t) => teklifDurumFiltre === "tumu" || t.durum === teklifDurumFiltre).sort((a, b) => new Date(b.teklifTarihi) - new Date(a.teklifTarihi));
+  const filtreliTeklifler = db.tedarikciTeklifleri.filter((t) => teklifDurumFiltre === "tumu" || t.durum === teklifDurumFiltre).sort((a, b) => Number(new Date(b.teklifTarihi)) - Number(new Date(a.teklifTarihi)));
 
   // --- Tedarikçi Performansı --------------------------------------------------------
   const performansListesi = db.tedarikciler

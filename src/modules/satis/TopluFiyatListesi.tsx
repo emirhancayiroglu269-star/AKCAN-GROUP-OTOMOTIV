@@ -7,8 +7,8 @@ export function TopluFiyatListesi({ db }) {
   const [kategoriFiltre, setKategoriFiltre] = R.useState("");
   const [secililer, setSecililer] = R.useState({});
 
-  const markalar = [...new Set(db.parcalar.map((p) => p.marka).filter(Boolean))].sort();
-  const kategoriler = [...new Set(db.parcalar.map((p) => p.kategori).filter(Boolean))].sort();
+  const markalar = [...new Set<string>(db.parcalar.map((p) => p.marka).filter(Boolean) as string[])].sort();
+  const kategoriler = [...new Set<string>(db.parcalar.map((p) => p.kategori).filter(Boolean) as string[])].sort();
 
   const sonuclar = db.parcalar.filter((p) => p.aktif !== false && (!markaFiltre || p.marka === markaFiltre) && (!kategoriFiltre || p.kategori === kategoriFiltre));
 

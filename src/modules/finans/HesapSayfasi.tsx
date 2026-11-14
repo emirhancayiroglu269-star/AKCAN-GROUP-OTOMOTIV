@@ -250,7 +250,7 @@ export function HesapSayfasi({ db, updateDb, aktifKullanici }) {
               </div>
               <div className="max-h-64 overflow-y-auto flex flex-col gap-1.5">
                 {finansKontrol.bulgular.slice(0, 20).map((b) => (
-                  <div key={`${b.tip}-${b.id}`} className="text-xs rounded border p-2" style={{ borderColor: R.T.steel200, color: R.T.ink700 }}>
+                  <div key={`${b.tip}-${b.id}`} className="text-xs rounded border p-2" style={{ borderColor: R.T.steel200, color: R.T.ink900 }}>
                     <strong>{b.ad}</strong> — {b.mesaj}
                     {b.tip !== "kasaIslemi" && <span className="ml-2" style={R.MONO}>Kayıtlı: {R.tl(b.kayitli)} / Beklenen: {R.tl(b.beklenen)}</span>}
                   </div>

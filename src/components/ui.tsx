@@ -2,7 +2,7 @@ import React from "react";
 import { T, MONO } from "../lib/theme";
 import { ean13Modulleri } from "../lib/barkod";
 
-type RozetTone = "steel" | "yellow" | "orange" | "green" | "red" | "graphite";
+export type RozetTone = "steel" | "yellow" | "orange" | "green" | "red" | "graphite";
 
 interface RozetProps {
   children?: React.ReactNode;
@@ -116,10 +116,11 @@ export function Girdi({ label, hint = "", ...props }: GirdiProps) {
 
 interface SecimProps extends React.SelectHTMLAttributes<HTMLSelectElement> {
   label?: React.ReactNode;
+  hint?: React.ReactNode;
   children?: React.ReactNode;
 }
 
-export function Secim({ label, children, ...props }: SecimProps) {
+export function Secim({ label, hint, children, ...props }: SecimProps) {
   return (
     <label className="flex flex-col gap-1 text-sm">
       {label && (
@@ -134,12 +135,17 @@ export function Secim({ label, children, ...props }: SecimProps) {
       >
         {children}
       </select>
+      {hint && (
+        <span className="text-xs" style={{ color: T.ink500 }}>
+          {hint}
+        </span>
+      )}
     </label>
   );
 }
 
 interface BosProps {
-  ikon: React.ComponentType<{ size?: number; style?: React.CSSProperties }>;
+  ikon: React.ComponentType<any>;
   baslik: React.ReactNode;
   aciklama: React.ReactNode;
 }

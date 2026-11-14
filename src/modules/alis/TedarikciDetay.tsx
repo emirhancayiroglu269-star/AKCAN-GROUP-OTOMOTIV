@@ -115,7 +115,7 @@ export function TedarikciDetay({ db, updateDb, aktifKullanici, tedarikci, onDuze
             <div className="flex flex-col gap-1.5 max-h-96 overflow-y-auto">
               {faturalar
                 .slice()
-                .sort((a, b) => new Date(b.faturaTarihi) - new Date(a.faturaTarihi))
+                .sort((a, b) => Number(new Date(b.faturaTarihi)) - Number(new Date(a.faturaTarihi)))
                 .map((m) => (
                   <div key={m.id} className="flex items-center justify-between text-sm px-2.5 py-2 rounded-md" style={{ background: R.T.steel100 }}>
                     <span style={{ color: R.T.ink900 }}>
@@ -251,7 +251,7 @@ export function TedarikciDetay({ db, updateDb, aktifKullanici, tedarikci, onDuze
 
       {altSekme === "siparisler" &&
         (() => {
-          const siparisler = db.satinAlmaSiparisleri.filter((s) => s.tedarikci === tedarikci.ad).sort((a, b) => new Date(b.siparisTarihi) - new Date(a.siparisTarihi));
+          const siparisler = db.satinAlmaSiparisleri.filter((s) => s.tedarikci === tedarikci.ad).sort((a, b) => Number(new Date(b.siparisTarihi)) - Number(new Date(a.siparisTarihi)));
           const performans = R.tedarikciTeslimatPerformansi(db, tedarikci.ad);
           if (siparisler.length === 0) {
             return (
@@ -305,7 +305,7 @@ export function TedarikciDetay({ db, updateDb, aktifKullanici, tedarikci, onDuze
                 </div>
                 {siparisler.map((s) => {
                   const ilkKabul = s.malKabulGecmisi[s.malKabulGecmisi.length - 1];
-                  const sureGun = ilkKabul ? Math.round((new Date(ilkKabul.tarih) - new Date(s.siparisTarihi)) / 86400000) : null;
+                  const sureGun = ilkKabul ? Math.round((Number(new Date(ilkKabul.tarih)) - Number(new Date(s.siparisTarihi))) / 86400000) : null;
                   return (
                     <div key={s.id} className="flex items-center justify-between px-4 py-2.5 text-sm" style={{ borderTop: `1px solid ${R.T.steel200}` }}>
                       <div>

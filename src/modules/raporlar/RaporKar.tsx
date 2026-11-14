@@ -11,7 +11,7 @@ export function RaporKar({ db, filtrePaneli, tumKalemler, baslangic, bitis }) {
   const merkeziKarOzeti = R.donemKarOzetiHesapla(db, baslangic, bitis);
 
   const grupla = (anahtarFn) => {
-    const harita = {};
+    const harita: Record<string, any> = {};
     tumKalemler.forEach((k) => {
       const anahtar = anahtarFn(k) || "Belirtilmemiş";
       if (!harita[anahtar]) harita[anahtar] = { anahtar, kar: 0, ciro: 0, adet: 0 };
@@ -24,7 +24,7 @@ export function RaporKar({ db, filtrePaneli, tumKalemler, baslangic, bitis }) {
   };
 
   const urunBazinda = (() => {
-    const harita = {};
+    const harita: Record<string, any> = {};
     tumKalemler.forEach((k) => {
       if (!harita[k.parcaId]) harita[k.parcaId] = { ad: k.ad, kar: 0, adet: 0 };
       harita[k.parcaId].kar += R.satisKalemiKarBilgisi(k).karToplam;
@@ -37,7 +37,7 @@ export function RaporKar({ db, filtrePaneli, tumKalemler, baslangic, bitis }) {
   const kategoriBazinda = grupla((k) => db.parcalar.find((p) => p.id === k.parcaId)?.kategori);
   const personelBazinda = grupla((k) => k.satisiYapan);
   const tarihBazinda = (() => {
-    const harita = {};
+    const harita: Record<string, any> = {};
     tumKalemler.forEach((k) => {
       const gun = (k.satisTarihi || "").slice(0, 10);
       if (!harita[gun]) harita[gun] = { anahtar: gun, kar: 0, ciro: 0, adet: 0 };
@@ -46,7 +46,7 @@ export function RaporKar({ db, filtrePaneli, tumKalemler, baslangic, bitis }) {
       harita[gun].ciro += k.adet * k.birimFiyat - (k.iskontoTutari || 0) - (k.genelIskontoPayi || 0);
       harita[gun].adet += k.adet;
     });
-    return Object.values(harita).sort((a, b) => new Date(b.anahtar) - new Date(a.anahtar));
+    return Object.values(harita).sort((a, b) => Number(new Date(b.anahtar)) - Number(new Date(a.anahtar)));
   })();
   const zararSatislari = tumKalemler.filter((k) => R.satisKalemiKarBilgisi(k).karBirim < -0.005);
   const dusukKarSatislari = tumKalemler.filter((k) => {

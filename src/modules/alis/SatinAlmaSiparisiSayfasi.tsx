@@ -23,7 +23,7 @@ export function SatinAlmaSiparisiSayfasi({ db, updateDb, aktifKullanici }) {
 
   const filtreliSiparisler = db.satinAlmaSiparisleri
     .filter((s) => durumFiltre === "tumu" || s.durum === durumFiltre)
-    .sort((a, b) => new Date(b.siparisTarihi) - new Date(a.siparisTarihi));
+    .sort((a, b) => Number(new Date(b.siparisTarihi)) - Number(new Date(a.siparisTarihi)));
   const seciliSiparis = seciliSiparisId ? db.satinAlmaSiparisleri.find((s) => s.id === seciliSiparisId) : null;
 
   const urunAramaSonuclari = urunArama.trim() ? R.hizliAramaYap(db, urunArama).slice(0, 6) : [];

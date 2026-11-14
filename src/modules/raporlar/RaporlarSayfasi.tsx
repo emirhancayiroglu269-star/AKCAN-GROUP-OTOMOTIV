@@ -3,6 +3,14 @@
  */
 import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import * as R from "../../core/akcan-runtime";
+import { RaporOzet } from "./RaporOzet";
+import { RaporSatis } from "./RaporSatis";
+import { RaporKar } from "./RaporKar";
+import { RaporPersonel } from "./RaporPersonel";
+import { RaporFiyatAnalizi } from "./RaporFiyatAnalizi";
+import { RaporUrunPerformansi } from "./RaporUrunPerformansi";
+import { RaporStok } from "./RaporStok";
+import { RaporCariKasa } from "./RaporCariKasa";
 
 export function RaporlarSayfasi({ db, baslangicKategori, baslangicMarka }) {
   const [altSekme, setAltSekme] = R.useState(baslangicKategori?.altSekme || baslangicMarka?.altSekme || "ozet");
@@ -14,8 +22,8 @@ export function RaporlarSayfasi({ db, baslangicKategori, baslangicMarka }) {
   const [kategoriFiltre, setKategoriFiltre] = R.useState(baslangicKategori?.kategori || "");
 
   const aktifParcalar = db.parcalar.filter((p) => p.aktif !== false);
-  const markalar = [...new Set(db.parcalar.map((p) => p.marka).filter(Boolean))].sort();
-  const kategoriler = [...new Set(db.parcalar.map((p) => p.kategori).filter(Boolean))].sort();
+  const markalar = [...new Set<string>(db.parcalar.map((p) => p.marka).filter(Boolean) as string[])].sort();
+  const kategoriler = [...new Set<string>(db.parcalar.map((p) => p.kategori).filter(Boolean) as string[])].sort();
 
   const hizliAralik = (gun) => {
     setBitis(bugunIso);

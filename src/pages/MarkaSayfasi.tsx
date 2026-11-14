@@ -53,7 +53,7 @@ export function MarkaSayfasi({ db, updateDb, markaHedefineGit }) {
       return;
     }
     const okuyucu = new FileReader();
-    okuyucu.onload = (ev) => setForm((f) => ({ ...f, logo: ev.target.result }));
+    okuyucu.onload = (ev) => setForm((f) => ({ ...f, logo: String(ev.target.result ?? "") }));
     okuyucu.readAsDataURL(dosya);
     e.target.value = "";
   };

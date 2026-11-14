@@ -84,7 +84,7 @@ export function AnaSayfaSayfasi({ db, setSekme }) {
 
   // --- En çok satanlar (bugün) --------------------------------------------------
   const enCokSatanlar = (() => {
-    const harita = {};
+    const harita: Record<string, any> = {};
     bugunKalemler.forEach((k) => {
       if (!harita[k.parcaId]) harita[k.parcaId] = { ad: k.ad, marka: k.marka, adet: 0 };
       harita[k.parcaId].adet += k.adet;
@@ -530,7 +530,7 @@ export function AnaSayfaSayfasi({ db, setSekme }) {
 
       {/* Vade uyarıları — Bugün tahsil/ödeme + önümüzdeki 7 gün */}
       {(() => {
-        const bugunIso = R.isoGun(bugunTarih);
+        const bugunIso = R.isoGun(new Date(bugunTarih));
         const bugunTahsilGereken = db.cariler.flatMap((c) => R.musteriAcikFaturalariFifo(db, c)).filter((f) => f.kalan > 0.01 && f.vadeTarihi === bugunIso).reduce((t, f) => t + f.kalan, 0);
         const bugunOdemeGereken = db.tedarikciler.flatMap((t) => R.tedarikciAcikFaturalari(db, t.ad)).filter((m) => m.vadeTarihi === bugunIso).reduce((t, m) => t + m.kalanBorc, 0);
         const yediGunNakit = R.nakitAkisiHesapla(db, 7);
@@ -666,7 +666,7 @@ export function YoneticiPaneliSayfasi({ db, setSekme, aktifKullanici }) {
   const donemFinans = R.donemKarOzetiHesapla(db, baslangic, bitis);
   const sistemMutabakat = R.ucUcaMutabakatOzeti(db);
   const finansTutarlilik = R.finansTutarlilikOzeti(db);
-  const yoneticiSistemTemiz = sistemMutabakat.temiz && finansTutarlilik.temiz;
+  const yoneticiSistemTemiz = sistemMutabakat.temiz && finansTutarlilik.uygun;
 
   const yazdir = () => window.print();
 
@@ -697,7 +697,7 @@ export function YoneticiPaneliSayfasi({ db, setSekme, aktifKullanici }) {
       if (!key) return;
       h[key] = (h[key] || 0) + valueFn(k);
     });
-    return Object.entries(h).map(([ad, deger]) => ({ ad, deger })).sort((a, b) => b.deger - a.deger).slice(0, 5);
+    return Object.entries(h).map(([ad, deger]) => ({ ad, deger: Number(deger) })).sort((a, b) => b.deger - a.deger).slice(0, 5);
   };
 
   const enCokSatan = grupla((k) => k.ad, (k) => k.adet || 0);
@@ -727,7 +727,7 @@ export function YoneticiPaneliSayfasi({ db, setSekme, aktifKullanici }) {
   const oncekiDonem = (() => {
     const start = new Date(`${baslangic}T00:00:00`);
     const end = new Date(`${bitis}T00:00:00`);
-    const gunSayisi = Math.max(1, Math.round((end - start) / 86400000) + 1);
+    const gunSayisi = Math.max(1, Math.round((end.getTime() - start.getTime()) / 86400000) + 1);
     const oncekiBitis = new Date(start.getTime() - 86400000);
     const oncekiBaslangic = new Date(oncekiBitis.getTime() - (gunSayisi - 1) * 86400000);
     return {
@@ -748,7 +748,7 @@ export function YoneticiPaneliSayfasi({ db, setSekme, aktifKullanici }) {
   };
 
   const gunlukSeri = (() => {
-    const gunler = Math.min(14, Math.max(1, Math.round((new Date(bitis) - new Date(baslangic)) / 86400000) + 1));
+    const gunler = Math.min(14, Math.max(1, Math.round((Number(new Date(bitis)) - Number(new Date(baslangic))) / 86400000) + 1));
     const seri = [];
     for (let i = gunler - 1; i >= 0; i--) {
       const gun = new Date(Date.now() - i * 86400000).toLocaleDateString("en-CA");
@@ -1115,7 +1115,7 @@ export function YoneticiPaneliSayfasi({ db, setSekme, aktifKullanici }) {
               <button onClick={() => setSekme("kullanicilar")} className="text-[11px] font-semibold" style={{ color: "#166534" }}>İşlem Geçmişi →</button>
             </div>
             {(() => {
-              const sonIslemler = (db.islemGecmisi || []).slice().sort((a,b) => new Date(b.tarih || 0) - new Date(a.tarih || 0)).slice(0, 10);
+              const sonIslemler = (db.islemGecmisi || []).slice().sort((a,b) => Number(new Date(b.tarih || 0)) - Number(new Date(a.tarih || 0))).slice(0, 10);
               return sonIslemler.length === 0 ? (
                 <div className="text-xs py-4" style={{ color: R.T.ink500 }}>Henüz kaydedilmiş işlem yok.</div>
               ) : (
@@ -1197,7 +1197,7 @@ export function YonPanelStok({ db, aktifParcalar, stokOzeti, setSekme }) {
     return { sinif: s, adet: liste.length, deger: liste.reduce((t, p) => t + (p.stok || 0) * R.gecerliMaliyet(p, db), 0) };
   });
 
-  const kutu = (etiket, deger, ton) => (
+  const kutu = (etiket, deger, ton = "graphite") => (
     <div className="rounded-md p-3" style={{ background: R.T.steel100 }}>
       <div className="text-xs" style={{ color: R.T.ink500 }}>
         {etiket}
@@ -1261,13 +1261,13 @@ export function YonPanelSatis({ db, donemSatislar, donemKalemler, baslangic, bit
   const ortalamaSepet = donemSatislar.length > 0 ? donemSatislar.reduce((t, s) => t + s.genelToplam, 0) / donemSatislar.length : 0;
 
   const gruplaVeSirala = (anahtarFn, degerFn) => {
-    const harita = {};
+    const harita: Record<string, any> = {};
     donemKalemler.forEach((k) => {
       const anahtar = anahtarFn(k);
       if (!anahtar) return;
       harita[anahtar] = (harita[anahtar] || 0) + degerFn(k);
     });
-    return Object.entries(harita).map(([anahtar, deger]) => ({ anahtar, deger })).sort((a, b) => b.deger - a.deger).slice(0, 8);
+    return Object.entries(harita).map(([anahtar, deger]) => ({ anahtar, deger: Number(deger) })).sort((a, b) => b.deger - a.deger).slice(0, 8);
   };
 
   const enCokSatan = gruplaVeSirala((k) => k.ad, (k) => k.adet);
@@ -1276,7 +1276,7 @@ export function YonPanelSatis({ db, donemSatislar, donemKalemler, baslangic, bit
   const kategoriBazinda = gruplaVeSirala((k) => db.parcalar.find((p) => p.id === k.parcaId)?.kategori, (k) => k.adet * k.birimFiyat - (k.iskontoTutari || 0) - (k.genelIskontoPayi || 0));
 
   const gunlukSeri = (() => {
-    const gunler = Math.min(30, Math.max(1, Math.round((new Date(bitis) - new Date(baslangic)) / 86400000) + 1));
+    const gunler = Math.min(30, Math.max(1, Math.round((Number(new Date(bitis)) - Number(new Date(baslangic))) / 86400000) + 1));
     const seri = [];
     for (let i = gunler - 1; i >= 0; i--) {
       const gun = new Date(Date.now() - i * 86400000).toLocaleDateString("en-CA");
@@ -1479,7 +1479,7 @@ export function YonPanelCari({ db, setSekme }) {
 
 export function YonPanelPersonel({ db, donemSatislar, donemKalemler, baslangic, bitis }) {
   const kapanmisVardiyalar = db.vardiyalar.filter((v) => v.durum !== "Açık" && v.kapanisZamani && v.kapanisZamani.slice(0, 10) >= baslangic && v.kapanisZamani.slice(0, 10) <= bitis && v.kasaFarki !== null);
-  const personeller = [...new Set(donemSatislar.map((s) => s.satisiYapan).filter(Boolean))];
+  const personeller: string[] = [...new Set<string>(donemSatislar.map((s) => s.satisiYapan).filter(Boolean) as string[])];
   const satirlar = personeller
     .map((ad) => {
       const buPersonelinSatislari = donemSatislar.filter((s) => s.satisiYapan === ad);
@@ -1782,7 +1782,7 @@ export function StokAnalizMerkeziSayfasi({ db, setSekme }) {
     return { grup: g, adet: liste.length, deger: liste.reduce((t, x) => t + x.stokMaliyeti, 0) };
   });
 
-  const AlTabButon = ({ id, ad, sayi }) => (
+  const AlTabButon = ({ id, ad, sayi = 0 }: { id: string; ad: string; sayi?: number }) => (
     <button
       onClick={() => setAltSekme(id)}
       className="flex-1 py-2.5 text-xs font-semibold whitespace-nowrap px-2"

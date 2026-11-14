@@ -25,7 +25,7 @@ export function OluStokSayfasi({ db, updateDb, setSekme }) {
   const siniflandirilmis = aktifParcalar.map((p) => {
     const sinif = satisHiziSiniflandir(db, p);
     const sonSatis = parcaSonSatisTarihi(db, p.id);
-    const gunFarki = sonSatis ? Math.floor((Date.now() - new Date(sonSatis)) / 86400000) : null;
+    const gunFarki = sonSatis ? Math.floor((Date.now() - new Date(sonSatis).getTime()) / 86400000) : null;
     const maliyet = gecerliMaliyet(p, db);
     const toplamMaliyet = (p.stok || 0) * maliyet;
     const son30 = sonNGunSatisAdedi(db, p.id, 30);
@@ -49,7 +49,7 @@ export function OluStokSayfasi({ db, updateDb, setSekme }) {
   const esik = db.ayarlar?.satisHiziEsikleri || { oluStokGunEsigi: 90 };
   const iadeAdaylari = siniflandirilmis.filter((x) => x.sinif === "Ölü Stok" && x.parca.tedarikci);
   const tedarikciBazindaIade = (() => {
-    const harita = {};
+    const harita: Record<string, any> = {};
     iadeAdaylari.forEach((x) => {
       if (!harita[x.parca.tedarikci]) harita[x.parca.tedarikci] = [];
       harita[x.parca.tedarikci].push(x);

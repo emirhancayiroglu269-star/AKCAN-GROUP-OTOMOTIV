@@ -157,6 +157,7 @@ export function RezervSayfasi({ db, updateDb, aktifKullanici }) {
     const satisId = yeniId("s");
     const satis = {
       id: satisId,
+      belgeNo: "",
       tarih: zamanDamgasi(),
       musteriAdi: donusturRezerv.musteriAdi,
       musteriId: null,
@@ -252,7 +253,7 @@ export function RezervSayfasi({ db, updateDb, aktifKullanici }) {
 
   const filtreliRezervler = db.rezervler
     .filter((r) => durumFiltre === "tumu" || r.durum === durumFiltre)
-    .sort((a, b) => new Date(b.rezervTarihi) - new Date(a.rezervTarihi));
+    .sort((a, b) => Number(new Date(b.rezervTarihi)) - Number(new Date(a.rezervTarihi)));
 
   const bekleyenSayisi = db.rezervler.filter((r) => r.durum === "Bekliyor").length;
 

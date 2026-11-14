@@ -68,6 +68,7 @@ export function StokSayfasi({ db, updateDb, aktifKullanici, yeniFormSinyali }) {
       const anaK = db.kategoriler.find((k) => !k.ustKategoriId && k.ad === anaKAdi);
       const altK = anaK && p.kategori && p.kategori !== anaK.ad ? db.kategoriler.find((k) => k.ustKategoriId === anaK.id && k.ad === p.kategori) : null;
       setForm({
+        ...R.bosForm,
         stokKodu: p.stokKodu || "",
         ad: p.ad || "",
         marka: p.marka || "",
@@ -77,7 +78,7 @@ export function StokSayfasi({ db, updateDb, aktifKullanici, yeniFormSinyali }) {
         altKategoriId: altK?.id || "",
         kategoriOzelDegerler: p.kategoriOzelDegerler || {},
         birim: p.birim || "Adet",
-        kdvOrani: p.kdvOrani ?? 20,
+        kdvOrani: p.kdvOrani != null ? String(p.kdvOrani) : "20",
         alisFiyati: p.alisFiyati ?? "",
         satisFiyati: p.satisFiyati ?? "",
         minimumSatisFiyati: p.minimumSatisFiyati ?? "",
@@ -125,7 +126,7 @@ export function StokSayfasi({ db, updateDb, aktifKullanici, yeniFormSinyali }) {
       return;
     }
     const okuyucu = new FileReader();
-    okuyucu.onload = (ev) => setForm((f) => ({ ...f, fotograf: ev.target.result }));
+    okuyucu.onload = (ev) => setForm((f) => ({ ...f, fotograf: String(ev.target.result ?? "") }));
     okuyucu.readAsDataURL(dosya);
     e.target.value = "";
   };
@@ -479,7 +480,7 @@ export function StokSayfasi({ db, updateDb, aktifKullanici, yeniFormSinyali }) {
   };
 
   const fotografEkle = async (e) => {
-    const dosyalar = Array.from(e.target.files || []);
+    const dosyalar = Array.from<File>(e.target.files || []);
     if (dosyalar.length === 0) return;
     setFotoYukleniyor(true);
     try {
@@ -529,7 +530,7 @@ export function StokSayfasi({ db, updateDb, aktifKullanici, yeniFormSinyali }) {
 
   // --- Doküman yönetimi --------------------------------------------------------
   const dokumanEkle = (e) => {
-    const dosyalar = Array.from(e.target.files || []);
+    const dosyalar = Array.from<File>(e.target.files || []);
     if (dosyalar.length === 0) return;
     const parca = db.parcalar.find((p) => p.id === detayModalId);
     let mevcutListe = [...(parca.dokumanlar || [])];
@@ -542,7 +543,7 @@ export function StokSayfasi({ db, updateDb, aktifKullanici, yeniFormSinyali }) {
       return new Promise((resolve) => {
         const okuyucu = new FileReader();
         okuyucu.onload = (ev) =>
-          resolve({ id: R.yeniId("dk"), url: ev.target.result, ad: dosya.name, tur: yeniDokumanTuru, dosyaAdi: dosya.name, boyutKb: Math.round(dosya.size / 1024), tarih: R.zamanDamgasi() });
+          resolve({ id: R.yeniId("dk"), url: String(ev.target.result ?? ""), ad: dosya.name, tur: yeniDokumanTuru, dosyaAdi: dosya.name, boyutKb: Math.round(dosya.size / 1024), tarih: R.zamanDamgasi() });
         okuyucu.readAsDataURL(dosya);
       });
     });
@@ -560,7 +561,7 @@ export function StokSayfasi({ db, updateDb, aktifKullanici, yeniFormSinyali }) {
 
   // --- Toplu fotoğraf yükleme (dosya adından ürün kodu eşleştirme) -----------
   const topluFotoYukle = async (e) => {
-    const dosyalar = Array.from(e.target.files || []);
+    const dosyalar = Array.from<File>(e.target.files || []);
     if (dosyalar.length === 0) return;
     const eslesenler = [];
     const eslesmeyenler = [];
@@ -2046,7 +2047,7 @@ export function StokSayfasi({ db, updateDb, aktifKullanici, yeniFormSinyali }) {
               Tekrar sipariş verirken tedarikçileri hızlıca karşılaştırın — her tedarikçi için en son alış fiyatı gösterilir.
             </p>
             {(() => {
-              const tedarikciBazinda = {};
+              const tedarikciBazinda: Record<string, any[]> = {};
               (tedarikciKarsilastirmaParca.alisGecmisi || [])
                 .filter((g) => g.tedarikci)
                 .forEach((g) => {
@@ -2054,7 +2055,7 @@ export function StokSayfasi({ db, updateDb, aktifKullanici, yeniFormSinyali }) {
                   tedarikciBazinda[g.tedarikci].push(g);
                 });
               const gruplar = Object.entries(tedarikciBazinda)
-                .map(([tedarikci, gecmis]) => ({ tedarikci, gecmis: gecmis.sort((a, b) => new Date(b.tarih) - new Date(a.tarih)) }))
+                .map(([tedarikci, gecmis]) => ({ tedarikci, gecmis: gecmis.sort((a, b) => Number(new Date(b.tarih)) - Number(new Date(a.tarih))) }))
                 .sort((a, b) => a.gecmis[0].birimFiyat - b.gecmis[0].birimFiyat);
               const enUcuz = gruplar[0]?.gecmis[0]?.birimFiyat;
               return (
@@ -2914,8 +2915,8 @@ export function HizliAramaSayfasi({ db, updateDb, sepet, setSepet, aktifKullanic
 
   const detayParca = detayId ? db.parcalar.find((p) => p.id === detayId) : null;
 
-  const markalar = [...new Set(db.parcalar.map((p) => p.marka).filter(Boolean))].sort();
-  const kategoriler = [...new Set(db.parcalar.flatMap((p) => [p.kategori, p.anaKategori]).filter(Boolean))].sort();
+  const markalar = [...new Set<string>(db.parcalar.map((p) => p.marka).filter(Boolean) as string[])].sort();
+  const kategoriler = [...new Set<string>(db.parcalar.flatMap((p) => [p.kategori, p.anaKategori]).filter(Boolean) as string[])].sort();
 
   const filtreleriTemizle = () => {
     setMarkaFiltre("");
@@ -3384,7 +3385,7 @@ export function SiparisOnerisiSayfasi({ db, updateDb, setSekme, aktifKullanici }
   const [altSekme, setAltSekme] = R.useState("siparis"); // "siparis" | "olu"
   const [sadeceKritik, setSadeceKritik] = R.useState(true);
   const [secililer, setSecililer] = R.useState({}); // { parcaId: true }
-  const [oluFiltre, setOluFiltre] = R.useState(30); // 30 | 90 | 180 | 365 | "hic"
+  const [oluFiltre, setOluFiltre] = R.useState<number | string>(30); // 30 | 90 | 180 | 365 | "hic"
   const [listeGoster, setListeGoster] = R.useState(false);
   // Manuel müdahale (59. adım, 9. madde) — kullanıcı önerilen miktarı
   // değiştirebilir, isterse nedenini not düşer.
@@ -3451,7 +3452,7 @@ export function SiparisOnerisiSayfasi({ db, updateDb, setSekme, aktifKullanici }
       R.bildirimGoster("En az bir ürün seçin.", "hata");
       return;
     }
-    const gruplar = {};
+    const gruplar: Record<string, any[]> = {};
     secilenler.forEach((x) => {
       // Tedarikçi seçimi (5. madde) — 53. adımdaki fiyat karşılaştırmasından
       // en uygun tedarikçi varsa o kullanılır, yoksa ürünün kayıtlı tedarikçisi.
@@ -3515,7 +3516,7 @@ export function SiparisOnerisiSayfasi({ db, updateDb, setSekme, aktifKullanici }
       R.bildirimGoster("En az bir ürün seçin.", "hata");
       return;
     }
-    const gruplar = {};
+    const gruplar: Record<string, any[]> = {};
     secilenler.forEach((x) => {
       const ted = x.p.tedarikci?.trim() || "Tedarikçi Belirtilmemiş";
       if (!gruplar[ted]) gruplar[ted] = [];
@@ -3542,7 +3543,7 @@ export function SiparisOnerisiSayfasi({ db, updateDb, setSekme, aktifKullanici }
     pencere.document.write(`
       <html>
         <head>
-          <title>Sipariş Listesi — ${bugun()}</title>
+          <title>Sipariş Listesi — ${R.bugun()}</title>
           <style>
             body { font-family: Arial, sans-serif; padding: 18px; font-size: 13px; color: #14171A; }
             h2 { margin: 0 0 4px 0; }
@@ -3554,7 +3555,7 @@ export function SiparisOnerisiSayfasi({ db, updateDb, setSekme, aktifKullanici }
         </head>
         <body>
           <h2>AKCAN GROUP OTOMOTİV — Sipariş Listesi</h2>
-          <div style="color:#5B6470; margin-bottom:10px;">${bugun()} · ${secilenler.length} ürün, tedarikçiye göre gruplandı</div>
+          <div style="color:#5B6470; margin-bottom:10px;">${R.bugun()} · ${secilenler.length} ürün, tedarikçiye göre gruplandı</div>
           ${gruplarHtml}
           <script>window.onload = function() { window.print(); };</script>
         </body>
@@ -3689,7 +3690,7 @@ export function SiparisOnerisiSayfasi({ db, updateDb, setSekme, aktifKullanici }
                           {R.tl(tahminiMaliyet)}
                         </td>
                         <td className="px-2 py-2.5">
-                          <R.Rozet tone={R.SATIS_HIZI_SINIF_GORSELI[satisHizSinifi].ton}>
+                          <R.Rozet tone={R.SATIS_HIZI_SINIF_GORSELI[satisHizSinifi].ton as any}>
                             {R.SATIS_HIZI_SINIF_GORSELI[satisHizSinifi].emoji} {satisHizSinifi}
                           </R.Rozet>
                           <div className="text-xs mt-0.5 font-semibold" style={{ color: satisHizSinifi === "Ölü Stok" || satisHizSinifi === "Yavaş" ? R.T.red : R.T.green }}>
@@ -3831,9 +3832,9 @@ export function SayimSayfasi({ db, updateDb, aktifKullanici, baslangicKategori, 
   const kameraStreamRef = R.useRef(null);
 
   const aktifParcalar = db.parcalar.filter((p) => p.aktif !== false);
-  const markalar = [...new Set(aktifParcalar.map((p) => p.marka).filter(Boolean))].sort();
-  const kategoriler = [...new Set(aktifParcalar.map((p) => p.kategori).filter(Boolean))].sort();
-  const raflar = [...new Set(aktifParcalar.flatMap((p) => R.parcaRafListesi(p).map((k) => k.kod)))].sort();
+  const markalar = [...new Set<string>(aktifParcalar.map((p) => p.marka).filter(Boolean) as string[])].sort();
+  const kategoriler = [...new Set<string>(aktifParcalar.map((p) => p.kategori).filter(Boolean) as string[])].sort();
+  const raflar = [...new Set<string>(aktifParcalar.flatMap((p) => R.parcaRafListesi(p).map((k) => k.kod)) as string[])].sort();
 
   const aktifSayim = aktifSayimId ? db.sayimlar.find((s) => s.id === aktifSayimId) : null;
 
@@ -3931,7 +3932,8 @@ export function SayimSayfasi({ db, updateDb, aktifKullanici, baslangicKategori, 
           videoRef.current.play();
         }
       });
-      const detector = new window.BarcodeDetector({ formats: ["ean_13", "ean_8", "code_128", "upc_a"] });
+      const BarcodeDetectorSinifi = (window as any).BarcodeDetector;
+      const detector = new BarcodeDetectorSinifi({ formats: ["ean_13", "ean_8", "code_128", "upc_a"] });
       const tara = async () => {
         if (!kameraStreamRef.current || !videoRef.current) return;
         try {
@@ -4639,9 +4641,9 @@ export function TopluFiyatSayfasi({ db, updateDb, aktifKullanici, baslangicKateg
   const [uygulandi, setUygulandi] = R.useState(null);
 
   const aktifParcalar = db.parcalar.filter((p) => p.aktif !== false);
-  const markalar = [...new Set(aktifParcalar.map((p) => p.marka).filter(Boolean))].sort();
-  const kategoriler = [...new Set(aktifParcalar.map((p) => p.kategori).filter(Boolean))].sort();
-  const tedarikciler = [...new Set(aktifParcalar.map((p) => p.tedarikci).filter(Boolean))].sort();
+  const markalar = [...new Set<string>(aktifParcalar.map((p) => p.marka).filter(Boolean) as string[])].sort();
+  const kategoriler = [...new Set<string>(aktifParcalar.map((p) => p.kategori).filter(Boolean) as string[])].sort();
+  const tedarikciler = [...new Set<string>(aktifParcalar.map((p) => p.tedarikci).filter(Boolean) as string[])].sort();
 
   const hedefAltiSayisi = aktifParcalar.filter((p) => R.hedefKarAltindaMi(p, db.hedefKarAyari)).length;
 

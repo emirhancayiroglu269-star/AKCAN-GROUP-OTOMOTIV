@@ -158,8 +158,8 @@ export function BankaPosSayfasi({ db, updateDb, aktifKullanici }) {
     R.bildirimGoster("Komisyon, Gider Yönetimi'ne kaydedildi — net kâr hesabına dahil olacak.", "basari");
   };
 
-  const bekleyenTahsilatlar = db.posTahsilatlari.filter((t) => t.durum === "Bekliyor").sort((a, b) => new Date(a.beklenenTarih) - new Date(b.beklenenTarih));
-  const gecmisTahsilatlar = db.posTahsilatlari.filter((t) => t.durum !== "Bekliyor").sort((a, b) => new Date(b.tarih) - new Date(a.tarih)).slice(0, 30);
+  const bekleyenTahsilatlar = db.posTahsilatlari.filter((t) => t.durum === "Bekliyor").sort((a, b) => Number(new Date(a.beklenenTarih)) - Number(new Date(b.beklenenTarih)));
+  const gecmisTahsilatlar = db.posTahsilatlari.filter((t) => t.durum !== "Bekliyor").sort((a, b) => Number(new Date(b.tarih)) - Number(new Date(a.tarih))).slice(0, 30);
   const toplamPosBekleyen = bekleyenTahsilatlar.reduce((t, x) => t + x.netTutar, 0);
 
   // --- Para Transferi --------------------------------------------------------

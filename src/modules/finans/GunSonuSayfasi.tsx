@@ -28,7 +28,7 @@ export function GunSonuSayfasi({ db, updateDb, aktifKullanici }) {
   const nakitHesaplar = db.hesaplar.filter((h) => h.tip === "Nakit Kasa" && h.aktif !== false);
   const kasaSayimListesi = nakitHesaplar.map((h) => {
     const buGunHareketleri = h.hareketler.filter((hh) => hh.tarih.slice(0, 10) === bugunIso);
-    const oncekiHareketler = h.hareketler.filter((hh) => hh.tarih.slice(0, 10) < bugunIso).sort((a, b) => new Date(b.tarih) - new Date(a.tarih));
+    const oncekiHareketler = h.hareketler.filter((hh) => hh.tarih.slice(0, 10) < bugunIso).sort((a, b) => Number(new Date(b.tarih)) - Number(new Date(a.tarih)));
     const acilis = oncekiHareketler.length > 0 ? oncekiHareketler[0].bakiyeSonrasi : 0;
     const girisToplam = buGunHareketleri.reduce((t, hh) => t + hh.giris, 0);
     const cikisToplam = buGunHareketleri.reduce((t, hh) => t + hh.cikis, 0);
@@ -62,7 +62,7 @@ export function GunSonuSayfasi({ db, updateDb, aktifKullanici }) {
     }))
   );
 
-  const kutu = (etiket, deger, ton) => (
+  const kutu = (etiket, deger, ton = "graphite") => (
     <div className="rounded-md p-2.5" style={{ background: R.T.steel100 }}>
       <div className="text-xs" style={{ color: R.T.ink500 }}>
         {etiket}
@@ -330,7 +330,7 @@ export function GunSonuSayfasi({ db, updateDb, aktifKullanici }) {
     setDevirYeniPersonel("");
   };
 
-  const gecmisGunler = [...db.gunSonlari].sort((a, b) => new Date(b.tarih) - new Date(a.tarih));
+  const gecmisGunler = [...db.gunSonlari].sort((a, b) => Number(new Date(b.tarih)) - Number(new Date(a.tarih)));
   const acikVardiyalar = db.vardiyalar.filter((v) => v.durum === "Açık");
 
   return (
@@ -381,17 +381,17 @@ export function GunSonuSayfasi({ db, updateDb, aktifKullanici }) {
           <R.Kart className="p-4">
             <h4 className="font-semibold text-sm mb-2" style={{ color: R.T.ink900 }}>Önceki Dönem Karşılaştırması</h4>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-              {kutu("Satış", donemKarsilastirma.donem1.ciro)}
-              {kutu("Önceki Satış", donemKarsilastirma.donem2.ciro)}
-              {kutu("Brüt Kâr", donemKarsilastirma.donem1.brutKar, "green")}
-              {kutu("Önceki Brüt Kâr", donemKarsilastirma.donem2.brutKar)}
+              {kutu("Satış", donemKarsilastirma.ciro.g1)}
+              {kutu("Önceki Satış", donemKarsilastirma.ciro.g2)}
+              {kutu("Brüt Kâr", donemKarsilastirma.brutKar.g1, "green")}
+              {kutu("Önceki Brüt Kâr", donemKarsilastirma.brutKar.g2)}
             </div>
           </R.Kart>
 
           {donemKapanisKontrolu.bulgular.length > 0 && (
             <R.Kart className="p-4">
               <h4 className="font-semibold text-sm mb-2" style={{ color: R.T.red }}>Kapanış Bulguları</h4>
-              {donemKapanisKontrolu.bulgular.slice(0, 8).map((b, i) => <div key={i} className="text-xs py-1" style={{ color: R.T.ink700 }}>• {b.mesaj}</div>)}
+              {donemKapanisKontrolu.bulgular.slice(0, 8).map((b, i) => <div key={i} className="text-xs py-1" style={{ color: R.T.ink900 }}>• {b.mesaj}</div>)}
             </R.Kart>
           )}
 
@@ -577,7 +577,7 @@ export function GunSonuSayfasi({ db, updateDb, aktifKullanici }) {
             Her gün kapatıldığında o günün stok sermayesi otomatik kaydedilir — zamanla stokun büyüyüp küçülmediğini buradan takip edebilirsiniz.
           </p>
           {(() => {
-            const gecmisStok = [...db.gunSonlari].filter((g) => g.stokDegeriAnlikGoruntu).sort((a, b) => new Date(a.tarih) - new Date(b.tarih));
+            const gecmisStok = [...db.gunSonlari].filter((g) => g.stokDegeriAnlikGoruntu).sort((a, b) => Number(new Date(a.tarih)) - Number(new Date(b.tarih)));
             if (gecmisStok.length === 0) {
               return (
                 <R.Kart>
@@ -721,7 +721,7 @@ export function GunSonuSayfasi({ db, updateDb, aktifKullanici }) {
               </R.Kart>
             ) : (
               [...db.vardiyalar]
-                .sort((a, b) => new Date(b.acilisZamani) - new Date(a.acilisZamani))
+                .sort((a, b) => Number(new Date(b.acilisZamani)) - Number(new Date(a.acilisZamani)))
                 .slice(0, 30)
                 .map((v) => (
                   <R.Kart key={v.id} className="p-4 flex items-center justify-between flex-wrap gap-2">

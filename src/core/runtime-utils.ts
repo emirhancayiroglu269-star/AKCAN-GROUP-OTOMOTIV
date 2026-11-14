@@ -64,8 +64,8 @@ export const csvAyristir = (metin) => {
 // Bir görsel dosyasını canvas üzerinden yeniden boyutlandırıp JPEG olarak
 // yeniden sıkıştırır — "otomatik sıkıştırma" gereksinimi burada karşılanır;
 // büyük fotoğraflar depolamayı şişirmeden saklanabilir.
-export const fotografSikistir = (dosya, maksimumKenar = 1000, kalite = 0.78) =>
-  new Promise((resolve, reject) => {
+export const fotografSikistir = (dosya: File, maksimumKenar = 1000, kalite = 0.78): Promise<string> =>
+  new Promise<string>((resolve, reject) => {
     const okuyucu = new FileReader();
     okuyucu.onload = (ev) => {
       const img = new Image();

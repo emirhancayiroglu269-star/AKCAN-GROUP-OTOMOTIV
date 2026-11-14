@@ -52,7 +52,7 @@ export const hizliAramaYap = (db, sorgu) => {
   return [...eslesenParcaIdleri]
     .map((id) => db.parcalar.find((p) => p.id === id))
     .filter(Boolean)
-    .sort((a, b) => (b.stok > 0) - (a.stok > 0) || a.ad.localeCompare(b.ad, "tr"));
+    .sort((a, b) => Number(b.stok > 0) - Number(a.stok > 0) || a.ad.localeCompare(b.ad, "tr"));
 };
 
 // "Bunu mu demek istediniz?" — tam/alt-dize eşleşmesi sonuç getirmediğinde,

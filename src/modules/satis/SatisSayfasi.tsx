@@ -27,7 +27,9 @@ export function SatisSayfasi({ db, updateDb, sepet, setSepet, aktifKullanici, mu
   const [musteriId, setMusteriId] = R.useState(null);
   const [musteriAramaAcik, setMusteriAramaAcik] = R.useState(false);
   const [satisNotu, setSatisNotu] = R.useState("");
-  const [odemeSatirlari, setOdemeSatirlari] = R.useState([{ id: "od1", yontem: "Nakit", hesapId: "", tutar: "" }]);
+  const [odemeSatirlari, setOdemeSatirlari] = R.useState<Array<{ id: string; yontem: string; hesapId: string; tutar: string; posId?: string }>>([
+    { id: "od1", yontem: "Nakit", hesapId: "", tutar: "" },
+  ]);
   const [satisIsleniyor, setSatisIsleniyor] = R.useState(false);
   const [oturumFiyatYetkisi, setOturumFiyatYetkisi] = R.useState(false);
   const [fiyatTaslaklari, setFiyatTaslaklari] = R.useState({});
@@ -159,7 +161,7 @@ export function SatisSayfasi({ db, updateDb, sepet, setSepet, aktifKullanici, mu
     .map((f) => db.parcalar.find((p) => p.id === f.parcaId))
     .filter((p) => p && p.aktif !== false);
   const favorilerKategoriGruplari = (() => {
-    const harita = {};
+    const harita: Record<string, any> = {};
     favoriler.forEach((p) => {
       const kat = p.anaKategori || p.kategori || "Diğer";
       if (!harita[kat]) harita[kat] = [];
@@ -456,6 +458,7 @@ export function SatisSayfasi({ db, updateDb, sepet, setSepet, aktifKullanici, mu
 
     const satis = {
       id: R.yeniId("s"),
+      belgeNo: "",
       tarih: R.zamanDamgasi(),
       musteriAdi: musteriAdiKaydedilecek,
       musteriId: seciliMusteri ? seciliMusteri.id : null,
@@ -642,7 +645,7 @@ export function SatisSayfasi({ db, updateDb, sepet, setSepet, aktifKullanici, mu
     setMusteriAdi("");
     setMusteriId(null);
     setSatisNotu("");
-    setOdemeSatirlari([{ id: R.yeniId("od"), yontem: "Nakit", tutar: "" }]);
+    setOdemeSatirlari([{ id: R.yeniId("od"), yontem: "Nakit", hesapId: "", tutar: "" }]);
     setSatisIsleniyor(false);
     setTeslimatEkle(false);
     setTeslimatForm({ teslimatTipi: "Kargo", aliciAdi: "", telefon: "", adres: "", il: "", ilce: "", kargoFirmasi: "", kargoUcreti: "", kargoUcretiKimOder: "Müşteri", teslimatNotu: "" });
@@ -1061,7 +1064,7 @@ export function SatisSayfasi({ db, updateDb, sepet, setSepet, aktifKullanici, mu
                                 type="number"
                                 value={s.adet}
                                 onChange={(e) => adetGuncelle(s.parcaId, e.target.value)}
-                                onDoubleClick={(e) => e.target.select()}
+                                onDoubleClick={(e) => (e.target as HTMLInputElement).select()}
                                 className="w-14 px-1.5 py-1 rounded border text-sm text-center outline-none"
                                 style={{ borderColor: R.T.steel300 }}
                                 title="Miktarı doğrudan değiştirmek için çift tıklayıp yazın"

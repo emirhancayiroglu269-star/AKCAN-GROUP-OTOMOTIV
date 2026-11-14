@@ -7,8 +7,8 @@ import * as R from "../../core/akcan-runtime";
 export function RaporFiyatAnalizi({ db }) {
   const [hedefTuru, setHedefTuru] = R.useState("marka");
   const [hedefDeger, setHedefDeger] = R.useState("");
-  const markalar = [...new Set(db.parcalar.map((p) => p.marka).filter(Boolean))].sort();
-  const kategoriler = [...new Set(db.parcalar.map((p) => p.kategori).filter(Boolean))].sort();
+  const markalar = [...new Set<string>(db.parcalar.map((p) => p.marka).filter(Boolean) as string[])].sort();
+  const kategoriler = [...new Set<string>(db.parcalar.map((p) => p.kategori).filter(Boolean) as string[])].sort();
 
   const urunler = hedefDeger
     ? db.parcalar.filter((p) => (hedefTuru === "marka" ? p.marka === hedefDeger : p.kategori === hedefDeger || p.anaKategori === hedefDeger))

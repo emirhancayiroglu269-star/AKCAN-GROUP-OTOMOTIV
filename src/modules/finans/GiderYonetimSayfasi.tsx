@@ -35,7 +35,7 @@ export function GiderYonetimSayfasi({ db, updateDb, aktifKullanici }) {
       return;
     }
     const okuyucu = new FileReader();
-    okuyucu.onload = (ev) => setForm((f) => ({ ...f, belgeDosyasi: ev.target.result }));
+    okuyucu.onload = (ev) => setForm((f) => ({ ...f, belgeDosyasi: String(ev.target.result ?? "") }));
     okuyucu.readAsDataURL(dosya);
     e.target.value = "";
   };
@@ -209,7 +209,7 @@ export function GiderYonetimSayfasi({ db, updateDb, aktifKullanici }) {
 
   const filtreliGiderler = db.giderler
     .filter((g) => durumFiltre === "tumu" || g.odemeDurumu === durumFiltre)
-    .sort((a, b) => new Date(b.tarih) - new Date(a.tarih));
+    .sort((a, b) => Number(new Date(b.tarih)) - Number(new Date(a.tarih)));
 
   // --- Tekrarlayan giderler ----------------------------------------------------
   const bosTekrarForm = { kategori: "", aciklama: "", tutar: "", tedarikciFirma: "" };
@@ -277,7 +277,7 @@ export function GiderYonetimSayfasi({ db, updateDb, aktifKullanici }) {
   const raporGiderleri = db.giderler.filter((g) => g.odemeDurumu !== "İptal" && g.tarih >= rpBaslangic && g.tarih <= rpBitis);
   const toplamGider = raporGiderleri.reduce((t, g) => t + g.tutar, 0);
   const kategoriKirilimi = (() => {
-    const harita = {};
+    const harita: Record<string, any> = {};
     raporGiderleri.forEach((g) => (harita[g.kategori] = (harita[g.kategori] || 0) + g.tutar));
     return Object.entries(harita).sort((a, b) => b[1] - a[1]);
   })();

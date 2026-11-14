@@ -7,7 +7,7 @@ import * as R from "../../core/akcan-runtime";
 export function RaporUrunPerformansi({ db, filtrePaneli, tumKalemler }) {
   const [siralama, setSiralama] = R.useState("cok-satan");
 
-  const urunHaritasi = {};
+  const urunHaritasi: Record<string, { parcaId: any; ad: any; marka: any; adet: number; ciro: number; kar: number }> = {};
   tumKalemler.forEach((k) => {
     if (!urunHaritasi[k.parcaId]) urunHaritasi[k.parcaId] = { parcaId: k.parcaId, ad: k.ad, marka: k.marka, adet: 0, ciro: 0, kar: 0 };
     urunHaritasi[k.parcaId].adet += k.adet;

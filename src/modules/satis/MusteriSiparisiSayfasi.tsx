@@ -132,6 +132,7 @@ export function MusteriSiparisiSayfasi({ db, updateDb, aktifKullanici, baslangic
     const satisId = R.yeniId("s");
     const satis = {
       id: satisId,
+      belgeNo: "",
       tarih: R.zamanDamgasi(),
       musteriAdi: s.musteriAdi,
       musteriId: null,
@@ -233,7 +234,7 @@ export function MusteriSiparisiSayfasi({ db, updateDb, aktifKullanici, baslangic
 
   const filtreliSiparisler = db.musteriSiparisleri
     .filter((s) => durumFiltre === "tumu" || s.durum === durumFiltre)
-    .sort((a, b) => new Date(b.siparisTarihi) - new Date(a.siparisTarihi));
+    .sort((a, b) => Number(new Date(b.siparisTarihi)) - Number(new Date(a.siparisTarihi)));
 
   return (
     <div className="flex flex-col gap-5">

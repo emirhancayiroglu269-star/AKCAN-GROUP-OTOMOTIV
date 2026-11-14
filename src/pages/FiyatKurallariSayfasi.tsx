@@ -25,7 +25,7 @@ export function FiyatKurallariSayfasi({ db, updateDb, aktifKullanici }) {
   const grupKurallari = seciliGrup ? db.fiyatGrubuKurallari.filter((k) => k.grupId === seciliGrup.id) : [];
   const kuralUrunAramaSonuclari = kuralUrunArama.trim() ? hizliAramaYap(db, kuralUrunArama).slice(0, 6) : [];
 
-  const markalar = [...new Set(db.parcalar.map((p) => p.marka).filter(Boolean))].sort();
+  const markalar = [...new Set<string>(db.parcalar.map((p) => p.marka).filter(Boolean) as string[])].sort();
 
   const grupEkle = () => {
     if (!yeniGrupAdi.trim()) return;
@@ -533,7 +533,7 @@ export function FiyatKurallariSayfasi({ db, updateDb, aktifKullanici }) {
                         <span className="font-semibold text-sm" style={{ color: T.ink900 }}>
                           {k.ad}
                         </span>
-                        <Rozet tone={durum.ton}>{durum.etiket}</Rozet>
+                        <Rozet tone={durum.ton as any}>{durum.etiket}</Rozet>
                         {k.maliyetAltiOnaylandi && <Rozet tone="red">🔴 Maliyet Altı (Onaylı)</Rozet>}
                       </div>
                       <div className="text-xs mt-0.5" style={{ color: T.ink500 }}>

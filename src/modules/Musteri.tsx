@@ -467,7 +467,7 @@ export function MusteriDetay({ db, updateDb, aktifKullanici, musteri, onDuzenle,
     musteri.bakiye > 0 &&
     musteri.vadeGunu > 0 &&
     sonBorcHareketi &&
-    Math.floor((new Date(bugunIso) - new Date(sonBorcHareketi.tarih)) / 86400000) > musteri.vadeGunu;
+    Math.floor((Number(new Date(bugunIso)) - Number(new Date(sonBorcHareketi.tarih))) / 86400000) > musteri.vadeGunu;
   const vadesiGecenBorc = vadesiGecmisMi ? musteri.bakiye : 0;
   const kullanilabilirLimit = musteri.borcLimiti > 0 ? Math.max(0, musteri.borcLimiti - (musteri.bakiye || 0)) : null;
 
@@ -475,7 +475,7 @@ export function MusteriDetay({ db, updateDb, aktifKullanici, musteri, onDuzenle,
   // Ürün Kodu → Ürün → Adet → O günkü satış fiyatı.
   const satisKalemleri = gecmisSatislar
     .flatMap((s) => s.kalemler.map((k) => ({ ...k, tarih: s.tarih, satisId: s.id })))
-    .sort((a, b) => new Date(b.tarih) - new Date(a.tarih));
+    .sort((a, b) => Number(new Date(b.tarih)) - Number(new Date(a.tarih)));
 
   return (
     <div className="flex flex-col gap-4">
@@ -754,7 +754,7 @@ export function MusteriDetay({ db, updateDb, aktifKullanici, musteri, onDuzenle,
             Rezervler
           </h4>
           {(() => {
-            const rezervler = db.rezervler.filter((r) => r.musteriAdi.toLowerCase() === musteri.ad.toLowerCase()).sort((a, b) => new Date(b.rezervTarihi) - new Date(a.rezervTarihi));
+            const rezervler = db.rezervler.filter((r) => r.musteriAdi.toLowerCase() === musteri.ad.toLowerCase()).sort((a, b) => Number(new Date(b.rezervTarihi)) - Number(new Date(a.rezervTarihi)));
             if (rezervler.length === 0) {
               return (
                 <p className="text-sm" style={{ color: R.T.ink500 }}>
@@ -790,7 +790,7 @@ export function MusteriDetay({ db, updateDb, aktifKullanici, musteri, onDuzenle,
             Teklifler
           </h4>
           {(() => {
-            const teklifler = (db.teklifler || []).filter((t) => t.musteriAdi.toLowerCase() === musteri.ad.toLowerCase()).sort((a, b) => new Date(b.tarih) - new Date(a.tarih));
+            const teklifler = (db.teklifler || []).filter((t) => t.musteriAdi.toLowerCase() === musteri.ad.toLowerCase()).sort((a, b) => Number(new Date(b.tarih)) - Number(new Date(a.tarih)));
             if (teklifler.length === 0) {
               return (
                 <p className="text-sm" style={{ color: R.T.ink500 }}>

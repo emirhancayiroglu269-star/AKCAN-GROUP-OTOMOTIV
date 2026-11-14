@@ -155,7 +155,7 @@ export const stokDegerlemeOzetiHesapla = (db: any, parcalar: any[]) => {
         if (adet > 0) harita[depo.ad] = (harita[depo.ad] || 0) + adet * gecerliMaliyet(p, db);
       });
     });
-    return Object.entries(harita).map(([anahtar, deger]) => ({ anahtar, deger })).sort((a, b) => b.deger - a.deger);
+    return Object.entries(harita).map(([anahtar, deger]) => ({ anahtar, deger: Number(deger) })).sort((a, b) => b.deger - a.deger);
   })();
 
   return {

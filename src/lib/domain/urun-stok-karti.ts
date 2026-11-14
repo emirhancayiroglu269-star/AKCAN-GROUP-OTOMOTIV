@@ -72,7 +72,7 @@ export function urunAramaMetni(urun: UrunStokKarti): string {
     urun.kategori,
     urun.urunAdi,
     ...urun.oemKodlari,
-    ...urun.alternatifKodlari,
+    ...urun.alternatifKodlar,
     urun.rafAdresi,
   ]
     .filter(Boolean)

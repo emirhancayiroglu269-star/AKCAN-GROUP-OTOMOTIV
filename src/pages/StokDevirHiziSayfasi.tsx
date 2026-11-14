@@ -35,8 +35,8 @@ export function StokDevirHiziSayfasi({ db, setSekme }) {
     .filter((a) => a.stokMaliyeti > 0 || a.satisAdedi > 0)
     .sort((a, b) => (b[siralamaAlani] ?? -Infinity) - (a[siralamaAlani] ?? -Infinity));
 
-  const markalar = [...new Set(aktifParcalar.map((p) => p.marka).filter(Boolean))].sort();
-  const kategoriler = [...new Set(aktifParcalar.map((p) => p.kategori).filter(Boolean))].sort();
+  const markalar: string[] = [...new Set<string>(aktifParcalar.map((p) => p.marka).filter(Boolean) as string[])].sort();
+  const kategoriler: string[] = [...new Set<string>(aktifParcalar.map((p) => p.kategori).filter(Boolean) as string[])].sort();
 
   const markaOzetleri = markalar
     .map((m) => ({ ad: m, ...grupDevirHiziHesapla(db, aktifParcalar.filter((p) => p.marka === m), baslangic, bitis) }))

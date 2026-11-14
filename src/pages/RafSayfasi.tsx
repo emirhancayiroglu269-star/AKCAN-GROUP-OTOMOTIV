@@ -10,7 +10,7 @@ export function RafSayfasi({ db }) {
 
   // Tüm ürünlerden, kullanımda olan benzersiz raf kodlarının listesini çıkarır.
   const tumRaflar = (() => {
-    const harita = {};
+    const harita: Record<string, any> = {};
     db.parcalar.forEach((p) => {
       parcaRafListesi(p).forEach((k) => {
         if (!harita[k.kod]) harita[k.kod] = { kod: k.kod, urunSayisi: 0, toplamAdet: 0 };

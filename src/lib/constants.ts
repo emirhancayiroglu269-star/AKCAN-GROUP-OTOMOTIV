@@ -171,7 +171,7 @@ export const yetkiVarMi = (db, aktifKullanici, anahtar) => {
 export const islemKaydet = (prev, { kullaniciAdi, islemTuru, aciklama, eskiDeger, yeniDeger, hedefId = null, islemId = null, kategori = null, sonuc = "Başarılı" }) => {
   const kayit = { id: yeniId("ig"), tarih: zamanDamgasi(), kullaniciAdi: kullaniciAdi || "", islemTuru, aciklama, eskiDeger, yeniDeger };
   const sonraki = { ...prev, islemGecmisi: [kayit, ...(Array.isArray(prev.islemGecmisi) ? prev.islemGecmisi : [])].slice(0, 5000) };
-  return auditKaydiEkle(sonraki, { kullaniciAdi, islemTuru, aciklama, eskiDeger, yeniDeger, hedefId, islemId, kategori: kategori || undefined, sonuc });
+  return auditKaydiEkle(sonraki, { kullaniciAdi, islemTuru, aciklama, eskiDeger, yeniDeger, hedefId, islemId, kategori: kategori || undefined, sonuc: sonuc as "Başarılı" | "Reddedildi" | "Hata" });
 };
 
 // Hızlı İşlem Merkezi klavye kısayolları — Ayarlar → Sistem'den değiştirilebilir.

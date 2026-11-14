@@ -8,7 +8,7 @@ export function RaporPersonel({ db, filtrePaneli, tumKalemler, tarihliSatislar, 
   const iadeler = db.iadeler.filter((i) => i.tarih.slice(0, 10) >= baslangic && i.tarih.slice(0, 10) <= bitis);
   const kapanmisVardiyalar = db.vardiyalar.filter((v) => v.durum !== "Açık" && v.kapanisZamani && v.kapanisZamani.slice(0, 10) >= baslangic && v.kapanisZamani.slice(0, 10) <= bitis && v.kasaFarki !== null);
 
-  const personeller = [...new Set(tarihliSatislar.map((s) => s.satisiYapan).filter(Boolean))];
+  const personeller: string[] = [...new Set<string>(tarihliSatislar.map((s) => s.satisiYapan).filter(Boolean) as string[])];
   const satirlar = personeller
     .map((ad) => {
       const buPersonelinSatislari = tarihliSatislar.filter((s) => s.satisiYapan === ad);

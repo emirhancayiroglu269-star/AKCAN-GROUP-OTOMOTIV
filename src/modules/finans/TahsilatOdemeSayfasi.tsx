@@ -3,15 +3,15 @@ import React, { useState, useEffect, useMemo, useRef, useCallback } from "react"
 import * as R from "../../core/akcan-runtime";
 
 export function TahsilatOdemeSayfasi({ db, updateDb, aktifKullanici }) {
-  const [yon, setYon] = R.useState("tahsilat"); // "tahsilat" | "odeme"
+  const [yon, setYon] = R.useState<import("../../lib/finans-islem").FinansYon>("tahsilat");
   const [tarafArama, setTarafArama] = R.useState("");
   const [tarafAramaAcik, setTarafAramaAcik] = R.useState(false);
   const [seciliTarafId, setSeciliTarafId] = R.useState(null);
-  const [odemeSatirlari, setOdemeSatirlari] = R.useState([{ id: "od1", yontem: "Nakit", hesapId: "", tutar: "" }]);
+  const [odemeSatirlari, setOdemeSatirlari] = R.useState<Array<{ id: string; yontem: string; hesapId: string; tutar: string }>>([{ id: "od1", yontem: "Nakit", hesapId: "", tutar: "" }]);
   const [aciklama, setAciklama] = R.useState("");
   const [belgeNo, setBelgeNo] = R.useState("");
   const [islemiYapan, setIslemiYapan] = R.useIslemYapan(aktifKullanici);
-  const [faturaTahsisleri, setFaturaTahsisleri] = R.useState({}); // { faturaId: tutar }
+  const [faturaTahsisleri, setFaturaTahsisleri] = R.useState<Record<string, string | number>>({}); // { faturaId: tutar }
   const [gecmisAcik, setGecmisAcik] = R.useState(true);
   const [iptalIslem, setIptalIslem] = R.useState(null);
   const [iptalNedeni, setIptalNedeni] = R.useState("");
@@ -45,16 +45,16 @@ export function TahsilatOdemeSayfasi({ db, updateDb, aktifKullanici }) {
             .filter((s) => s.durum !== "İptal Edildi" && (s.musteriId ? s.musteriId === seciliTaraf.id : s.musteriAdi.toLowerCase() === seciliTaraf.ad.toLowerCase()))
             .map((s) => ({ id: s.id, belgeNo: s.id.slice(-6).toUpperCase(), tarih: s.tarih, tutar: s.genelToplam, kalan: R.satisAcikHesapKalan(s) }))
             .filter((f) => f.kalan > 0.01)
-            .sort((a, b) => new Date(a.tarih) - new Date(b.tarih))
+            .sort((a, b) => Number(new Date(a.tarih)) - Number(new Date(b.tarih)))
         : []
       : seciliTaraf
       ? R.tedarikciAcikFaturalari(db, seciliTaraf.ad)
           .map((m) => ({ id: m.id, belgeNo: m.faturaNo, tarih: m.faturaTarihi, tutar: m.faturaGirilenToplam ?? m.hesaplananGenelToplam, kalan: m.kalanBorc }))
-          .sort((a, b) => new Date(a.tarih) - new Date(b.tarih))
+          .sort((a, b) => Number(new Date(a.tarih)) - Number(new Date(b.tarih)))
       : [];
 
   const tutarToplami = odemeSatirlari.reduce((t, o) => t + (parseFloat(o.tutar) || 0), 0);
-  const tahsisToplami = Object.values(faturaTahsisleri).reduce((t, v) => t + (parseFloat(v) || 0), 0);
+  const tahsisToplami = Object.values(faturaTahsisleri).reduce<number>((t, v) => t + (parseFloat(String(v)) || 0), 0);
   const dagitilmamisTutar = Math.round((tutarToplami - tahsisToplami) * 100) / 100;
 
   const odemeSatiriEkle = () => setOdemeSatirlari((prev) => [...prev, { id: R.yeniId("od"), yontem: "Nakit", hesapId: varsayilanHesapId, tutar: "" }]);
@@ -102,7 +102,7 @@ export function TahsilatOdemeSayfasi({ db, updateDb, aktifKullanici }) {
       .map((o) => ({ yontem: o.yontem, hesapId: o.hesapId, tutar: parseFloat(o.tutar) || 0 }));
     const tutar = Math.round(aktifOdemeSatirlari.reduce((t, o) => t + o.tutar, 0) * 100) / 100;
     const tahsisler = Object.entries(faturaTahsisleri)
-      .map(([faturaId, tutar]) => ({ faturaId, tutar: parseFloat(tutar) || 0 }))
+      .map(([faturaId, tutar]) => ({ faturaId, tutar: parseFloat(String(tutar)) || 0 }))
       .filter((t) => t.tutar > 0);
 
     if (aktifOdemeSatirlari.some((o) => !o.hesapId)) {
@@ -111,7 +111,7 @@ export function TahsilatOdemeSayfasi({ db, updateDb, aktifKullanici }) {
       return;
     }
 
-    const finansGirdisi = {
+    const finansGirdisi: import("../../lib/finans-islem").FinansIslemGirdisi = {
       yon,
       tarafId: seciliTaraf.id,
       tarafAdi: seciliTaraf.ad,
@@ -243,7 +243,7 @@ export function TahsilatOdemeSayfasi({ db, updateDb, aktifKullanici }) {
               <button
                 key={y.id}
                 onClick={() => {
-                  setYon(y.id);
+                  setYon(y.id as import("../../lib/finans-islem").FinansYon);
                   formuTemizle();
                 }}
                 className="flex-1 py-2.5 text-sm font-semibold flex items-center justify-center gap-1.5"
@@ -315,7 +315,7 @@ export function TahsilatOdemeSayfasi({ db, updateDb, aktifKullanici }) {
             </div>
             <div className="flex flex-col gap-1.5">
               {acikFaturalar.map((f) => {
-                const tahsis = parseFloat(faturaTahsisleri[f.id]) || 0;
+                const tahsis = parseFloat(String(faturaTahsisleri[f.id] ?? "")) || 0;
                 const kapaniyor = tahsis >= f.kalan - 0.01 && tahsis > 0;
                 return (
                   <div key={f.id} className="flex items-center gap-2 px-2.5 py-2 rounded-md text-sm" style={{ background: R.T.steel100 }}>

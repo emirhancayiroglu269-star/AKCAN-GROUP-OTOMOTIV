@@ -1455,7 +1455,7 @@ export const bosGiderKayitForm = {
   kategori: "",
   aciklama: "",
   tutar: "",
-  kdvOrani: 20,
+  kdvOrani: "20",
   odemeDurumu: "Bekliyor",
   odenenTutar: "",
   odemeYontemi: "Nakit",
