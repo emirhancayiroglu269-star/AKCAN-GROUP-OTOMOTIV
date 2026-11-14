@@ -4,6 +4,7 @@
 **Başlangıç:** 835 tip hatası (47 dosya)
 **Şu an:** **0 tip hatası** — %100 temiz
 **Build:** `npm run build` ✅ başarılı (Vite 8, 1703 modül)
+**tsconfig:** `strict: true` (aşamalı — aşağıya bakın)
 
 ---
 
@@ -110,11 +111,60 @@ artık tip güvenli.
 
 **Sonuç:** `npx tsc -p tsconfig.json --noEmit` → **0 hata**. `npm run build` ✅ 1.89s.
 
-## 4. Önemli not
+## 4. `strict: true` geçişi
 
-`tsconfig.json` içinde `strict: false`. Yani hâlâ **null kontrolü, implicit any,
-fonksiyon parametreleri** denetlenmiyor. `strict: true` açıldığında yeni hatalar
-çıkacaktır — bu ayrı bir iş olarak planlanmalı.
+`strict: true` açıldı. Açıldığında **3746 hata** çıktı. Bunların **%79'u tek bir bayraktan** geliyordu:
 
-`npm run typecheck` script'i (`tsc -p tsconfig.json --noEmit`) artık anlamlı bir sinyal
-veriyor; CI'a eklenebilir (önce kalan 30 hata kapatılmalı).
+| Bayrak | Hata | Payı |
+|---|---|---|
+| `noImplicitAny` (TS7006 + TS7031) | 2963 | %79 |
+| `strictNullChecks` (TS18047 + TS18048 + TS2531 + TS2532) | 184 | %5 |
+| gerçek tip hataları (TS2339/2345/2322/…) | ~599 | %16 |
+
+### Neden `noImplicitAny` açılmadı
+
+2963 hatanın neredeyse tamamı **fonksiyon parametresi / destructuring** kaynaklı:
+
+```ts
+// TS7006 örneği
+const satirlar = db.parcalar.map((p) => p.ad);   // 'p' implicitly has an 'any' type
+const { ad, kod } = kayit;                        // TS7031 binding element implicitly 'any'
+```
+
+Bunlar **tip hatası değil, tip eksikliği**. Hepsini düzeltmek `db` şemasının (Parca, Cari,
+Tedarikci, Satis, Hesap, Kampanya, Vardiya, Audit… ~30 varlık) uçtan uca tiplenmesi demek.
+Bu, tek oturumda güvenle yapılabilecek bir iş değil: yanlış varsayılan tip, çalışan bir akışı
+sessizce bozabilir. Ayrı bir iş olarak, modül modül ilerlemeli.
+
+### Yapılan: aşamalı strict
+
+`strict: true` bırakıldı; `noImplicitAny` ve `strictNullChecks` bilinçli olarak `false`'a
+çekildi. Bu, TypeScript'in **tüm diğer strict bayraklarını** açık tutar:
+
+| Bayrak | Durum |
+|---|---|
+| `strictFunctionTypes` | ✅ açık |
+| `strictBindCallApply` | ✅ açık |
+| `strictPropertyInitialization` | ✅ açık |
+| `useUnknownInCatchVariables` | ✅ açık |
+| `alwaysStrict` | ✅ açık |
+| `noImplicitThis` | ✅ açık |
+| `noImplicitAny` | ⏸ sonraki aşama |
+| `strictNullChecks` | ⏸ sonraki aşama |
+
+Bu profil açıldığında çıkan **5 hata** düzeltildi:
+
+| Dosya | Düzeltme |
+|---|---|
+| `App.tsx` (5 nokta) | `catch (e)` → `catch (e: any)` — `e?.status === 409` erişimi `unknown`'da geçersizdi |
+
+Sonuç: **0 hata**, build ✅.
+
+### Sonraki aşama (öneri)
+
+1. `strictNullChecks: true` — 184 hata. Bunların 161'i `'ev.target' is possibly 'null'`
+   (FileReader) ve `possibly undefined` erişimleri. Mekanik olarak düzeltilebilir,
+   ~1-2 saatlik iş. **En yüksek getirili adım bu.**
+2. `noImplicitAny: true` — 2963 hata. `src/lib/domain/*` altındaki varlık tiplerini
+   tanımlayıp `db`'yi tiplendirmekle başlanmalı; ekranlar sonra.
+

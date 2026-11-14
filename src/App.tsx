@@ -53,7 +53,7 @@ export default function App() {
           const parsed = JSON.parse(raw);
           setDb(R.veriyiOnar({ ...R.bosVeritabani(), ...parsed }));
         }
-      } catch (e) {
+      } catch (e: any) {
         console.warn("Yerel veri okunamadı", e);
       } finally {
         if (!iptal) setLoaded(true);
@@ -72,7 +72,7 @@ export default function App() {
         const sonuc = await R.merkeziIstek("status", { token: null });
         if (iptal) return;
         setMerkeziKurulumDurumu(sonuc?.initialized ? "kurulu" : "kurulmadi");
-      } catch (e) {
+      } catch (e: any) {
         if (iptal) return;
         console.warn("Merkezi kurulum durumu alınamadı.", e);
         // Güvenlik gereği merkezi durum doğrulanmadan İlk Kurulum açılmaz.
@@ -101,7 +101,7 @@ export default function App() {
           setDb(R.veriyiOnar({ ...R.bosVeritabani(), ...sunucuDb }));
           merkeziVersiyonRef.current = sunucu?.version ?? sunucu?.updatedAt ?? null;
         }
-      } catch (e) {
+      } catch (e: any) {
         console.warn("Merkezi ilk yükleme yapılamadı; yerel tampon korunuyor.", e);
       }
     })();
@@ -129,7 +129,7 @@ export default function App() {
         const sonuc = await R.merkeziIstek("save", { token, method: "POST", body: { data: db, userId: oturumKullaniciId, expectedVersion: merkeziVersiyonRef.current } });
         merkeziVersiyonRef.current = sonuc?.version ?? sonuc?.updatedAt ?? merkeziVersiyonRef.current;
         dirtyRef.current = false;
-      } catch (e) {
+      } catch (e: any) {
         // Merkezi kaydetme başarısızsa çevrimdışı tampon kullanılmaya devam eder.
         if (e?.status === 409) {
           // Başka bir bilgisayar aynı sürümü bizden önce kaydetti. Yerel değişikliği
@@ -192,7 +192,7 @@ export default function App() {
           merkeziVersiyonRef.current = versiyon;
           try { localStorage.setItem(R.STORAGE_KEY, JSON.stringify(R.veriyiOnar({ ...R.bosVeritabani(), ...yeni }))); } catch {}
         }
-      } catch (e) {
+      } catch (e: any) {
         if (e?.status === 401) console.warn("Merkezi veri yenilemede oturum doğrulaması başarısız.");
       }
     };
@@ -356,7 +356,7 @@ export default function App() {
         }
         return true;
       }
-    } catch (e) {
+    } catch (e: any) {
       console.warn("Merkezi giriş başarısız, yerel kullanıcı kontrol ediliyor.", e);
     }
 
@@ -421,7 +421,7 @@ export default function App() {
       setMerkeziKurulumDurumu("kurulu");
       R.girisBasarili(kullaniciAdi);
       R.bildirimGoster("İlk kurulum merkezi olarak tamamlandı. Artık telefon ve diğer bilgisayarlardan aynı şirket hesabıyla giriş yapılabilir.", "basari");
-    } catch (e) {
+    } catch (e: any) {
       // Başka bir cihaz aynı anda kurulumu tamamladıysa mevcut kullanıcıyla
       // yeniden login denenir; asla ikinci şirket kurulumu yapılmaz.
       if (e?.status === 409) {
@@ -686,7 +686,7 @@ export default function App() {
       setVeriCakismasi(null);
       try { localStorage.removeItem("akcan-veri-cakisma-yedegi"); } catch {}
       R.bildirimGoster("Yerel değişiklikler merkezi sürümün üzerine güvenli şekilde kaydedildi.", "basari");
-    } catch (e) {
+    } catch (e: any) {
       R.bildirimGoster(e?.status === 409 ? "Sunucu sürümü yeniden değişti. Lütfen tekrar seçim yapın." : "Yerel değişiklikler merkezi sunucuya yazılamadı.", "hata");
       if (e?.status === 409) {
         setVeriCakismasiYukleniyor(false);
