@@ -10,9 +10,13 @@
 export const agirlikliOrtalamaMaliyetHesapla = (eskiStok, eskiOrtalamaMaliyet, yeniAdet, yeniFiyat) => {
   const guvenliEskiStok = Math.max(0, eskiStok || 0);
   const guvenliEskiMaliyet = eskiOrtalamaMaliyet || 0;
-  const toplamAdet = guvenliEskiStok + yeniAdet;
-  if (toplamAdet <= 0) return yeniFiyat;
-  return (guvenliEskiStok * guvenliEskiMaliyet + yeniAdet * yeniFiyat) / toplamAdet;
+  const guvenliYeniAdet = Math.max(0, yeniAdet || 0);
+  const toplamAdet = guvenliEskiStok + guvenliYeniAdet;
+  // Hiç stok ve hiç alım yoksa "ortalama maliyet" diye bir şey oluşmaz → 0.
+  // (Önceden `yeniFiyat` dönüyordu; `yeniAdet=0` geçildiğinde çağırana hiç
+  // alınmamış bir fiyatı maliyet olarak yazdırıyordu.)
+  if (toplamAdet <= 0) return 0;
+  return (guvenliEskiStok * guvenliEskiMaliyet + guvenliYeniAdet * yeniFiyat) / toplamAdet;
 };
 
 // Kâr hesaplarında kullanılacak "gerçek" maliyet: ortalama maliyet varsa onu,

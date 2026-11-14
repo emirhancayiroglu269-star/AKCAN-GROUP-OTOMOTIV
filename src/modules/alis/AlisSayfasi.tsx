@@ -266,29 +266,46 @@ export function AlisSayfasi({ db, updateDb, aktifKullanici }) {
         if (!parca) continue;
         const adet = parseFloat(k.adet) || 0;
         const netFiyat = R.satirNetMaliyetHesapla(k);
-        const yeniOrtalama = R.agirlikliOrtalamaMaliyetHesapla(parca.stok, parca.ortalamaMaliyet, adet, netFiyat);
-        const guncellenmisParcalar = sonuc.parcalar.map((p) =>
-          p.id === k.parcaId
-            ? {
-                ...p,
-                sonAlisFiyati: netFiyat,
-                ortalamaMaliyet: Math.round(yeniOrtalama * 100) / 100,
-                alisGecmisi: [
-                  { id: R.yeniId("g"), tarih: R.zamanDamgasi(), adet, birimFiyat: netFiyat, tedarikci: form.tedarikci.trim() },
-                  ...(p.alisGecmisi || []),
-                ],
-              }
-            : p
-        );
-        const yeni = R.stokHareketiUygula(
-          { ...sonuc, parcalar: guncellenmisParcalar },
-          { parcaId: k.parcaId, tur: "Mal Alış", giris: adet, belgeNo, kullanici: islemiYapan.trim(), aciklama: form.tedarikci.trim() }
-        );
+        // ÖNEMLİ SIRA: maliyet, stok hareketi KABUL EDİLDİKTEN sonra hesaplanır.
+        // Aksi halde stok hareketi reddedilse bile alış geçmişi ve ortalama
+        // maliyet yazılıyordu (hayalet alış: stok artmadı ama maliyet arttı).
+        const yeni = R.stokHareketiUygula(sonuc, {
+          parcaId: k.parcaId,
+          tur: "Mal Alış",
+          giris: adet,
+          belgeNo,
+          kullanici: islemiYapan.trim(),
+          aciklama: form.tedarikci.trim(),
+        });
         if (!yeni) {
           stokEngellendi = true;
+          // Önceki kalemlerin uygulanmış hali geri alınır (tüm alış iptal).
           return prev;
         }
-        sonuc = yeni;
+        // Stok hareketi uygulandı → şimdi maliyeti güncelle.
+        const stokSonrasi = yeni.parcalar.find((p) => p.id === k.parcaId);
+        const yeniOrtalama = R.agirlikliOrtalamaMaliyetHesapla(
+          (stokSonrasi?.stok || 0) - adet, // hareketten ÖNCEKİ stok
+          parca.ortalamaMaliyet,
+          adet,
+          netFiyat
+        );
+        sonuc = {
+          ...yeni,
+          parcalar: yeni.parcalar.map((p) =>
+            p.id === k.parcaId
+              ? {
+                  ...p,
+                  sonAlisFiyati: netFiyat,
+                  ortalamaMaliyet: Math.round(yeniOrtalama * 100) / 100,
+                  alisGecmisi: [
+                    { id: R.yeniId("g"), tarih: R.zamanDamgasi(), adet, birimFiyat: netFiyat, tedarikci: form.tedarikci.trim() },
+                    ...(p.alisGecmisi || []),
+                  ],
+                }
+              : p
+          ),
+        };
       }
 
       const finansSonucu = R.alisFinansHareketleriniUygula(sonuc, {

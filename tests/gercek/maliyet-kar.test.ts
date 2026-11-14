@@ -33,11 +33,18 @@ describe("agirlikliOrtalamaMaliyetHesapla", () => {
     expect(agirlikliOrtalamaMaliyetHesapla(10, 25, 0, 99)).toBeCloseTo(25, 5);
   });
 
-  it("hiç stok ve hiç alım yoksa yeniFiyat'ı döndürür (mevcut davranış)", () => {
-    // Toplam adet 0 → formül bölme yapamaz, `yeniFiyat` döner.
-    // NOT: 99 geçilirse 99 döner. Bu, "maliyet 0 olmalı" beklentisiyle
-    // çelişir; çağıran taraf yeniAdet=0 geçmemeli. Davranış belgelendi.
-    expect(agirlikliOrtalamaMaliyetHesapla(0, 0, 0, 99)).toBe(99);
+  it("hiç stok ve hiç alım yoksa 0 döner (alınmamış fiyat maliyet olmaz)", () => {
+    // DÜZELTME: önceden `yeniFiyat` (99) dönüyordu; yeniAdet=0 geçen bir çağrı
+    // hiç alınmamış bir fiyatı ortalama maliyet olarak yazdırabiliyordu.
+    expect(agirlikliOrtalamaMaliyetHesapla(0, 0, 0, 99)).toBe(0);
+  });
+
+  it("negatif yeniAdet ortalamayı bozmaz (0 gibi davranır)", () => {
+    expect(agirlikliOrtalamaMaliyetHesapla(10, 20, -5, 100)).toBeCloseTo(20, 5);
+  });
+
+  it("stok sıfırdan başlayıp alım varsa doğrudan alım fiyatı olur", () => {
+    expect(agirlikliOrtalamaMaliyetHesapla(0, 0, 5, 40)).toBeCloseTo(40, 5);
   });
 
   it("sıfıra bölme / NaN üretmez", () => {

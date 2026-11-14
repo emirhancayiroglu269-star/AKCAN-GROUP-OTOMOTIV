@@ -4,7 +4,7 @@
 
 | | Sayı | Uygulama kodunu çalıştırıyor mu? |
 |---|---|---|
-| `tests/gercek/*.test.ts` (**yeni**) | 4 dosya / **68 test** | ✅ Evet — `src/` import ediyor |
+| `tests/gercek/*.test.ts` (**yeni**) | 5 dosya / **80 test** | ✅ Evet — `src/` import ediyor |
 | `tests/*.mjs` (eski "smoke") | 118 dosya | ❌ **Hayır** |
 
 ### Eski smoke testler hakkında uyarı
@@ -76,28 +76,106 @@ npm run test:eski-smoke   # eski .mjs dosyalarını çalıştırır (bilgi amaç
 - `vadeGrubuBul`: geçmiş/gelecek ayrımı, deterministik
 - `musteriAcikFaturalariFifo`: iptal atlama, **FIFO sıralama**, müşteri izolasyonu, isimle eşleşme (harf duyarsız), tahsilat havuzunun faturalara eskiden yeniye dağıtılması, fazla tahsilatın taşmaması, `vadeGunu` ile vade tarihi türetimi
 
-## Test yazarken ortaya çıkan davranışlar (dokümante edildi)
+### `tests/gercek/alis-zinciri.test.ts` — 7 test
+`src/modules/alis/AlisSayfasi.tsx` (handleKaydet) + `src/lib/database.ts`
 
-Testler yazılırken üç yerde **beklenen ile gerçek çelişti**; kod değiştirilmedi,
-test mevcut davranışı belgeliyor. Bunlar gözden geçirilmeli:
+Alış kaydının çekirdek döngüsünün birebir kopyası üzerinde:
+- Stok artışı + ağırlıklı ortalama (`10@10 + 10@20 = 15`)
+- Sıfır stoktan başlayınca ortalama doğrudan alış fiyatı
+- Çok kalemli alışta her ürünün kendi ortalaması
+- Kısmi başarı yok: 2. kalem reddedilirse 1. kalem de geri alınır
+- Aynı belge no idempotency (stok) — ve **bilinen açık** (maliyet)
+- Ortalama maliyetin 2 ondalığa yuvarlanması
 
-1. **`agirlikliOrtalamaMaliyetHesapla(0, 0, 0, 99)` → `99` döner.**
-   Toplam adet 0 olduğunda formül bölme yapamayıp `yeniFiyat`'ı döndürüyor.
-   "Stok yoksa maliyet 0 olmalı" beklentisiyle çelişir — çağıran taraf `yeniAdet: 0`
-   geçmemeli.
+## Test yazarken bulunan 3 şüpheli davranış — İNCELENDİ ve DÜZELTİLDİ
 
-2. **`belgeOnekleri`'nde olmayan belge türü sessizce `ST` önekine düşer.**
-   `"Alış Faturası"` `BELGE_TUR_ONEKLERI`'nde yok; `"Fatura"` (FT) var. Yanlış tür adı
-   kullanılırsa satış ve alış faturaları **aynı `ST-` sayacını** paylaşır. Sessiz hata.
+Testler yazılırken beklenen ile gerçek üç yerde çelişti. Üçü de incelendi:
 
-3. **`satisKalemiKarBilgisi`'nde `iskontoTutari` adet başına değil, toplam gibi işleniyor.**
-   `(adet × fiyat − iskonto) / adet` formülü, alan `iskontoTutari` (toplam) adını taşısa da
-   toplam gibi davranıyor. Alanı adet başına iskonto olarak geçen bir çağrı varsa kâr
-   yanlış hesaplanır.
+### 1. ✅ GERÇEK HATA — `agirlikliOrtalamaMaliyetHesapla` hiç alınmamış fiyatı maliyet yazıyordu
+**Dosya:** `src/lib/maliyet.ts`
+
+Toplam adet 0 olduğunda fonksiyon `yeniFiyat`'ı döndürüyordu. `yeniAdet: 0` geçen bir
+çağrı, hiç alınmamış bir fiyatı ortalama maliyet olarak yazdırabiliyordu.
+
+```diff
+- if (toplamAdet <= 0) return yeniFiyat;
++ if (toplamAdet <= 0) return 0;
+```
+
+Ayrıca `yeniAdet` negatifse toplam adedi bozabiliyordu → `Math.max(0, yeniAdet || 0)`.
+Test: `maliyet-kar.test.ts` — "hiç stok ve hiç alım yoksa 0 döner", "negatif yeniAdet…".
+
+### 2. ✅ GERÇEK HATA — Alış kaydında "hayalet alış": stok reddedilse de maliyet yazılıyordu
+**Dosya:** `src/modules/alis/AlisSayfasi.tsx` (handleKaydet döngüsü)
+
+Sıra yanlıştı: ortalama maliyet ve alış geçmişi **önce** yazılıyor, stok hareketi
+**sonra** uygulanıyordu. `stokHareketiUygula` `null` döndürdüğünde fonksiyon
+`return prev` diyordu — ama döngü içinde `sonuc` üzerinden yapılan önceki
+değişiklikler geri alınmıyordu ve bu kalemin alış geçmişi stok hareketi olmadan
+maliyete giriyordu.
+
+```diff
+- const yeniOrtalama = ...;          // önce maliyet
+- const guncellenmisParcalar = ...;   // önce geçmiş
+- const yeni = stokHareketiUygula(...);
+- if (!yeni) return prev;
++ const yeni = stokHareketiUygula(...);   // önce stok
++ if (!yeni) return prev;                 // reddedilirse hiçbir şey yazılmaz
++ const stokSonrasi = yeni.parcalar.find(...);
++ const yeniOrtalama = agirlikliOrtalamaMaliyetHesapla(stokSonrasi.stok - adet, ...);
++ sonuc = { ...yeni, parcalar: ... };      // sonra maliyet
+```
+
+Test: `alis-zinciri.test.ts` — 7 test, AlisSayfasi'nin döngüsünün birebir kopyası
+üzerinde çalışır (stok, ortalama maliyet, alış geçmişi, kısmi iptal, idempotency).
+
+### 3. ✅ SESSİZ HATA → artık gürültülü — tanımsız belge türü satış sayacını paylaşıyordu
+**Dosya:** `src/lib/belge.ts`
+
+`BELGE_TUR_ONEKLERI`'nde olmayan bir tür (örn. `"Alış Faturası"` — doğrusu `"Fatura"`)
+sessizce `"ST"` önekine düşüyor ve **satış fişiyle aynı sayacı** paylaşıyordu.
+`SatisSayfasi` bu listeyi `Secim` seçeneği olarak kullandığı için şu an UI'dan
+tetiklenemiyor, ama servis/veri içe aktarma yolundan sessizce numara çakışması
+üretebilirdi.
+
+```diff
++ if (!onEk) {
++   onEk = "ST";
++   if (belgeTuru && !bilinmeyenBelgeTurleri.has(belgeTuru)) {
++     bilinmeyenBelgeTurleri.add(belgeTuru);
++     console.warn(`[belge] Tanımsız belge türü "${belgeTuru}" — "ST" öneki ve SATIŞ sayacı kullanılıyor.`);
++   }
++ }
+```
+
+Tür başına yalnızca **bir kez** uyarır (konsol spam'i yok). Önek tablosu
+değiştirilmedi — `"Alış Faturası"` gibi bir türü tabloya eklemek veri kararıdır,
+kod kararı değil. Test: `belge-numaralandirma.test.ts` — 3 yeni test.
+
+## ⚠️ BİLİNEN AÇIK — henüz düzeltilmedi
+
+`alis-zinciri.test.ts` içinde **kasıtlı olarak başarısız beklentiyle değil, mevcut
+davranışı belgeleyen** bir test var:
+
+**Aynı belge numarasıyla ikinci kez alış kaydı → stok artmıyor (idempotent ✅) ama
+ortalama maliyet bozuluyor.** `stokHareketiUygula` hareketi reddediyor, ancak
+`AlisSayfasi` maliyeti ve alış geçmişini koşulsuz yazmaya devam ediyor:
+
+```
+10 adet @10 stokta, 10 adet @20 alındı → ortalama 15 (doğru)
+aynı belge no ile tekrar → stok 20 (doğru), ortalama 17.5 (YANLIŞ, 15 kalmalı)
+alış geçmişi 1 yerine 2 kayıt
+```
+
+Çift tıklama veya belge no çakışması durumunda maliyet kayar. Düzeltme: stok
+hareketinin reddedildiğini ayırt edip (`belgeNo` idempotency isabeti) maliyet
+yazımını da atlamak — `stokHareketiUygula`'nın "zaten uygulandı" bilgisini
+döndürmesi gerekir. Ayrı bir iş olarak ele alınmalı.
 
 ## Sıradaki adımlar (öneri)
 
-1. Yukarıdaki 3 davranışı gözden geçir; gerçekten hata ise düzelt ve testi güncelle.
+1. **Bilinen açığı kapat**: alış idempotency'sinde maliyet/geçmiş de atlanmalı
+   (`stokHareketiUygula`'ya "zaten uygulandı" sonucu ekle).
 2. `src/lib/finans-islem.ts` (`finansIslemDogrula`, `finansIslemiUygula`) için test —
    para hareketi, en kritik ikinci motor.
 3. `src/lib/fiyatlandirma.ts` (kampanya, müşteri özel fiyat, iskonto sırası) testi.

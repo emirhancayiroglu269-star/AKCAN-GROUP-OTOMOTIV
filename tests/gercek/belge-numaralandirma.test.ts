@@ -49,11 +49,41 @@ describe("yeniBelgeNumarasiUret", () => {
     expect(satis.belgeNo.startsWith("ST-")).toBe(true);
   });
 
-  it("öneki tanımsız belge türü ST'ye düşer (BELGE_TUR_ONEKLERI)", () => {
-    // "Alış Faturası" constants'ta yok → varsayılan "ST" öneki kullanılır.
-    // Bu bilinçli bir davranış değil; test mevcut davranışı belgeliyor.
-    const r = yeniBelgeNumarasiUret(bosDb(), "Alış Faturası");
-    expect(r.belgeNo.startsWith("ST-")).toBe(true);
+  it("tanımsız belge türü ST'ye düşer ama artık SESSİZ değil (uyarı basar)", () => {
+    // "Alış Faturası" BELGE_TUR_ONEKLERI'nde yok → "ST" + satış sayacı.
+    // Risk: sessizce satışla aynı sayacı paylaşmak. Uyarı basıldığı doğrulanıyor.
+    const uyarilar: string[] = [];
+    const orijinal = console.warn;
+    console.warn = (...a: any[]) => uyarilar.push(a.join(" "));
+    try {
+      const r = yeniBelgeNumarasiUret(bosDb(), "Alış Faturası");
+      expect(r.belgeNo.startsWith("ST-")).toBe(true);
+    } finally {
+      console.warn = orijinal;
+    }
+    expect(uyarilar).toHaveLength(1);
+    expect(uyarilar[0]).toContain("Alış Faturası");
+  });
+
+  it("aynı tanımsız tür için uyarı yalnızca bir kez basar (spam yok)", () => {
+    const uyarilar: string[] = [];
+    const orijinal = console.warn;
+    console.warn = (...a: any[]) => uyarilar.push(a.join(" "));
+    try {
+      yeniBelgeNumarasiUret(bosDb(), "Alış Faturası");
+      yeniBelgeNumarasiUret(bosDb(), "Alış Faturası");
+      yeniBelgeNumarasiUret(bosDb(), "Alış Faturası");
+    } finally {
+      console.warn = orijinal;
+    }
+    expect(uyarilar).toHaveLength(0); // ilk testte zaten uyarıldı → set'te
+  });
+
+  it("geçerli her belge türü kendi önekiyle üretilir", () => {
+    for (const tur of ["Satış Fişi", "Fatura", "İrsaliye", "Tahsilat Makbuzu", "İade Belgesi", "Teklif"]) {
+      const r = yeniBelgeNumarasiUret(bosDb(), tur);
+      expect(r.belgeNo).toMatch(/^[A-Z]{2}-\d{4}-000001$/);
+    }
   });
 
   it("6 haneden sonra da tekil kalır (padStart taşması)", () => {
