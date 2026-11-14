@@ -708,6 +708,231 @@ describe("diğer ekranlar — fiyat çözümlemesini kullanıyorlar mı", () => 
   });
 });
 
+describe("teklif fiyatı — merkezî çözümleme (düzeltildi)", () => {
+  /**
+   * `TekliflerSayfasi.tsx` kurallarının birebir kopyası:
+   *  - `kalemIcinFiyat(p, adet)` → parcaFiyatiHesapla
+   *  - `musteriFiyatlariniYenile(musteri)` → elle değiştirilmemiş kalemleri tazeler
+   *  - `kalemAdetGuncelle` → adetten bağımsız değilse yeniden hesap
+   *  - `kalemFiyatGuncelle` → fiyatElleDegistirildi: true
+   */
+  const kalemIcinFiyat = (d: any, p: any, musteri: any, adet = 1): number => {
+    if (!p) return 0;
+    return parcaFiyatiHesapla(d, p, musteri || null, adet).fiyat;
+  };
+
+  const tazele = (d: any, kalemler: any[], musteri: any) =>
+    kalemler.map((k) => {
+      if (k.fiyatElleDegistirildi) return k;
+      const p = d.parcalar.find((x: any) => x.id === k.parcaId);
+      if (!p) return k;
+      const { fiyat } = parcaFiyatiHesapla(d, p, musteri || null, k.adet || 1);
+      return k.birimFiyat === fiyat ? k : { ...k, birimFiyat: fiyat };
+    });
+
+  const duzen = () =>
+    db({
+      musteriOzelFiyatlar: [{ musteriId: "m1", parcaId: "p1", fiyat: 55 }],
+      musteriFiyatGruplari: [{ id: "g1", ad: "Toptan" }],
+      fiyatGrubuKurallari: [{ grupId: "g1", hedefTuru: "tumu", iskontoTuru: "yuzde", iskontoDeger: 30 }],
+      kampanyalar: [kampanya({ iskontoDeger: 10 })],
+    });
+
+  const kalem = (over: any = {}) => ({ id: "tk1", parcaId: "p1", adet: 1, birimFiyat: 100, iskontoTuru: "yuzde", iskontoDeger: 0, fiyatElleDegistirildi: false, ...over });
+
+  it("kalem eklenirken müşteriye özel fiyat uygulanır", () => {
+    expect(kalemIcinFiyat(duzen(), parca(), { id: "m1" })).toBe(55);
+  });
+
+  it("kalem eklenirken fiyat grubu uygulanır", () => {
+    expect(kalemIcinFiyat(duzen(), parca(), { id: "m2", fiyatGrubuId: "g1" })).toBe(70);
+  });
+
+  it("müşteri yokken kampanya uygulanır", () => {
+    expect(kalemIcinFiyat(duzen(), parca(), null)).toBe(90);
+  });
+
+  it("müşteri yazılınca kalemler tazelenir (indirim yansır)", () => {
+    const d = duzen();
+    const r = tazele(d, [kalem({ birimFiyat: 90 })], { id: "m1" });
+    expect(r[0].birimFiyat).toBe(55);
+  });
+
+  it("müşteri silinince fiyat normale döner", () => {
+    const d = duzen();
+    const r = tazele(d, [kalem({ birimFiyat: 55 })], null);
+    expect(r[0].birimFiyat).toBe(90); // kampanya %10
+  });
+
+  it("fiyat grubu olan müşteriye geçince grup fiyatı uygulanır", () => {
+    const d = duzen();
+    const r = tazele(d, [kalem({ birimFiyat: 55 })], { id: "m2", fiyatGrubuId: "g1" });
+    expect(r[0].birimFiyat).toBe(70);
+  });
+
+  it("elle değiştirilmiş kalem fiyatı EZİLMEZ", () => {
+    const d = duzen();
+    const r = tazele(d, [kalem({ birimFiyat: 42, fiyatElleDegistirildi: true })], { id: "m1" });
+    expect(r[0].birimFiyat).toBe(42);
+  });
+
+  it("fiyatı zaten doğru olan kalem aynı referansla döner (gereksiz render yok)", () => {
+    const d = duzen();
+    const k = kalem({ birimFiyat: 55 });
+    expect(tazele(d, [k], { id: "m1" })[0]).toBe(k);
+  });
+
+  it("ürün silinmişse kalem olduğu gibi kalır", () => {
+    const d = db({ parcalar: [] });
+    const k = kalem();
+    expect(tazele(d, [k], { id: "m1" })[0]).toBe(k);
+  });
+
+  it("birden fazla kalem ayrı ayrı tazelenir", () => {
+    const d = db({
+      parcalar: [parca({ id: "p1" }), parca({ id: "p2", satisFiyati: 200 })],
+      musteriOzelFiyatlar: [{ musteriId: "m1", parcaId: "p2", fiyat: 150 }],
+      kampanyalar: [kampanya({ iskontoDeger: 10 })],
+    });
+    const r = tazele(d, [kalem({ id: "a", parcaId: "p1", birimFiyat: 100 }), kalem({ id: "b", parcaId: "p2", birimFiyat: 200 })], { id: "m1" });
+    expect(r[0].birimFiyat).toBe(90); // kampanya
+    expect(r[1].birimFiyat).toBe(150); // özel fiyat
+  });
+
+  it("miktar bazlı kampanya teklifte adetle çalışır", () => {
+    const d = db({ kampanyalar: [kampanya({ iskontoTuru: "kademeliYuzde", iskontoDeger: 20, minimumAdet: 10 })] });
+    expect(kalemIcinFiyat(d, parca(), null, 3)).toBe(100);
+    expect(kalemIcinFiyat(d, parca(), null, 10)).toBe(80);
+  });
+});
+
+describe("teklif kaleminden kayda yazılmaması gerekenler", () => {
+  it("fiyatElleDegistirildi kayda yazılmaz (form içi işaret)", () => {
+    const kayitKalemleri = (kalemler: any[]) => kalemler.map(({ fiyatElleDegistirildi, ...k }) => k);
+    const r = kayitKalemleri([{ id: "tk1", parcaId: "p1", adet: 1, birimFiyat: 55, fiyatElleDegistirildi: true }]);
+    expect(r[0]).not.toHaveProperty("fiyatElleDegistirildi");
+    expect(r[0]).toMatchObject({ id: "tk1", parcaId: "p1", birimFiyat: 55 });
+  });
+});
+
+// ---------------------------------------------------------------------------
+describe("iskonto sırası — satır iskontosu ve genel iskonto", () => {
+  /**
+   * `SatisSayfasi.tsx` sırası:
+   *   hamToplam = Σ (adet × birimFiyat)
+   *   satır iskontoları düşülür  →  net
+   *   genel iskonto NET üzerinden hesaplanır
+   * Yani genel iskonto satır iskontosunun ÜSTÜNE biner (bileşik), toplanmaz.
+   */
+  const toplam = (satirlar: any[], genelTuru: string, genelDeger: number) => {
+    const ham = satirlar.reduce((t, s) => t + s.adet * s.birimFiyat, 0);
+    const satirIsk = satirlar.reduce((t, s) => {
+      const taban = s.adet * s.birimFiyat;
+      return t + (s.iskontoTuru === "yuzde" ? (taban * s.iskontoDeger) / 100 : s.iskontoDeger);
+    }, 0);
+    const net = Math.max(0, ham - satirIsk);
+    const genel = genelTuru === "yuzde" ? (net * genelDeger) / 100 : genelDeger;
+    return { ham, satirIsk, net, genel, odenecek: net - genel };
+  };
+
+  it("satır iskontosu önce, genel iskonto sonra (bileşik)", () => {
+    const r = toplam([{ adet: 1, birimFiyat: 100, iskontoTuru: "yuzde", iskontoDeger: 10 }], "yuzde", 10);
+    expect(r.ham).toBe(100);
+    expect(r.satirIsk).toBe(10);
+    expect(r.net).toBe(90);
+    expect(r.genel).toBe(9); // 90'ın %10'u, 100'ün değil
+    expect(r.odenecek).toBe(81);
+  });
+
+  it("toplama değil çarpma: %10 + %10 = %19 (toplam %20 değil)", () => {
+    const r = toplam([{ adet: 1, birimFiyat: 100, iskontoTuru: "yuzde", iskontoDeger: 10 }], "yuzde", 10);
+    expect(r.ham - r.odenecek).toBe(19);
+  });
+
+  it("satır iskontosu tutar bazlıysa adetle çarpılmaz (satır toplamından düşer)", () => {
+    const r = toplam([{ adet: 3, birimFiyat: 100, iskontoTuru: "tutar", iskontoDeger: 50 }], "tutar", 0);
+    expect(r.ham).toBe(300);
+    expect(r.satirIsk).toBe(50); // 3 × 50 = 150 DEĞİL
+    expect(r.odenecek).toBe(250);
+  });
+
+  it("satır iskontosu yüzde ise adetle birlikte büyür", () => {
+    const r = toplam([{ adet: 3, birimFiyat: 100, iskontoTuru: "yuzde", iskontoDeger: 10 }], "tutar", 0);
+    expect(r.satirIsk).toBe(30); // 300'ün %10'u
+  });
+
+  it("genel iskonto net satır toplamını aşamaz (negatif ödeme olmaz)", () => {
+    const r = toplam([{ adet: 1, birimFiyat: 100, iskontoTuru: "tutar", iskontoDeger: 0 }], "tutar", 500);
+    expect(r.odenecek).toBe(-400); // ham hesap; çağıran Math.min ile sınırlıyor
+    expect(Math.max(0, r.odenecek)).toBe(0);
+  });
+
+  it("birden fazla satırda iskontolar toplanır", () => {
+    const r = toplam(
+      [
+        { adet: 1, birimFiyat: 100, iskontoTuru: "yuzde", iskontoDeger: 10 },
+        { adet: 2, birimFiyat: 50, iskontoTuru: "tutar", iskontoDeger: 20 },
+      ],
+      "yuzde",
+      10
+    );
+    expect(r.ham).toBe(200);
+    expect(r.satirIsk).toBe(30); // 10 + 20
+    expect(r.net).toBe(170);
+    expect(r.genel).toBe(17);
+    expect(r.odenecek).toBe(153);
+  });
+});
+
+// ---------------------------------------------------------------------------
+describe("diğer ekranlar — fiyat çözümlemesini kullanıyorlar mı", () => {
+  /**
+   * `MusteriSiparisiSayfasi.tsx` içindeki `parcaIcinFiyat` kuralının kopyası:
+   * sipariş fiyatı artık `p.satisFiyati` yerine merkezî `parcaFiyatiHesapla`'dan
+   * geliyor. Müşteri adı kayıtlı bir cariyle eşleşiyorsa o cariye göre.
+   */
+  const parcaIcinFiyat = (d: any, p: any, musteri: any, adet = 1): string => {
+    if (!p) return "0";
+    const { fiyat } = parcaFiyatiHesapla(d, p, musteri || null, adet);
+    return String(fiyat);
+  };
+
+  const duzen = () =>
+    db({
+      musteriOzelFiyatlar: [{ musteriId: "m1", parcaId: "p1", fiyat: 55 }],
+      musteriFiyatGruplari: [{ id: "g1", ad: "Toptan" }],
+      fiyatGrubuKurallari: [{ grupId: "g1", hedefTuru: "tumu", iskontoTuru: "yuzde", iskontoDeger: 30 }],
+      kampanyalar: [kampanya({ iskontoDeger: 10 })],
+    });
+
+  it("müşteriye özel fiyat siparişte de uygulanır", () => {
+    expect(parcaIcinFiyat(duzen(), parca(), { id: "m1" })).toBe("55");
+  });
+
+  it("fiyat grubu siparişte de uygulanır", () => {
+    expect(parcaIcinFiyat(duzen(), parca(), { id: "m2", fiyatGrubuId: "g1" })).toBe("70");
+  });
+
+  it("müşteri yoksa kampanya uygulanır", () => {
+    expect(parcaIcinFiyat(duzen(), parca(), null)).toBe("90");
+  });
+
+  it("miktar bazlı kampanya siparişte adetle çalışır", () => {
+    const d = db({ kampanyalar: [kampanya({ iskontoTuru: "kademeliYuzde", iskontoDeger: 20, minimumAdet: 10 })] });
+    expect(parcaIcinFiyat(d, parca(), null, 3)).toBe("100");
+    expect(parcaIcinFiyat(d, parca(), null, 10)).toBe("80");
+  });
+
+  it("ürün yoksa '0' döner (form alanı string)", () => {
+    expect(parcaIcinFiyat(db(), undefined, null)).toBe("0");
+  });
+
+  it("dönen değer HER ZAMAN string (form alanı string tutuyor)", () => {
+    expect(typeof parcaIcinFiyat(duzen(), parca(), null)).toBe("string");
+    expect(typeof parcaIcinFiyat(db(), undefined, null)).toBe("string");
+  });
+});
+
 describe("⚠️ BELGELENMİŞ AÇIK — teklif fiyatı merkezî çözümlemeyi kullanmıyor", () => {
   /**
    * `TekliflerSayfasi.tsx` `kalemEkle` içinde `birimFiyat: p.satisFiyati || 0`

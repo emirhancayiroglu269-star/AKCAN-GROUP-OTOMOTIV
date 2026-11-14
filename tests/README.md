@@ -4,7 +4,7 @@
 
 | | Sayı | Uygulama kodunu çalıştırıyor mu? |
 |---|---|---|
-| `tests/gercek/*.test.ts` (**yeni**) | 9 dosya / **328 test** | ✅ Evet — `src/` import ediyor |
+| `tests/gercek/*.test.ts` (**yeni**) | 9 dosya / **352 test** | ✅ Evet — `src/` import ediyor |
 | `tests/*.mjs` (eski "smoke") | 118 dosya | ❌ **Hayır** |
 
 ### Eski smoke testler hakkında uyarı
@@ -104,7 +104,7 @@ npm run test:eski-smoke   # eski .mjs dosyalarını çalıştırır (bilgi amaç
 - `vadeGrubuBul`: geçmiş/gelecek ayrımı, deterministik
 - `musteriAcikFaturalariFifo`: iptal atlama, **FIFO sıralama**, müşteri izolasyonu, isimle eşleşme (harf duyarsız), tahsilat havuzunun faturalara eskiden yeniye dağıtılması, fazla tahsilatın taşmaması, `vadeGunu` ile vade tarihi türetimi
 
-### `tests/gercek/fiyatlandirma.test.ts` — 88 test
+### `tests/gercek/fiyatlandirma.test.ts` — 112 test
 `src/lib/fiyatlandirma.ts` (fiyat çözümleme motoru — satış ekranının her ürün
 eklerken çağırdığı fonksiyon)
 
@@ -165,28 +165,41 @@ Müşteri adı kayıtlı bir cariyle eşleşiyorsa o cariye göre hesaplanıyor
 
 **8 test** bu kuralı kilitliyor.
 
-### ⚠️ BİLİNEN AÇIK — teklif fiyatı hâlâ merkezî çözümlemeyi kullanmıyor
+## 8. ✅ GERÇEK HATA — teklif fiyatı merkezî çözümlemeyi atlıyordu (düzeltildi)
 
-`TekliflerSayfasi.tsx` → `kalemEkle`:
+**Dosya:** `src/modules/satis/TekliflerSayfasi.tsx`
 
-```ts
-birimFiyat: p.satisFiyati || 0   // müşteriye özel fiyat / grup / kampanya YOK
-```
+`kalemEkle` içinde `birimFiyat: p.satisFiyati || 0` kullanılıyordu — müşteriye
+özel fiyat, fiyat grubu ve kampanya **teklife hiç yansımıyordu**. Satış ve sipariş
+ekranları indirimli fiyat gösterirken teklif tam fiyat veriyordu.
 
-**Bilinçli olarak dokunulmadı** — üç nedenle:
+**Çözüm:** üç yeni yardımcı + dört bağlantı noktası.
 
-1. Teklifte müşteri **kalem eklendikten sonra** yazılıyor; kalem eklenirken
-   müşteri henüz bilinmiyor (sadece serbest metin).
-2. Tekliflerde kendine ait satır iskontosu akışı var (`iskontoTuru`/`iskontoDeger`).
-3. Personelin teklifi serbestçe fiyatlaması iş pratiği olabilir — otomatik indirim
-   istenmeyebilir.
+| Yardımcı | İş |
+|---|---|
+| `kalemIcinFiyat(p, adet)` | `parcaFiyatiHesapla` üzerinden fiyat |
+| `musteriFiyatlariniYenile(musteri)` | elle değiştirilmemiş kalemleri tazeler |
+| `kalemAdetGuncelle(id, adet)` | adet değişince miktar bazlı kampanyayı uygular |
+| `kalemFiyatGuncelle(id, fiyat)` | elle değişikliği **işaretler** |
 
-Bağlamak için `musteriAdi` alanı değiştiğinde mevcut kalemlerin `birimFiyat`'ını
-`parcaFiyatiHesapla` ile tazelemek gerekir. **Bu bir iş kararı** — onay gerekir.
+Bağlantı noktaları:
+1. **Müşteri alanı** (`musteriAdiDegistir`) — yazıldığı anda kalemler tazelenir
+2. **Ürün ekleme** (`kalemEkle`) — çözümlenmiş fiyatla girer
+3. **Adet girdisi** — miktar bazlı kampanya için yeniden hesap
+4. **Birim fiyat girdisi** — `fiyatElleDegistirildi: true` işareti
 
-**Aynı durumdaki yerler** (bilerek bırakıldı):
-- `IadeSayfasi.tsx` → `degisimSepeteEkle`: `p.satisFiyati || 0` (değişim ürününün
-  fiyatı — iade farkı hesabı, kural farklı olabilir)
+**Korunan davranış:** elle fiyat verilen kalem, müşteri veya adet değişince
+**ezilmez**. Fiyatı zaten doğru olan kalem aynı referansla döner (gereksiz render
+yok). `fiyatElleDegistirildi` yalnızca form içi işaret — **kayda yazılmaz**.
+
+**12 test** bu kuralı kilitliyor.
+
+### ⚠️ Hâlâ açık — `IadeSayfasi` değişim sepeti
+
+`IadeSayfasi.tsx` → `degisimSepeteEkle` hâlâ `p.satisFiyati || 0` kullanıyor.
+Bilerek bırakıldı: değişim ürününün fiyatı **iade farkı** hesabına giriyor ve
+kural satıştan farklı olabilir (müşteri zaten ödeme yapmış bir ürünü değiştiriyor;
+kampanya indirimi uygulanmalı mı, iş kararı). Bağlanması gerekirse aynı desen.
 
 ### `tests/gercek/audit-log.test.ts` — 101 test
 `src/lib/audit-log.ts` (denetim izi hash zinciri)

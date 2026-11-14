@@ -22,15 +22,82 @@ export function TekliflerSayfasi({ db, updateDb, aktifKullanici, setSekme, setSe
 
   const urunAramaSonuclari = urunArama.trim() ? R.hizliAramaYap(db, urunArama).slice(0, 6) : [];
 
+  // Teklif fiyatı da satışla aynı merkezî çözümlemeden geçer:
+  // müşteriye özel fiyat → müşteri fiyat grubu → aktif kampanya → normal fiyat.
+  // Müşteri adı kayıtlı bir cariyle eşleşiyorsa o cariye göre hesaplanır.
+  const formMusteri = db.cariler.find(
+    (c) => c.aktif !== false && c.ad.toLowerCase() === String(form.musteriAdi || "").trim().toLowerCase()
+  );
+  const kalemIcinFiyat = (p, adet = 1): number => {
+    if (!p) return 0;
+    const { fiyat } = R.parcaFiyatiHesapla(db, p, formMusteri || null, adet);
+    return fiyat;
+  };
+
   const kalemEkle = (p) => {
     if (kalemler.some((k) => k.parcaId === p.id)) return;
     setKalemler((prev) => [
       ...prev,
-      { id: R.yeniId("tk"), parcaId: p.id, stokKodu: p.stokKodu, ad: p.ad, marka: p.marka, adet: 1, birimFiyat: p.satisFiyati || 0, iskontoTuru: "yuzde", iskontoDeger: 0, kdvOrani: p.kdvOrani || 0, maliyet: R.gecerliMaliyet(p, db) },
+      {
+        id: R.yeniId("tk"),
+        parcaId: p.id,
+        stokKodu: p.stokKodu,
+        ad: p.ad,
+        marka: p.marka,
+        adet: 1,
+        birimFiyat: kalemIcinFiyat(p, 1),
+        iskontoTuru: "yuzde",
+        iskontoDeger: 0,
+        fiyatElleDegistirildi: false,
+        kdvOrani: p.kdvOrani || 0,
+        maliyet: R.gecerliMaliyet(p, db),
+      },
     ]);
     setUrunArama("");
   };
+
+  // Müşteri yazıldığı/değiştiği anda fiyatlar tazelenir. Elle değiştirilmiş
+  // kalem fiyatı (fiyatElleDegistirildi) kullanıcı kararıdır, EZİLMEZ.
+  const musteriFiyatlariniYenile = (musteri) => {
+    setKalemler((prev) =>
+      prev.map((k) => {
+        if (k.fiyatElleDegistirildi) return k;
+        const p = db.parcalar.find((x) => x.id === k.parcaId);
+        if (!p) return k;
+        const { fiyat } = R.parcaFiyatiHesapla(db, p, musteri || null, k.adet || 1);
+        return k.birimFiyat === fiyat ? k : { ...k, birimFiyat: fiyat };
+      })
+    );
+  };
+
+  const musteriAdiDegistir = (yeniAdi) => {
+    setForm((f) => ({ ...f, musteriAdi: yeniAdi }));
+    const kayit = db.cariler.find((c) => c.aktif !== false && c.ad.toLowerCase() === String(yeniAdi || "").trim().toLowerCase());
+    musteriFiyatlariniYenile(kayit || null);
+  };
+
   const kalemGuncelle = (id, alan, deger) => setKalemler((prev) => prev.map((k) => (k.id === id ? { ...k, [alan]: deger } : k)));
+
+  // Adet yazılınca miktar bazlı kampanya (Kademeli %, X Al Y Öde) için fiyat tazelenir.
+  const kalemAdetGuncelle = (id, yeniAdet) => {
+    const adet = parseFloat(yeniAdet) || 0;
+    setKalemler((prev) =>
+      prev.map((k) => {
+        if (k.id !== id) return k;
+        const p = db.parcalar.find((x) => x.id === k.parcaId);
+        const yeni = { ...k, adet: yeniAdet };
+        if (!p || k.fiyatElleDegistirildi) return yeni;
+        return { ...yeni, birimFiyat: kalemIcinFiyat(p, adet || 1) };
+      })
+    );
+  };
+
+  // Birim fiyat elle değiştirilirse işaretle — sonraki müşteri/adet değişiminde ezilmesin.
+  const kalemFiyatGuncelle = (id, yeniFiyat) => {
+    const fiyat = parseFloat(yeniFiyat) || 0;
+    setKalemler((prev) => prev.map((k) => (k.id === id ? { ...k, birimFiyat: fiyat, fiyatElleDegistirildi: true } : k)));
+  };
+
   const kalemSil = (id) => setKalemler((prev) => prev.filter((k) => k.id !== id));
 
   const formuAc = () => {
@@ -58,7 +125,8 @@ export function TekliflerSayfasi({ db, updateDb, aktifKullanici, setSekme, setSe
       gecerlilikTarihi: form.gecerlilikTarihi,
       musteriAdi: form.musteriAdi.trim(),
       musteriId: musteriKaydi?.id || null,
-      kalemler,
+      // `fiyatElleDegistirildi` yalnızca form içi bir işaret — kayda yazılmaz.
+      kalemler: kalemler.map(({ fiyatElleDegistirildi, ...k }) => k),
       aciklama: form.aciklama.trim(),
       hazirlayanPersonel: aktifKullanici?.adSoyad || hazirlayan.trim(),
       durum: "Taslak",
@@ -297,7 +365,7 @@ export function TekliflerSayfasi({ db, updateDb, aktifKullanici, setSekme, setSe
               Yeni Fiyat Teklifi
             </h3>
             <div className="grid grid-cols-2 gap-3 mb-3">
-              <R.Girdi label="Müşteri *" value={form.musteriAdi} onChange={(e) => setForm({ ...form, musteriAdi: e.target.value })} list="teklif-musteri-listesi" />
+              <R.Girdi label="Müşteri *" value={form.musteriAdi} onChange={(e) => musteriAdiDegistir(e.target.value)} list="teklif-musteri-listesi" />
               <datalist id="teklif-musteri-listesi">
                 {db.cariler.filter((c) => c.aktif !== false).map((c) => (
                   <option key={c.id} value={c.ad} />
@@ -343,13 +411,13 @@ export function TekliflerSayfasi({ db, updateDb, aktifKullanici, setSekme, setSe
                           <span className="text-xs" style={{ color: R.T.ink500 }}>
                             Adet
                           </span>
-                          <input type="number" value={k.adet} onChange={(e) => kalemGuncelle(k.id, "adet", parseFloat(e.target.value) || 0)} className="w-16 px-2 py-1 rounded border text-sm outline-none" style={{ borderColor: R.T.steel300, ...R.MONO }} />
+                          <input type="number" value={k.adet} onChange={(e) => kalemAdetGuncelle(k.id, e.target.value)} className="w-16 px-2 py-1 rounded border text-sm outline-none" style={{ borderColor: R.T.steel300, ...R.MONO }} />
                         </div>
                         <div className="flex flex-col gap-0.5">
                           <span className="text-xs" style={{ color: R.T.ink500 }}>
                             Birim Fiyat
                           </span>
-                          <input type="number" value={k.birimFiyat} onChange={(e) => kalemGuncelle(k.id, "birimFiyat", parseFloat(e.target.value) || 0)} className="w-24 px-2 py-1 rounded border text-sm outline-none" style={{ borderColor: R.T.steel300, ...R.MONO }} />
+                          <input type="number" value={k.birimFiyat} onChange={(e) => kalemFiyatGuncelle(k.id, e.target.value)} className="w-24 px-2 py-1 rounded border text-sm outline-none" style={{ borderColor: R.T.steel300, ...R.MONO }} />
                         </div>
                         <div className="flex flex-col gap-0.5">
                           <span className="text-xs" style={{ color: R.T.ink500 }}>
