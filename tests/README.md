@@ -4,7 +4,7 @@
 
 | | Sayı | Uygulama kodunu çalıştırıyor mu? |
 |---|---|---|
-| `tests/gercek/*.test.ts` (**yeni**) | 8 dosya / **240 test** | ✅ Evet — `src/` import ediyor |
+| `tests/gercek/*.test.ts` (**yeni**) | 9 dosya / **311 test** | ✅ Evet — `src/` import ediyor |
 | `tests/*.mjs` (eski "smoke") | 118 dosya | ❌ **Hayır** |
 
 ### Eski smoke testler hakkında uyarı
@@ -75,6 +75,88 @@ npm run test:eski-smoke   # eski .mjs dosyalarını çalıştırır (bilgi amaç
 - `satisAcikHesapKalan`: nakit/açık hesap ayrımı, kısmi tahsilat, 2 ondalık yuvarlama, fazla tahsilatta negatif
 - `vadeGrubuBul`: geçmiş/gelecek ayrımı, deterministik
 - `musteriAcikFaturalariFifo`: iptal atlama, **FIFO sıralama**, müşteri izolasyonu, isimle eşleşme (harf duyarsız), tahsilat havuzunun faturalara eskiden yeniye dağıtılması, fazla tahsilatın taşmaması, `vadeGunu` ile vade tarihi türetimi
+
+### `tests/gercek/fiyatlandirma.test.ts` — 71 test
+`src/lib/fiyatlandirma.ts` (fiyat çözümleme motoru — satış ekranının her ürün
+eklerken çağırdığı fonksiyon)
+
+**`iskontoUygula` (18 test)** — 5 iskonto türünün matematiği
+- `yuzde`, `tutar`, `sabitFiyat` + 0/negatif/aşırı değer kırpmaları
+- `kademeliYuzde`: eşik altı/üstü, kural yoksa eşik 1
+- `xAlYOde`: "3 Al 2 Öde" → birim 100 × 2/3; "2 Al 1 Öde" → 50
+- Miktar bazlı türler adet verilmezse normal fiyata düşer (belgelenmiş davranış)
+
+**`enSpesifikKural` (5 test)** — ürün > ürünGrubu > kategori > marka > tümü.
+Liste sırası değil, hedef önceliği belirleyici.
+
+**`parcaFiyatiHesapla` — ÖNCELİK SIRASI (22 test)**
+| Sıra | Kaynak | Test |
+|---|---|---|
+| 1 | Müşteriye Özel Fiyat | kampanya %50 olsa da özel fiyat kazanır |
+| 2 | Fiyat Grubu kuralı | %50 kampanya varken %30 grup indirimi kazanır |
+| 3 | Aktif kampanya | en spesifik kampanya seçilir |
+| 4 | Normal Fiyat | hiçbiri yoksa |
+
+Ayrıca: pasif/başlamamış/bitmiş kampanya uygulanmaz, **bugün başlayıp bugün
+biten** geçerli (sınırlar dahil), müşteri grubu hedefli kampanya yalnızca o
+gruptaki müşteriye, `satisFiyati` tanımsızsa `0` (NaN değil), sonuç 2 ondalığa
+yuvarlanır.
+
+**`kampanyaHedefUrunleri` (6 test)** — tümü/urun/urunGrubu/kategori/marka +
+**pasif ürünler hariç** + bilinmeyen hedef türü boş liste.
+
+**`kampanyaOnizlemesiHesapla` (6 test)** — kâr, kâr marjı, **maliyet altı uyarısı**,
+fiyat 0 iken marj `null`, stok yetersizliği uyarısı, iptal satışlar sayılmaz.
+
+**`kampanyaSatisRaporu` (10 test)** — `fiyatKaynagi` ile eşleşen kalemler,
+başka kampanya/iptal hariç, kalem iskontosu + genel iskonto payı cirodan düşer,
+ürün silinmişse çökmez.
+
+**İskonto sırası (6 test)** — `SatisSayfasi` hesap sırası kilitlendi:
+satır iskontosu önce → genel iskonto **net** üzerinden (bileşik). %10 + %10 = **%19**
+(toplam %20 değil). Tutar bazlı satır iskontosu adetle çarpılmaz.
+
+## ⚠️ BİLİNEN HATA — sepette adet artırılınca fiyat yenilenmiyor
+
+**Dosya:** `src/modules/satis/SatisSayfasi.tsx`
+
+`adetGuncelle` (satır ~215) yalnızca `adet` alanını güncelliyor, `birimFiyat`'ı
+yeniden hesaplamıyor:
+
+```ts
+setSepet((prev) => prev.map((s) => (s.parcaId === parcaId ? { ...s, adet } : s)));
+// birimFiyat güncellenmiyor
+```
+
+`sepeteEkle` ise `parcaFiyatiHesapla(db, p, seciliMusteri)` çağırırken **adet
+geçmiyor** (varsayılan 1).
+
+**Sonuç:** miktar bazlı kampanyalar sepette **hiç uygulanmıyor**:
+
+| Kampanya | Sepette 10 adet alınsa | Olması gereken |
+|---|---|---|
+| Kademeli %20 (min 10) | 100,00 ₺ | 80,00 ₺ |
+| 3 Al 2 Öde (min 3) | 100,00 ₺ | 66,67 ₺ |
+
+Yüzde / tutar / sabitFiyat kampanyaları adetten bağımsız olduğu için etkilenmiyor
+— bu yüzden hata fark edilmemiş.
+
+**Düzeltme (tek satır):** `adetGuncelle` içinde ürünü bulup fiyatı yeniden
+hesaplamak:
+
+```ts
+setSepet((prev) => prev.map((s) => {
+  if (s.parcaId !== parcaId) return s;
+  const p = db.parcalar.find((x) => x.id === parcaId);
+  if (!p) return { ...s, adet };
+  const { fiyat, kaynak } = R.parcaFiyatiHesapla(db, p, seciliMusteri, adet);
+  return { ...s, adet, birimFiyat: fiyat, fiyatKaynagi: kaynak };
+}));
+```
+
+Dikkat: manuel fiyat değiştirilmiş satırlar (`fiyatElleDegistirildi` benzeri bir
+işaret varsa) ezilmemeli. Ayrıca aynı düzeltme `sepeteEkle`'de mevcut satırın
+adedi artırılırken de gerekli.
 
 ### `tests/gercek/audit-log.test.ts` — 101 test
 `src/lib/audit-log.ts` (denetim izi hash zinciri)
