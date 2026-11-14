@@ -4,7 +4,7 @@
 
 | | Sayı | Uygulama kodunu çalıştırıyor mu? |
 |---|---|---|
-| `tests/gercek/*.test.ts` (**yeni**) | 7 dosya / **139 test** | ✅ Evet — `src/` import ediyor |
+| `tests/gercek/*.test.ts` (**yeni**) | 8 dosya / **197 test** | ✅ Evet — `src/` import ediyor |
 | `tests/*.mjs` (eski "smoke") | 118 dosya | ❌ **Hayır** |
 
 ### Eski smoke testler hakkında uyarı
@@ -75,6 +75,51 @@ npm run test:eski-smoke   # eski .mjs dosyalarını çalıştırır (bilgi amaç
 - `satisAcikHesapKalan`: nakit/açık hesap ayrımı, kısmi tahsilat, 2 ondalık yuvarlama, fazla tahsilatta negatif
 - `vadeGrubuBul`: geçmiş/gelecek ayrımı, deterministik
 - `musteriAcikFaturalariFifo`: iptal atlama, **FIFO sıralama**, müşteri izolasyonu, isimle eşleşme (harf duyarsız), tahsilat havuzunun faturalara eskiden yeniye dağıtılması, fazla tahsilatın taşmaması, `vadeGunu` ile vade tarihi türetimi
+
+### `tests/gercek/audit-log.test.ts` — 58 test
+`src/lib/audit-log.ts` (denetim izi hash zinciri)
+
+Amaç: denetim izinin **gerçekten kurcalanamaz** olduğunu kanıtlamak.
+
+**`auditKaydiEkle` (9 test)**
+- Kayıt yapısı, `hash` 8 haneli hex, ilk kaydın `oncekiHash`'i `GENESIS`
+- Her kayıt bir öncekinin hash'ine bağlanır; en yeni başta
+- Immutability, 5000 kayıt sınırı (bellek koruması)
+- Nesne değerleri deterministik metne çevrilir; `null`/`undefined` → `—`
+
+**`auditZincirKontrolu` — temiz zincir (5 test)**
+- Boş db, `auditGecmisi` olmayan db (çökmez), tek kayıt, 50 kayıtlık zincir
+- Hash'siz (Faz-5 öncesi) legacy kayıtlar hata sayılmaz
+
+**`auditZincirKontrolu` — KURCALAMA TESPİTİ (11 test)** ← bu testin asıl amacı
+- İşlem türü, değer, kullanıcı adı, tarih, sonuç, hash alanı değiştirilirse yakalanır
+- **Aradan bir kayıt silinirse** zincir bağlantısı kopar → "Zincir bozuk"
+- **Kayıtlar yer değiştirirse** yakalanır
+- Sondaki kaydın `oncekiHash`'i bozulursa yakalanır
+- Birden fazla kurcalama → birden fazla bulgu; bulguda kaydın `id`'si raporlanır
+
+**`auditKategoriBelirle` (24 test)** — 20 kategori eşlemesi + harf duyarsızlık + boş girdi + liste tutarlılığı
+
+**`kritikYetkiVarMi` (5 test)** — yetkili/pasif/yetkisiz kullanıcı, oturum yok, tanımsız anahtar
+
+**Uçtan uca** — 100 kayıt temiz çıkar; 50. kayıt bozulunca tam o `id` ile yakalanır
+
+## ⚠️ `auditKategoriBelirle` — kontrol sırası sürprizleri (belgelendi)
+
+Kategori eşlemesi `if` zinciriyle yapılıyor ve **sıra önemli**. Testler yazılırken
+iki sürpriz çıktı; kod değiştirilmedi, testler gerçek davranışı belgeliyor:
+
+| İşlem türü | Beklenen | Gerçek | Neden |
+|---|---|---|---|
+| `"Satış iadesi"` | İade | **Satış** | `t.includes("satış")` kontrolü `iade`'den önce |
+| `"Stok girişi"` | Stok | **Giriş** | `t.includes("giriş")` kontrolü `stok`'tan önce |
+
+`"Müşteri iadesi alındı"` → İade (doğru, çünkü "satış" geçmiyor).
+`"Stok düzeltmesi"` → Stok (doğru).
+
+Bu bir hata değil ama **raporlarda kategori dağılımını etkiler**: iade işlemleri
+"Satış" kategorisinde, stok girişleri "Giriş" kategorisinde birikir. Düzeltmek
+için `if` zincirinin sırası değiştirilmeli — veri kararı olduğu için ayrı iş.
 
 ### `tests/gercek/finans-islem.test.ts` — 49 test
 `src/lib/finans-islem.ts` (para hareketi motoru — tahsilat / ödeme)
