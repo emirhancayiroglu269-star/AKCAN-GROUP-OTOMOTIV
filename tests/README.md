@@ -4,7 +4,7 @@
 
 | | Sayı | Uygulama kodunu çalıştırıyor mu? |
 |---|---|---|
-| `tests/gercek/*.test.ts` (**yeni**) | 9 dosya / **311 test** | ✅ Evet — `src/` import ediyor |
+| `tests/gercek/*.test.ts` (**yeni**) | 9 dosya / **320 test** | ✅ Evet — `src/` import ediyor |
 | `tests/*.mjs` (eski "smoke") | 118 dosya | ❌ **Hayır** |
 
 ### Eski smoke testler hakkında uyarı
@@ -76,7 +76,7 @@ npm run test:eski-smoke   # eski .mjs dosyalarını çalıştırır (bilgi amaç
 - `vadeGrubuBul`: geçmiş/gelecek ayrımı, deterministik
 - `musteriAcikFaturalariFifo`: iptal atlama, **FIFO sıralama**, müşteri izolasyonu, isimle eşleşme (harf duyarsız), tahsilat havuzunun faturalara eskiden yeniye dağıtılması, fazla tahsilatın taşmaması, `vadeGunu` ile vade tarihi türetimi
 
-### `tests/gercek/fiyatlandirma.test.ts` — 71 test
+### `tests/gercek/fiyatlandirma.test.ts` — 80 test
 `src/lib/fiyatlandirma.ts` (fiyat çözümleme motoru — satış ekranının her ürün
 eklerken çağırdığı fonksiyon)
 
@@ -116,47 +116,49 @@ başka kampanya/iptal hariç, kalem iskontosu + genel iskonto payı cirodan dü�
 satır iskontosu önce → genel iskonto **net** üzerinden (bileşik). %10 + %10 = **%19**
 (toplam %20 değil). Tutar bazlı satır iskontosu adetle çarpılmaz.
 
-## ⚠️ BİLİNEN HATA — sepette adet artırılınca fiyat yenilenmiyor
+## 6. ✅ GERÇEK HATA — sepette adet artırılınca fiyat yenilenmiyordu (düzeltildi)
 
 **Dosya:** `src/modules/satis/SatisSayfasi.tsx`
 
-`adetGuncelle` (satır ~215) yalnızca `adet` alanını güncelliyor, `birimFiyat`'ı
-yeniden hesaplamıyor:
+`adetGuncelle` yalnızca `adet` alanını güncelliyordu, `birimFiyat`'ı yeniden
+hesaplamıyordu. `sepeteEkle` de `parcaFiyatiHesapla`'yı **adet geçmeden**
+(varsayılan 1) çağırıyordu.
 
-```ts
-setSepet((prev) => prev.map((s) => (s.parcaId === parcaId ? { ...s, adet } : s)));
-// birimFiyat güncellenmiyor
-```
+**Sonuç:** miktar bazlı kampanyalar sepette **hiç uygulanmıyordu**:
 
-`sepeteEkle` ise `parcaFiyatiHesapla(db, p, seciliMusteri)` çağırırken **adet
-geçmiyor** (varsayılan 1).
-
-**Sonuç:** miktar bazlı kampanyalar sepette **hiç uygulanmıyor**:
-
-| Kampanya | Sepette 10 adet alınsa | Olması gereken |
+| Kampanya | Önce (10 adette) | Sonra |
 |---|---|---|
-| Kademeli %20 (min 10) | 100,00 ₺ | 80,00 ₺ |
-| 3 Al 2 Öde (min 3) | 100,00 ₺ | 66,67 ₺ |
+| Kademeli %20 (min 10 adet) | 100,00 ₺ | **80,00 ₺** |
+| 3 Al 2 Öde (min 3 adet) | 100,00 ₺ | **66,67 ₺** |
 
-Yüzde / tutar / sabitFiyat kampanyaları adetten bağımsız olduğu için etkilenmiyor
-— bu yüzden hata fark edilmemiş.
+Müşteri 10 adet alıyor, indirimi görmüyordu. Yüzde/tutar/sabitFiyat kampanyaları
+adetten bağımsız olduğu için etkilenmiyordu — hata bu yüzden fark edilmemişti.
 
-**Düzeltme (tek satır):** `adetGuncelle` içinde ürünü bulup fiyatı yeniden
-hesaplamak:
+**Çözüm:** yeni `fiyatiAdedeGoreYenile(s, parca, adet)` yardımcısı, üç yerde
+devreye giriyor:
 
-```ts
-setSepet((prev) => prev.map((s) => {
-  if (s.parcaId !== parcaId) return s;
-  const p = db.parcalar.find((x) => x.id === parcaId);
-  if (!p) return { ...s, adet };
-  const { fiyat, kaynak } = R.parcaFiyatiHesapla(db, p, seciliMusteri, adet);
-  return { ...s, adet, birimFiyat: fiyat, fiyatKaynagi: kaynak };
-}));
-```
+1. `adetGuncelle` — adet +/- veya elle yazıldığında
+2. `sepeteEkle` — mevcut satırın adedi artırıldığında
+3. "Sepetteki fiyatları bu müşteriye göre yeniden hesapla" — artık `s.adet`
+   geçiyor (eskiden 1 geçiyordu, aynı hata orada da vardı)
 
-Dikkat: manuel fiyat değiştirilmiş satırlar (`fiyatElleDegistirildi` benzeri bir
-işaret varsa) ezilmemeli. Ayrıca aynı düzeltme `sepeteEkle`'de mevcut satırın
-adedi artırılırken de gerekli.
+**Korunan davranışlar** (test edildi):
+
+| Durum | Davranış |
+|---|---|
+| Elle değiştirilmiş fiyat (`fiyatElleDegistirildi`) | **Ezilmez** — kullanıcı kararı |
+| Müşteriye özel fiyat | Ezilmez (adetten bağımsız) |
+| Fiyat grubu fiyatı | Ezilmez (adetten bağımsız) |
+| Yalnızca yüzde/tutar/sabitFiyat kampanyası var | Gereksiz yeniden hesap **yapılmaz** |
+| Pasif / süresi geçmiş adet bazlı kampanya | Yenileme tetiklemez |
+| Müşteri grubu hedefli kampanya | Yalnızca o gruptaki müşteride |
+
+`birimFiyatDegisikliginiUygula` artık `fiyatElleDegistirildi: true` ve
+`fiyatKaynagi: "Elle Değiştirildi"` işaretlerini de yazıyor — arayüzde rozet
+doğru görünüyor ve sonraki adet değişiminde fiyat ezilmiyor.
+
+**13 test** bu kuralı kilitliyor (`fiyatiAdedeGoreYenile`'ın birebir kopyası
+üzerinden).
 
 ### `tests/gercek/audit-log.test.ts` — 101 test
 `src/lib/audit-log.ts` (denetim izi hash zinciri)

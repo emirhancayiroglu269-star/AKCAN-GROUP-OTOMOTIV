@@ -474,42 +474,119 @@ describe("kampanyaSatisRaporu", () => {
 });
 
 // ---------------------------------------------------------------------------
-// AŞAĞIDAKİ TESTLER BİR HATAYI BELGELER — düzeltme bekliyor.
+// SEPET ENTEGRASYONU — `SatisSayfasi.tsx` fiyat yenileme kuralı
 // ---------------------------------------------------------------------------
-describe("⚠️ BİLİNEN HATA — sepette adet artırılınca fiyat yenilenmiyor", () => {
-  /**
-   * `SatisSayfasi.tsx`'te `adetGuncelle` (satır ~215) yalnızca `adet` alanını
-   * güncelliyor, `birimFiyat`'ı yeniden hesaplamıyor. `sepeteEkle` ise
-   * `parcaFiyatiHesapla(db, p, seciliMusteri)` çağırırken **adet geçmiyor**
-   * (varsayılan 1). Sonuç: miktar bazlı kampanyalar (Kademeli %, X Al Y Öde)
-   * sepette HİÇ uygulanmıyor.
-   *
-   * Bu testler motorun doğru davranışını kilitler; sepetteki eksiklik
-   * giderildiğinde `adetGuncelle` bu çağrıyı yapmalı:
-   *   parcaFiyatiHesapla(db, p, seciliMusteri, adet)
-   */
-  it("motor doğru adetle çağrılırsa kademeli indirim uygulanır", () => {
-    const d = db({ kampanyalar: [kampanya({ iskontoTuru: "kademeliYuzde", iskontoDeger: 20, minimumAdet: 10 })] });
-    // Sepet 10 adete çıktığında çağrılması GEREKEN hal:
-    expect(parcaFiyatiHesapla(d, parca(), null, 10).fiyat).toBe(80);
+/**
+ * `SatisSayfasi.tsx` içindeki `fiyatiAdedeGoreYenile` kuralının birebir
+ * kopyası. Sepet satırı adet değişince bu kuralla tazelenir.
+ *
+ * Kurallar:
+ *  1) Elle değiştirilmiş fiyat (fiyatElleDegistirildi) EZİLMEZ.
+ *  2) Müşteriye özel fiyat / fiyat grubu adetten bağımsız → dokunulmaz.
+ *  3) Yalnızca miktar bazlı (kademeliYuzde, xAlYOde) aktif kampanya varsa
+ *     fiyat yeniden hesaplanır.
+ *  4) Diğer türler (yuzde/tutar/sabitFiyat) adetten bağımsız → gereksiz
+ *     yeniden hesap yapılmaz (manuel düzenlemeleri bozmasın).
+ */
+const ADET_BAZLI = ["kademeliYuzde", "xAlYOde"];
+
+const fiyatiAdedeGoreYenile = (d: any, sepetSatiri: any, parca: any, adet: number, musteri: any = null) => {
+  const s = sepetSatiri;
+  if (!parca || s.fiyatElleDegistirildi) return s;
+  const kaynak = String(s.fiyatKaynagi || "");
+  if (kaynak === "Müşteriye Özel Fiyat" || kaynak.startsWith("Fiyat Grubu:")) return s;
+  const bugunIso = isoGun(new Date());
+  const adetBazliVar = d.kampanyalar.some(
+    (k: any) =>
+      k.aktif !== false &&
+      k.baslangicTarihi <= bugunIso &&
+      k.bitisTarihi >= bugunIso &&
+      ADET_BAZLI.includes(k.iskontoTuru) &&
+      (!k.hedefMusteriGrubuId || (musteri && musteri.fiyatGrubuId === k.hedefMusteriGrubuId))
+  );
+  if (!adetBazliVar) return s;
+  const { fiyat, kaynak: yeniKaynak } = parcaFiyatiHesapla(d, parca, musteri, adet);
+  // DİKKAT: `adet` burada yazılmalı — çağıran `{...s, adet}` göndermeden önce
+  // tazeleme yapıyorsa adet kaybolur. Kural adedi de taşır.
+  return { ...s, adet, birimFiyat: fiyat, fiyatKaynagi: yeniKaynak };
+};
+
+describe("sepette adet değişince fiyat yenileme", () => {
+  const kademeli = () => db({ kampanyalar: [kampanya({ iskontoTuru: "kademeliYuzde", iskontoDeger: 20, minimumAdet: 10 })] });
+  const satir = (over: any = {}) => ({ parcaId: "p1", adet: 1, birimFiyat: 100, iskontoTuru: "tutar", iskontoDeger: 0, fiyatKaynagi: "Kampanya: Yaz Kampanyası", ...over });
+
+  it("Kademeli %: 1 adetten 10 adete çıkınca fiyat 80'e iner", () => {
+    const d = kademeli();
+    const r = fiyatiAdedeGoreYenile(d, satir(), parca(), 10);
+    expect(r.adet).toBe(10);
+    expect(r.birimFiyat).toBe(80);
   });
 
-  it("motor adet verilmeden çağrılırsa (sepetteki mevcut hal) indirim kaybolur", () => {
-    const d = db({ kampanyalar: [kampanya({ iskontoTuru: "kademeliYuzde", iskontoDeger: 20, minimumAdet: 10 })] });
-    // `sepeteEkle` bu şekilde çağırıyor → 10 adet alınsa bile 100 kalıyor:
-    expect(parcaFiyatiHesapla(d, parca(), null).fiyat).toBe(100);
+  it("Kademeli %: 10 adetten 3 adete düşünce fiyat 100'e döner", () => {
+    const d = kademeli();
+    const r = fiyatiAdedeGoreYenile(d, satir({ adet: 10, birimFiyat: 80 }), parca(), 3);
+    expect(r.birimFiyat).toBe(100);
   });
 
-  it("X Al Y Öde kampanyası da sepette kaybolur", () => {
+  it("X Al Y Öde: 3 adette birim fiyat 66.67", () => {
     const d = db({ kampanyalar: [kampanya({ iskontoTuru: "xAlYOde", iskontoDeger: 2, minimumAdet: 3 })] });
-    expect(parcaFiyatiHesapla(d, parca(), null, 3).fiyat).toBe(66.67); // olması gereken
-    expect(parcaFiyatiHesapla(d, parca(), null).fiyat).toBe(100); // sepetteki gerçek
+    expect(fiyatiAdedeGoreYenile(d, satir(), parca(), 3).birimFiyat).toBe(66.67);
   });
 
-  it("yüzde / tutar / sabitFiyat kampanyaları adetten bağımsız → etkilenmez", () => {
-    const y = db({ kampanyalar: [kampanya({ iskontoTuru: "yuzde", iskontoDeger: 10 })] });
-    expect(parcaFiyatiHesapla(y, parca(), null, 1).fiyat).toBe(90);
-    expect(parcaFiyatiHesapla(y, parca(), null, 100).fiyat).toBe(90); // adet fark etmez
+  it("elle değiştirilmiş fiyat EZİLMEZ", () => {
+    const d = kademeli();
+    const r = fiyatiAdedeGoreYenile(d, satir({ birimFiyat: 42, fiyatElleDegistirildi: true }), parca(), 10);
+    expect(r.birimFiyat).toBe(42);
+  });
+
+  it("müşteriye özel fiyat EZİLMEZ", () => {
+    const d = kademeli();
+    const r = fiyatiAdedeGoreYenile(d, satir({ birimFiyat: 55, fiyatKaynagi: "Müşteriye Özel Fiyat" }), parca(), 10);
+    expect(r.birimFiyat).toBe(55);
+  });
+
+  it("fiyat grubu fiyatı EZİLMEZ", () => {
+    const d = kademeli();
+    const r = fiyatiAdedeGoreYenile(d, satir({ birimFiyat: 70, fiyatKaynagi: "Fiyat Grubu: Toptan" }), parca(), 10);
+    expect(r.birimFiyat).toBe(70);
+  });
+
+  it("adet bazlı kampanya yoksa yeniden hesap yapılmaz", () => {
+    // yüzde kampanyası var ama adetten bağımsız → satırdaki fiyat korunur
+    const d = db({ kampanyalar: [kampanya({ iskontoTuru: "yuzde", iskontoDeger: 10 })] });
+    const r = fiyatiAdedeGoreYenile(d, satir({ birimFiyat: 95 }), parca(), 10);
+    expect(r.birimFiyat).toBe(95); // 90'a düşürülmez
+  });
+
+  it("pasif adet bazlı kampanya yenileme tetiklemez", () => {
+    const d = db({ kampanyalar: [kampanya({ iskontoTuru: "kademeliYuzde", iskontoDeger: 20, minimumAdet: 10, aktif: false })] });
+    expect(fiyatiAdedeGoreYenile(d, satir({ birimFiyat: 99 }), parca(), 10).birimFiyat).toBe(99);
+  });
+
+  it("süresi geçmiş adet bazlı kampanya yenileme tetiklemez", () => {
+    const d = db({ kampanyalar: [kampanya({ iskontoTuru: "kademeliYuzde", iskontoDeger: 20, minimumAdet: 10, bitisTarihi: gunEkle(-1) })] });
+    expect(fiyatiAdedeGoreYenile(d, satir({ birimFiyat: 99 }), parca(), 10).birimFiyat).toBe(99);
+  });
+
+  it("müşteri grubu hedefli kampanya yalnızca o gruptaki müşteride yeniler", () => {
+    const d = db({ kampanyalar: [kampanya({ iskontoTuru: "kademeliYuzde", iskontoDeger: 20, minimumAdet: 10, hedefMusteriGrubuId: "g1" })] });
+    expect(fiyatiAdedeGoreYenile(d, satir(), parca(), 10, { id: "m1", fiyatGrubuId: "g1" }).birimFiyat).toBe(80);
+    expect(fiyatiAdedeGoreYenile(d, satir({ birimFiyat: 100 }), parca(), 10, { id: "m2", fiyatGrubuId: "g2" }).birimFiyat).toBe(100);
+  });
+
+  it("ürün bulunamazsa satır olduğu gibi kalır (çökmez)", () => {
+    const r = fiyatiAdedeGoreYenile(kademeli(), satir({ birimFiyat: 100 }), undefined, 10);
+    expect(r.birimFiyat).toBe(100);
+  });
+
+  it("fiyatKaynagi da güncellenir (arayüzdeki rozet doğru görünsün)", () => {
+    const r = fiyatiAdedeGoreYenile(kademeli(), satir(), parca(), 10);
+    expect(r.fiyatKaynagi).toBe("Kampanya: Yaz Kampanyası");
+  });
+
+  it("sepet toplamı: 10 adet × 80 = 800 (indirim gerçekten yansıyor)", () => {
+    const r = fiyatiAdedeGoreYenile(kademeli(), satir(), parca(), 10);
+    expect(r.adet * r.birimFiyat).toBe(800); // 10 × 100 = 1000 değil
   });
 });
 

@@ -121,6 +121,34 @@ export function SatisSayfasi({ db, updateDb, sepet, setSepet, aktifKullanici, mu
   // --- Arama / sepete ekleme ---------------------------------------------
   const aramaSonuclari = arama.trim() ? R.hizliAramaYap(db, arama).slice(0, 8) : [];
 
+  // Miktar bazlı kampanyalar (Kademeli %, X Al Y Öde) birim fiyatı ADEDE göre
+  // değiştirir. Bu yüzden fiyat çözümlemesi her adet değişiminde yeniden
+  // yapılmalı; aksi halde sepete 1 adet fiyatıyla giren ürün 10 adete
+  // çıkarıldığında indirim hiç uygulanmaz.
+  // Elle değiştirilmiş fiyat (fiyatElleDegistirildi) kullanıcı kararıdır, EZİLMEZ.
+  // Fiyat grubu / müşteriye özel fiyat adetten bağımsızdır; onlara dokunulmaz.
+  const ADET_BAZLI_KAMPANYA_TURLERI = ["kademeliYuzde", "xAlYOde"];
+  const fiyatiAdedeGoreYenile = (s, parca, adet) => {
+    if (!parca || s.fiyatElleDegistirildi) return s;
+    const kaynak = String(s.fiyatKaynagi || "");
+    if (kaynak === "Müşteriye Özel Fiyat" || kaynak.startsWith("Fiyat Grubu:")) return s;
+    // Sadece miktar bazlı bir kampanya söz konusuysa yeniden hesapla —
+    // yüzde/tutar/sabitFiyat kampanyaları adetten bağımsız, gereksiz
+    // yeniden hesaplama manuel düzenlemeleri bozabilir.
+    const bugunIso = R.isoGun(new Date());
+    const adetBazliKampanyaVar = db.kampanyalar.some(
+      (k) =>
+        k.aktif !== false &&
+        k.baslangicTarihi <= bugunIso &&
+        k.bitisTarihi >= bugunIso &&
+        ADET_BAZLI_KAMPANYA_TURLERI.includes(k.iskontoTuru) &&
+        (!k.hedefMusteriGrubuId || (seciliMusteri && seciliMusteri.fiyatGrubuId === k.hedefMusteriGrubuId))
+    );
+    if (!adetBazliKampanyaVar) return s;
+    const { fiyat, kaynak: yeniKaynak } = R.parcaFiyatiHesapla(db, parca, seciliMusteri, adet);
+    return { ...s, birimFiyat: fiyat, fiyatKaynagi: yeniKaynak };
+  };
+
   const sepeteEkle = (p) => {
     if (p.urunTipi === "Set") {
       if (!R.setSatilabilirMi(db, p, 1)) {
@@ -135,7 +163,13 @@ export function SatisSayfasi({ db, updateDb, sepet, setSepet, aktifKullanici, mu
     }
     setSepet((prev) => {
       const mevcut = prev.find((s) => s.parcaId === p.id);
-      if (mevcut) return prev.map((s) => (s.parcaId === p.id ? { ...s, adet: s.adet + 1 } : s));
+      if (mevcut) {
+        return prev.map((s) => {
+          if (s.parcaId !== p.id) return s;
+          const yeniAdet = s.adet + 1;
+          return fiyatiAdedeGoreYenile({ ...s, adet: yeniAdet }, p, yeniAdet);
+        });
+      }
       return [...prev, { parcaId: p.id, adet: 1, birimFiyat: fiyat, iskontoTuru: "tutar", iskontoDeger: 0, fiyatKaynagi: kaynak }];
     });
     setArama("");
@@ -218,7 +252,13 @@ export function SatisSayfasi({ db, updateDb, sepet, setSepet, aktifKullanici, mu
       setSepet((prev) => prev.filter((s) => s.parcaId !== parcaId));
       return;
     }
-    setSepet((prev) => prev.map((s) => (s.parcaId === parcaId ? { ...s, adet } : s)));
+    setSepet((prev) =>
+      prev.map((s) => {
+        if (s.parcaId !== parcaId) return s;
+        const parca = db.parcalar.find((x) => x.id === parcaId);
+        return fiyatiAdedeGoreYenile({ ...s, adet }, parca, adet);
+      })
+    );
   };
 
   const satirSil = (parcaId) => setSepet((prev) => prev.filter((s) => s.parcaId !== parcaId));
@@ -277,7 +317,11 @@ export function SatisSayfasi({ db, updateDb, sepet, setSepet, aktifKullanici, mu
 
     const parca = db.parcalar.find((p) => p.id === parcaId);
     setSepet((prev) =>
-      prev.map((s) => (s.parcaId === parcaId ? { ...s, birimFiyat: Math.round(tutar * 100) / 100 } : s))
+      prev.map((s) =>
+        s.parcaId === parcaId
+          ? { ...s, birimFiyat: Math.round(tutar * 100) / 100, fiyatElleDegistirildi: true, fiyatKaynagi: "Elle Değiştirildi" }
+          : s
+      )
     );
     setFiyatTaslaklari((prev) => {
       const sonraki = { ...prev };
@@ -1333,8 +1377,10 @@ export function SatisSayfasi({ db, updateDb, sepet, setSepet, aktifKullanici, mu
                       prev.map((s) => {
                         const p = db.parcalar.find((x) => x.id === s.parcaId);
                         if (!p) return s;
-                        const { fiyat } = R.parcaFiyatiHesapla(db, p, seciliMusteri);
-                        return { ...s, birimFiyat: fiyat };
+                        // Müşteri değişti → elle değiştirilmiş fiyat işareti de
+                        // sıfırlanır, adet bazlı kampanya da doğru adetle hesaplanır.
+                        const { fiyat, kaynak } = R.parcaFiyatiHesapla(db, p, seciliMusteri, s.adet);
+                        return { ...s, birimFiyat: fiyat, fiyatKaynagi: kaynak, fiyatElleDegistirildi: false };
                       })
                     );
                     R.bildirimGoster("Sepetteki fiyatlar bu müşteriye göre yeniden hesaplandı.", "basari");
