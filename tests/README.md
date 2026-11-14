@@ -4,7 +4,7 @@
 
 | | Sayı | Uygulama kodunu çalıştırıyor mu? |
 |---|---|---|
-| `tests/gercek/*.test.ts` (**yeni**) | 6 dosya / **90 test** | ✅ Evet — `src/` import ediyor |
+| `tests/gercek/*.test.ts` (**yeni**) | 7 dosya / **139 test** | ✅ Evet — `src/` import ediyor |
 | `tests/*.mjs` (eski "smoke") | 118 dosya | ❌ **Hayır** |
 
 ### Eski smoke testler hakkında uyarı
@@ -75,6 +75,42 @@ npm run test:eski-smoke   # eski .mjs dosyalarını çalıştırır (bilgi amaç
 - `satisAcikHesapKalan`: nakit/açık hesap ayrımı, kısmi tahsilat, 2 ondalık yuvarlama, fazla tahsilatta negatif
 - `vadeGrubuBul`: geçmiş/gelecek ayrımı, deterministik
 - `musteriAcikFaturalariFifo`: iptal atlama, **FIFO sıralama**, müşteri izolasyonu, isimle eşleşme (harf duyarsız), tahsilat havuzunun faturalara eskiden yeniye dağıtılması, fazla tahsilatın taşmaması, `vadeGunu` ile vade tarihi türetimi
+
+### `tests/gercek/finans-islem.test.ts` — 49 test
+`src/lib/finans-islem.ts` (para hareketi motoru — tahsilat / ödeme)
+
+Buradaki bir hata doğrudan **parayı yanlış gösterir**, o yüzden üç katman ayrı ayrı test edildi.
+
+**`finansIslemDogrula` (18 test)**
+- Tutar 0 / negatif, cari seçilmemiş, olmayan müşteri-tedarikçi → red
+- Hesap dağılımı toplamı işlem tutarına eşit değilse → red; 1 kuruş yuvarlama payı tolere edilir
+- Tutarı 0 olan hesap satırı yok sayılır; pasif (`aktif:false`) hesap kullanılamaz
+- Ödemede **bakiye kontrolü**: tam yeten kabul, 1 kuruş eksik tolere, 2 kuruş eksik red
+- Ödemede **cari borç kontrolü**: borç yoksa red, borçtan fazla ödeme red (mesajda borç tutarı yazar)
+- Tahsilatta bakiye kontrolü **yapılmaz** (avans alınabilir), müşteri bakiyesi 0 olsa da kabul
+- Fatura tahsisi işlem tutarını aşarsa red
+
+**`finansIslemiUygula` (13 test)**
+- Tahsilat: cari bakiyesi ↓, kasa ↑, iki hareket + `kasaIslemi` kaydı, `kaynakKasaIslemiId` bağı
+- Fatura tahsisi `satis.acikHesapOdenen` / `malAlimi.odenenTutar` alanını artırır, **diğer faturaya dokunmaz**
+- Çok hesaba bölünmüş tahsilatta her hesap ayrı hareket alır
+- Aynı `islemId` ikinci kez uygulanmaz (idempotency); doğrulama geçmezse `null`
+- Girdi db'si değişmez (immutable); tutarlar 2 ondalığa yuvarlanır
+
+**`finansIslemiIptalEt` (9 test)**
+- Tahsilat iptali: cari bakiyesi başlangıca döner, kasa düşer, fatura tahsisi geri alınır
+- Orijinal kayıt **silinmez**, `durum: "İptal Edildi"` + `iptalNedeni` + `iptalTersIslemId`
+- Ters işlem yönü çevrilerek oluşturulur (`tahsilat` → `odeme`), `tersIslem: true`
+- Aynı işlem iki kez iptal edilemez; boş nedeni reddedilir; olmayan işlem reddedilir
+- **İptal + yeniden tahsilat** bakiyeleri tutarlı bırakır
+
+**`finansTutarlilikKontrolu` (4 test)**
+- Tutarlı veritabanında bulgu yok
+- Bakiye ile son hareketin `bakiyeSonrasi` alanı uyuşmazsa bulgu (`fark = beklenen − kayitli`)
+- Tahsilat ve iptal sonrası **tutarlılık bozulmuyor** (uçtan uca)
+
+> Not: `finansIslemiIptalEt` imzası `(prev, islemId, iptalNedeni, kullanici, iptalId?)` —
+> 4. parametre kullanıcı, 5. parametre iptal kaydının id'si. Testler bunu açıkça geçiyor.
 
 ### `tests/gercek/stok-hareketi-sozlesmesi.test.ts` — 8 test
 `src/lib/database.ts → StokHareketiSonucu`
