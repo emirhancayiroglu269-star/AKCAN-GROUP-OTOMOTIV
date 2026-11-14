@@ -219,13 +219,22 @@ Müşteri iade edilen satıştan geliyor:
 
 **9 test** bu kuralı kilitliyor.
 
-### 10. Stok.tsx bölündü — 5.007 satırdan 21 dosyaya
+### 10. Stok.tsx bölündü — 5.007 satırdan 22 dosyaya
 
 **Sorun:** `src/modules/Stok.tsx` tek başına **5.007 satır** ve **6 sayfa bileşeni**
 barındırıyordu. Tek dosyada 170+ state, ~50 handler ve ~20 modal — hiçbir parçası
 tek başına anlaşılamıyordu.
 
-**Sonuç:** 5.007 → **981 satır** (%80 küçülme), 20 yeni dosya.
+**Sonuç:** 5.007 → **611 satır** (%88 küçülme), 21 yeni dosya.
+
+| Aşama | Ne yapıldı | `Stok.tsx` |
+|---|---|---:|
+| 0 | Başlangıç | 5.007 |
+| 1 | Bağımsız sayfalar ayrıldı | 3.186 |
+| 2 | `StokSayfasi`'nın JSX'i parçalandı | 1.579 |
+| 3 | Her modal kendi state'ini aldı | 1.521 |
+| 4 | Handler'lar `useStokIslemleri`'ne | 981 |
+| 5 | `HizliAramaSayfasi` ayrıldı | **611** |
 
 ### Aşama 1 — bağımsız sayfalar
 
@@ -262,9 +271,8 @@ cevaplayan ince bir kabuk. Prop sayısı **81 → 27**.
 
 ### Aşama 4 — handler'lar hook'a taşındı
 
-`useStokIslemleri.tsx` (**543 satır**) `StokSayfasi`'nın iş mantığını taşır;
-sayfa 1.521 → **981 satır**. Hook, sayfanın state'lerini setter'larıyla dışarıdan
-alır ve 12 handler döner:
+`useStokIslemleri.tsx` (**543 satır**) `StokSayfasi`'nın iş mantığını taşır.
+Hook, sayfanın state'lerini setter'larıyla dışarıdan alır ve 12 handler döner:
 
 | Handler | İş kuralı |
 |---|---|
@@ -275,10 +283,23 @@ alır ve 12 handler döner:
 | `aktifPasifDegistir` | — |
 | `girisModaliAc` · `duzeltmeModaliAc` · `rafModaliAc` | modalı açar, formu ilk değerlerle kurar |
 
-**Neden bu sınır:** modal içi form state'i (`adet`, `fiyat`, `hata`) hook'ta
-tutulmuyor — her modal kendi state'ini taşıyor. Hook yalnızca "hangi ürün için
-açıldı" bilgisini ve kaydetme akışını bilir. Böylece bir modala dokunmak
-sayfanın state'ini, sayfaya dokunmak modalın formunu etkilemiyor.
+### Aşama 5 — iki sayfa iki dosya
+
+| Dosya | Satır | İçerik |
+|---|---:|---|
+| `Stok.tsx` | 611 | `StokSayfasi` — state, filtreler, çizim + bölünen sayfaların yeniden dışa aktarımı |
+| `HizliAramaSayfasi.tsx` | 388 | Arama, gelişmiş filtreler (marka/kategori/raf/stok durumu/fiyat/kâr/satış), sayfalama, detay kartı |
+
+`HizliAramaSayfasi`'nın `StokSayfasi` ile paylaştığı **tek state yok** — tamamen
+bağımsız bir sayfa. Yalnızca `sepet` / `setSepet` prop olarak geliyor (uygulama
+genelinde paylaşılan sepet).
+
+### Tasarım kararları
+
+**Neden modal form state'i hook'ta değil:** her modal kendi `adet`/`fiyat`/`hata`
+state'ini taşıyor. Hook yalnızca "hangi ürün için açıldı" bilgisini ve kaydetme
+akışını bilir. Böylece bir modala dokunmak sayfanın state'ini, sayfaya dokunmak
+modalın formunu etkilemiyor.
 
 **Neden Context/Provider'a geçilmedi:** prop sayısı 27'ye düştüğü için Context
 ek bir katman olurdu, fayda sağlamazdı.
@@ -286,9 +307,6 @@ ek bir katman olurdu, fayda sağlamazdı.
 **Yaklaşım:** Bölme sırasında **tek satır iş mantığı değişmedi**. Her adımda
 `tsc --noEmit` + `npm run build` + `npm test` + eski smoke testler çalıştırıldı:
 **0 tip hatası, 361 test, 118 smoke geçti.**
-
-**Sıradaki adım:** `Stok.tsx` (981 satır) hâlâ `StokSayfasi` (~60 state) ve
-`HizliAramaSayfasi`'nı birlikte tutuyor. Sayfaları iki dosyaya ayırmak son adım.
 
 ### `tests/gercek/audit-log.test.ts` — 101 test
 `src/lib/audit-log.ts` (denetim izi hash zinciri)
