@@ -3,8 +3,11 @@ import { createClient } from "@supabase/supabase-js";
 // Merkezi veri sunucusu — tüm bilgisayarlar aynı veriyi kullanır.
 export const MERKEZI_API = "https://oungmlyniuwpoyfghvrz.supabase.co/functions/v1/app-state";
 export const OTURUM_KEY = "akcan-merkezi-oturum";
-export const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || "https://oungmlyniuwpoyfghvrz.supabase.co";
-export const SUPABASE_PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || "sb_publishable_6mdoEyS-O79tqVm2AogJDA_buYLyv--";
+// Not: eski proje adresi (oungmlyniuwpoyfghvrz.supabase.co) DNS'te çözümlenmiyor.
+// Adres ve anahtar artık yalnızca .env'den gelir (bkz. .env.example); koda gömülü
+// fallback yok — yanlış adrese sessizce bağlanmak yerine açıkça hata verir.
+export const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || "";
+export const SUPABASE_PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || "";
 export const supabaseRealtime = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
   auth: { persistSession: false, autoRefreshToken: false },
 });
