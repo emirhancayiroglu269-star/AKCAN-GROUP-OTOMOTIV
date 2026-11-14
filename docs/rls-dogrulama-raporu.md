@@ -114,7 +114,9 @@ Mevcut dört dosya **şablon**. Gerçek durum:
 - Bu yüzden `faz30`'daki "kritik tablolar için gerçek policy'ler" maddesi **uygulanamaz** —
   policy yazılacak tablo yok.
 - `faz34`'ün `user_profiles` tablosu hiçbir yerde kullanılmıyor. Ya kullanılmalı ya silinmeli.
-- `faz45` production'a **girmemeli** — silinmeli veya `supabase/tests/` altına taşınmalı.
+- `faz45` production'a **girmemeli** — ~~silinmeli veya `supabase/tests/` altına taşınmalı~~
+  → **YAPILDI:** `supabase/tests/atomic_rpc_test.sql` altına taşındı. `migrations/`
+  altından çıktığı için `supabase db push` artık onu görmez.
 
 ### Adım 3: İki gerçek karar
 
@@ -127,6 +129,49 @@ içinde yapmak (`merkeziIstek` zaten oradan geçiyor). Bu, `guvenlik-politikasi.
 **Karar B — Şimdilik tek kullanıcı kabul et.** Uygulama tek PC'de, tek kullanıcıyla
 çalışacaksa Supabase'i tamamen bırak, veriyi şifreli bir dosyaya yaz. Daha az hareketli
 parça, daha az kırılma noktası. Ama çoklu kullanıcı/senkron isteniyorsa A zorunlu.
+
+## 4b. Uygulanan kararlar (2026-02-20)
+
+### faz45 → `supabase/tests/` taşındı
+
+`supabase db push` klasördeki *her* dosyayı uygular. Test amaçlı bir migration
+`migrations/` altında durduğu sürece yanlışlıkla production'a girebilirdi.
+`supabase/tests/atomic_rpc_test.sql` olarak taşındı; oradan otomatik hiçbir
+yere gitmiyor, yalnızca elle çalıştırılır.
+
+### faz34 → uygulanmayacak, dosya başında gerekçeli karar
+
+`user_profiles` tablosu bugün **hiçbir yerde kullanılmıyor** (kodda sıfır referans).
+Kullanılmayan bir tabloyu production'a eklemek güvenlik sağlamaz, saldırı yüzeyini
+büyütür. Bu yüzden faz34'ün SQL'i **yorum içine alındı** — `db push` onu uygulamaz.
+
+**Kararı verirken bulunan asıl sorun — bunu bilmen gerekiyor:**
+
+> Şifreler `db.kullanicilar[].sifre` alanında **düz metin** saklanıyor. Hiçbir yerde
+> hash yok.
+>
+> - `src/App.tsx:368` → `String(k.sifre || "") === temizSifre`
+> - `src/lib/yonetici-onay.ts:29` → `k.sifre === sifre`
+> - `src/modules/StokOperasyon.tsx:1358` → `sifreForm.eski !== aktifKullanici.sifre`
+>
+> Doğrulama tamamen istemcide, karşılaştırma düz metin üzerinden. `app_state`'i
+> okuyabilen herkes **tüm kullanıcıların şifresini** görür. Bu, RLS eklenmesinden
+> bağımsız olarak tek başına en büyük güvenlik açığı — ve RLS bunu **çözmez**,
+> çünkü sorun şifrenin nerede durduğu değil, hiç hash'lenmemiş olması.
+
+Doğru sıra: **önce** şifreler Supabase Auth'a taşınmalı (uygulama tablosunda şifre
+kalmaz), **sonra** `user_profiles` yalnızca rol/izin taşımalı, **sonra** RLS anlamlı
+olur. Bu sıra atlanırsa RLS eklenmiş ama şifreler hâlâ düz metin olur.
+
+### faz30 → başına uygulama notu eklendi
+
+`app_state` tek satır olduğu için satır bazlı RLS verilemez; gerçek çözüm
+`service_role` + Edge Function içinde yetki kontrolü. Bu not dosyanın başına yazıldı.
+
+### `supabase/README.md` eklendi
+
+Hangi dosyanın uygulanacağı, hangisinin ertelendiği, hangisinin test olduğu tek
+tabloda. Yeni migration eklerken uyulacak kural da orada.
 
 ## 5. Özet
 

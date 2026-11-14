@@ -1,6 +1,21 @@
--- FAZ 30: AKCAN ERP RLS başlangıç şeması
+-- FAZ 30: AKCAN ERP RLS başlangıç şeması — BAŞLANGIÇ NOKTASI
 -- Bu migration TASARIM/şablondur. Production Supabase'e uygulanmadan önce
 -- gerçek tablo isimleri ve kolonlar mevcut şemayla eşleştirilmelidir.
+--
+-- ⚠️ UYGULANMADAN ÖNCE OKUNMALI (2026-02-20):
+--   Uygulamanın TÜM verisi tek bir `public.app_state` satırında JSON olarak
+--   duruyor (id='main', data jsonb). Ayrı `parcalar` / `satislar` / `cariler`
+--   tabloları YOK. Bu yüzden aşağıdaki "kritik tablolar için gerçek policy'ler"
+--   maddesi bugünkü şemayla UYGULANAMAZ — policy yazılacak tablo yok.
+--
+--   Tek satırlık app_state için RLS satır bazlı yetki veremez: ya tüm veri
+--   okunur ya hiç okunmaz. Gerçek çözüm iki adımlı:
+--     a) `app_state` yalnızca service_role'a açılır (RLS policy değil, grant).
+--     b) Tüm yetki kontrolü Edge Function içinde yapılır — uygulama zaten
+--        her isteği oraya gönderiyor (`merkeziIstek`).
+--
+--   `user_profiles` tablosu UYGULANMAYACAK — bkz. faz34 dosyasının başındaki
+--   karar notu.
 
 create table if not exists public.user_profiles (
   id uuid primary key references auth.users(id) on delete cascade,
