@@ -269,7 +269,7 @@ export function AlisSayfasi({ db, updateDb, aktifKullanici }) {
         // ÖNEMLİ SIRA: maliyet, stok hareketi KABUL EDİLDİKTEN sonra hesaplanır.
         // Aksi halde stok hareketi reddedilse bile alış geçmişi ve ortalama
         // maliyet yazılıyordu (hayalet alış: stok artmadı ama maliyet arttı).
-        const yeni = R.stokHareketiUygula(sonuc, {
+        const hareket = R.stokHareketiUygula(sonuc, {
           parcaId: k.parcaId,
           tur: "Mal Alış",
           giris: adet,
@@ -277,12 +277,17 @@ export function AlisSayfasi({ db, updateDb, aktifKullanici }) {
           kullanici: islemiYapan.trim(),
           aciklama: form.tedarikci.trim(),
         });
-        if (!yeni) {
+        if (hareket.durum === "engellendi" || hareket.durum === "parca-yok") {
           stokEngellendi = true;
           // Önceki kalemlerin uygulanmış hali geri alınır (tüm alış iptal).
           return prev;
         }
+        // Aynı belge no ile bu kalem ZATEN işlenmiş → stok da maliyet de
+        // yazılmaz. Aksi halde stok artmadan ortalama maliyet artıyordu.
+        if (hareket.durum === "zaten-uygulandi") continue;
+
         // Stok hareketi uygulandı → şimdi maliyeti güncelle.
+        const yeni = hareket.db;
         const stokSonrasi = yeni.parcalar.find((p) => p.id === k.parcaId);
         const yeniOrtalama = R.agirlikliOrtalamaMaliyetHesapla(
           (stokSonrasi?.stok || 0) - adet, // hareketten ÖNCEKİ stok

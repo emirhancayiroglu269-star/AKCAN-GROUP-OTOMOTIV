@@ -582,15 +582,48 @@ export const veriyiOnar = (db: any) => ({
   },
 });
 
-// Stoğu değiştirmenin TEK yolu — parçanın stoğunu günceller ve aynı anda
-// kalıcı bir hareket kaydı oluşturur. "prev" (updateDb içindeki güncel db)
-// üzerinde çalışır, güncellenmiş db'yi döndürür; bu sayede tek bir satışta
-// birden fazla kalem için art arda çağrılabilir. Negatif stoğa izin
-// verilmiyorsa ve işlem stoğu eksiye düşürecekse null döner — çağıran taraf
-// bunu kontrol edip işlemi engellemelidir.
-export const stokHareketiUygula = (prev, { parcaId, tur, giris = 0, cikis = 0, belgeNo = "", kullanici = "", aciklama = "" }) => {
+/* ------------------------------------------------------------------ */
+/* stokHareketiUygula — stoğu değiştirmenin TEK yolu                   */
+/* ------------------------------------------------------------------ */
+
+/**
+ * `stokHareketiUygula`'nın dönüş şekli. Önceden doğrudan db döndürüyordu, bu
+ * yüzden "aynı belge zaten uygulanmış" ile "uygulandı" ayırt edilemiyordu:
+ * çağıran taraf stok hareketinin REDDEDİLDİĞİNİ göremediği için ortalama
+ * maliyet ve alış geçmişini yine de yazıyordu (çift kayıtta maliyet bozuluyordu).
+ */
+export type StokHareketiSonucu =
+  /** Hareket uygulandı, `db` güncel veritabanı. */
+  | { durum: "uygulandi"; db: any }
+  /** Aynı belge + aynı miktar daha önce uygulanmış → hiçbir şey değişmedi. */
+  | { durum: "zaten-uygulandi"; db: any }
+  /** Negatif stoğa düşecekti → engellendi, veritabanı değişmedi. */
+  | { durum: "engellendi"; db: any }
+  /** Parça bulunamadı → veritabanı değişmedi. */
+  | { durum: "parca-yok"; db: any };
+
+const sonucDb = (r: any) => (r && typeof r === "object" && "db" in r && "durum" in r ? r.db : r);
+const sonucUygulandiMi = (r: any) => (r && typeof r === "object" && "durum" in r ? r.durum === "uygulandi" : true);
+
+/**
+ * Stoğu değiştirmenin TEK yolu — parçanın stoğunu günceller ve aynı anda
+ * kalıcı bir hareket kaydı oluşturur. `prev` (updateDb içindeki güncel db)
+ * üzerinde çalışır; bu sayede tek bir satışta birden fazla kalem için art
+ * arda çağrılabilir.
+ *
+ * Dönüş değeri `StokHareketiSonucu`'dur. `db` alanı her durumda kullanılabilir
+ * (eski davranış: engellendiğinde `null` yerine değişmemiş db döner).
+ *
+ * Maliyet / geçmiş yazan çağıranlar (alış, satın alma, sayım) mutlaka
+ * `durum === "uygulandi"` kontrolü yapmalıdır — aksi halde stok artmadan
+ * ortalama maliyet artar ("hayalet alış").
+ */
+export const stokHareketiUygula = (
+  prev,
+  { parcaId, tur, giris = 0, cikis = 0, belgeNo = "", kullanici = "", aciklama = "" }
+): StokHareketiSonucu => {
   const parca = prev.parcalar.find((p) => p.id === parcaId);
-  if (!parca) return prev;
+  if (!parca) return { durum: "parca-yok", db: prev };
 
   // Aynı belge aynı ürün için aynı stok hareketini ikinci kez uygulama.
   // belgeNo dolu olan satış/alış/iade/sayım hareketlerinde idempotency anahtarı:
@@ -605,10 +638,10 @@ export const stokHareketiUygula = (prev, { parcaId, tur, giris = 0, cikis = 0, b
         Number(h.giris || 0) === Number(giris || 0) &&
         Number(h.cikis || 0) === Number(cikis || 0)
     );
-    if (ayniHareket) return prev;
+    if (ayniHareket) return { durum: "zaten-uygulandi", db: prev };
   }
   const kalan = Math.round(((parca.stok || 0) + giris - cikis) * 1000) / 1000;
-  if (kalan < 0 && !prev.ayarlar?.eksiStokIzni) return null;
+  if (kalan < 0 && !prev.ayarlar?.eksiStokIzni) return { durum: "engellendi", db: prev };
   const hareket = {
     id: yeniId("sh"),
     parcaId,
@@ -629,16 +662,22 @@ export const stokHareketiUygula = (prev, { parcaId, tur, giris = 0, cikis = 0, b
   // hiçbir tutarsızlık oluşmaz.
   const varsayilanDepoId = prev.depolar?.[0]?.id || "depo-ana";
   return {
-    ...prev,
-    parcalar: prev.parcalar.map((p) => {
-      if (p.id !== parcaId) return p;
-      const mevcutDagilim = p.depoStoklari && p.depoStoklari.length > 0 ? p.depoStoklari : [{ depoId: varsayilanDepoId, adet: p.stok || 0 }];
-      const varsayilanVarMi = mevcutDagilim.some((d) => d.depoId === varsayilanDepoId);
-      const yeniDagilim = varsayilanVarMi
-        ? mevcutDagilim.map((d) => (d.depoId === varsayilanDepoId ? { ...d, adet: Math.round((d.adet + giris - cikis) * 1000) / 1000 } : d))
-        : [...mevcutDagilim, { depoId: varsayilanDepoId, adet: Math.round((giris - cikis) * 1000) / 1000 }];
-      return { ...p, stok: kalan, depoStoklari: yeniDagilim };
-    }),
-    stokHareketleri: [hareket, ...prev.stokHareketleri],
+    durum: "uygulandi",
+    db: {
+      ...prev,
+      parcalar: prev.parcalar.map((p) => {
+        if (p.id !== parcaId) return p;
+        const mevcutDagilim = p.depoStoklari && p.depoStoklari.length > 0 ? p.depoStoklari : [{ depoId: varsayilanDepoId, adet: p.stok || 0 }];
+        const varsayilanVarMi = mevcutDagilim.some((d) => d.depoId === varsayilanDepoId);
+        const yeniDagilim = varsayilanVarMi
+          ? mevcutDagilim.map((d) => (d.depoId === varsayilanDepoId ? { ...d, adet: Math.round((d.adet + giris - cikis) * 1000) / 1000 } : d))
+          : [...mevcutDagilim, { depoId: varsayilanDepoId, adet: Math.round((giris - cikis) * 1000) / 1000 }];
+        return { ...p, stok: kalan, depoStoklari: yeniDagilim };
+      }),
+      stokHareketleri: [hareket, ...prev.stokHareketleri],
+    },
   };
 };
+
+/* Geriye dönük uyumluluk yardımcıları — çağıranlar `db` bekliyorsa. */
+export { sonucDb as stokHareketiDb, sonucUygulandiMi as stokHareketiUygulandiMi };

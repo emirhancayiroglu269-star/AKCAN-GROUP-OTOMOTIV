@@ -96,7 +96,7 @@ export function BelgelerSayfasi({ db, updateDb, aktifKullanici, setSekme, belgeH
               belgeNo,
               kullanici: mevcutSatis.satisiYapan || "",
               aciklama: `İptal: ${belgeNo} — Set: ${parca.ad}`,
-            }) || sonuc;
+            }).db;
           }
         } else {
           sonuc = stokHareketiUygula(sonuc, {
@@ -106,7 +106,7 @@ export function BelgelerSayfasi({ db, updateDb, aktifKullanici, setSekme, belgeH
             belgeNo,
             kullanici: mevcutSatis.satisiYapan || "",
             aciklama: `İptal: ${belgeNo} (${iptalNedeniMetin.trim()})`,
-          }) || sonuc;
+          }).db;
         }
       }
 

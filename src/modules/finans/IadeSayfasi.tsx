@@ -182,7 +182,7 @@ export function IadeSayfasi({ db, updateDb, aktifKullanici }) {
             ),
           };
         } else {
-          const yeni = R.stokHareketiUygula(sonuc, {
+          const hareket = R.stokHareketiUygula(sonuc, {
             parcaId: ik.parcaId,
             tur: "Satış İadesi",
             giris: ik.adet,
@@ -190,11 +190,11 @@ export function IadeSayfasi({ db, updateDb, aktifKullanici }) {
             kullanici: iadeyiAlan.trim(),
             aciklama: `İade nedeni: ${iadeNedeni}`,
           });
-          if (!yeni) {
+          if (hareket.durum === "engellendi" || hareket.durum === "parca-yok") {
             engellendi = true;
             return prev;
           }
-          sonuc = yeni;
+          sonuc = hareket.db;
         }
       }
 
@@ -203,7 +203,7 @@ export function IadeSayfasi({ db, updateDb, aktifKullanici }) {
         for (const s of degisimSepeti) {
           const adet = parseFloat(s.adet) || 0;
           if (adet <= 0) continue;
-          const yeni = R.stokHareketiUygula(sonuc, {
+          const hareket = R.stokHareketiUygula(sonuc, {
             parcaId: s.parcaId,
             tur: "Değişim — Yeni Ürün",
             cikis: adet,
@@ -211,11 +211,11 @@ export function IadeSayfasi({ db, updateDb, aktifKullanici }) {
             kullanici: iadeyiAlan.trim(),
             aciklama: `Değişim: Satış #${belgeNo}`,
           });
-          if (!yeni) {
+          if (hareket.durum === "engellendi" || hareket.durum === "parca-yok") {
             engellendi = true;
             return prev;
           }
-          sonuc = yeni;
+          sonuc = hareket.db;
         }
       }
 
@@ -363,7 +363,7 @@ export function IadeSayfasi({ db, updateDb, aktifKullanici }) {
       };
 
       for (const ik of iadeKalemleri) {
-        const yeni = R.stokHareketiUygula(sonuc, {
+        const hareket = R.stokHareketiUygula(sonuc, {
           parcaId: ik.parcaId,
           tur: "Alış İadesi",
           cikis: ik.adet,
@@ -371,11 +371,11 @@ export function IadeSayfasi({ db, updateDb, aktifKullanici }) {
           kullanici: alisIadeyiAlan.trim(),
           aciklama: `Tedarikçiye iade: ${alisIadeNedeni}`,
         });
-        if (!yeni) {
+        if (hareket.durum === "engellendi" || hareket.durum === "parca-yok") {
           engellendi = true;
           return prev;
         }
-        sonuc = yeni;
+        sonuc = hareket.db;
       }
 
       sonuc = R.tedarikciHareketiUygula(sonuc, {

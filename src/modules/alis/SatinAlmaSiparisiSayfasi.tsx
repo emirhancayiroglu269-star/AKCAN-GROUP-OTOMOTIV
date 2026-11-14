@@ -127,10 +127,27 @@ export function SatinAlmaSiparisiSayfasi({ db, updateDb, aktifKullanici }) {
         const parca = sonuc.parcalar.find((p) => p.id === k.parcaId);
         if (!parca) return;
         const netFiyat = k.birimFiyat * (1 - (k.iskontoYuzde || 0) / 100);
-        const yeniOrtalama = R.agirlikliOrtalamaMaliyetHesapla(parca.stok, parca.ortalamaMaliyet, k.buSeferAdet, netFiyat);
+        // ÖNEMLİ SIRA: stok hareketi kabul edilmeden maliyet/geçmiş yazılmaz.
+        const hareket = R.stokHareketiUygula(sonuc, {
+          parcaId: k.parcaId,
+          tur: "Mal Alış",
+          giris: k.buSeferAdet,
+          belgeNo,
+          kullanici: aktifKullanici?.adSoyad || olusturan.trim(),
+          aciklama: `Satın alma siparişi — ${siparis.tedarikci}`,
+        });
+        if (hareket.durum === "engellendi" || hareket.durum === "parca-yok") {
+          engellendi = true;
+          return;
+        }
+        if (hareket.durum === "zaten-uygulandi") return; // bu kalem daha önce işlendi
+
+        const yeni = hareket.db;
+        const stokSonrasi = yeni.parcalar.find((p) => p.id === k.parcaId);
+        const yeniOrtalama = R.agirlikliOrtalamaMaliyetHesapla((stokSonrasi?.stok || 0) - k.buSeferAdet, parca.ortalamaMaliyet, k.buSeferAdet, netFiyat);
         sonuc = {
-          ...sonuc,
-          parcalar: sonuc.parcalar.map((p) =>
+          ...yeni,
+          parcalar: yeni.parcalar.map((p) =>
             p.id === k.parcaId
               ? {
                   ...p,
@@ -141,12 +158,6 @@ export function SatinAlmaSiparisiSayfasi({ db, updateDb, aktifKullanici }) {
               : p
           ),
         };
-        const yeni = R.stokHareketiUygula(sonuc, { parcaId: k.parcaId, tur: "Mal Alış", giris: k.buSeferAdet, belgeNo, kullanici: aktifKullanici?.adSoyad || olusturan.trim(), aciklama: `Satın alma siparişi — ${siparis.tedarikci}` });
-        if (!yeni) {
-          engellendi = true;
-          return;
-        }
-        sonuc = yeni;
       });
       if (engellendi) return prev;
 

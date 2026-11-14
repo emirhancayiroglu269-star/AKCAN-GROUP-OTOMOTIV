@@ -4,7 +4,7 @@
 
 | | Sayı | Uygulama kodunu çalıştırıyor mu? |
 |---|---|---|
-| `tests/gercek/*.test.ts` (**yeni**) | 5 dosya / **80 test** | ✅ Evet — `src/` import ediyor |
+| `tests/gercek/*.test.ts` (**yeni**) | 6 dosya / **90 test** | ✅ Evet — `src/` import ediyor |
 | `tests/*.mjs` (eski "smoke") | 118 dosya | ❌ **Hayır** |
 
 ### Eski smoke testler hakkında uyarı
@@ -76,7 +76,15 @@ npm run test:eski-smoke   # eski .mjs dosyalarını çalıştırır (bilgi amaç
 - `vadeGrubuBul`: geçmiş/gelecek ayrımı, deterministik
 - `musteriAcikFaturalariFifo`: iptal atlama, **FIFO sıralama**, müşteri izolasyonu, isimle eşleşme (harf duyarsız), tahsilat havuzunun faturalara eskiden yeniye dağıtılması, fazla tahsilatın taşmaması, `vadeGunu` ile vade tarihi türetimi
 
-### `tests/gercek/alis-zinciri.test.ts` — 7 test
+### `tests/gercek/stok-hareketi-sozlesmesi.test.ts` — 8 test
+`src/lib/database.ts → StokHareketiSonucu`
+
+- Dört durumun doğru raporlanması: `uygulandi` / `zaten-uygulandi` / `engellendi` / `parca-yok`
+- Reddedilen durumlarda `db` referansının **değişmemesi**
+- `stokHareketiDb` / `stokHareketiUygulandiMi` geriye dönük uyumluluk yardımcıları
+- İdempotency anahtarının tür ve parça bazında ayrışması
+
+### `tests/gercek/alis-zinciri.test.ts` — 10 test
 `src/modules/alis/AlisSayfasi.tsx` (handleKaydet) + `src/lib/database.ts`
 
 Alış kaydının çekirdek döngüsünün birebir kopyası üzerinde:
@@ -152,31 +160,54 @@ Tür başına yalnızca **bir kez** uyarır (konsol spam'i yok). Önek tablosu
 değiştirilmedi — `"Alış Faturası"` gibi bir türü tabloya eklemek veri kararıdır,
 kod kararı değil. Test: `belge-numaralandirma.test.ts` — 3 yeni test.
 
-## ⚠️ BİLİNEN AÇIK — henüz düzeltilmedi
+## 4. ✅ GERÇEK HATA — aynı belge no ile alış MALİYETİ bozuyordu (kapatıldı)
 
-`alis-zinciri.test.ts` içinde **kasıtlı olarak başarısız beklentiyle değil, mevcut
-davranışı belgeleyen** bir test var:
+**Dosyalar:** `src/lib/database.ts`, `src/modules/alis/AlisSayfasi.tsx`,
+`src/modules/alis/SatinAlmaSiparisiSayfasi.tsx`, `src/modules/Stok.tsx`
 
-**Aynı belge numarasıyla ikinci kez alış kaydı → stok artmıyor (idempotent ✅) ama
-ortalama maliyet bozuluyor.** `stokHareketiUygula` hareketi reddediyor, ancak
-`AlisSayfasi` maliyeti ve alış geçmişini koşulsuz yazmaya devam ediyor:
+`stokHareketiUygula` idempotentti (aynı belge no ile stok ikinci kez artmıyordu)
+ama **db döndürdüğü için** çağıran taraf "hareket reddedildi" ile "uygulandı"yı
+ayırt edemiyordu. Sonuç: stok artmadan ortalama maliyet ve alış geçmişi yazılıyordu.
 
 ```
-10 adet @10 stokta, 10 adet @20 alındı → ortalama 15 (doğru)
-aynı belge no ile tekrar → stok 20 (doğru), ortalama 17.5 (YANLIŞ, 15 kalmalı)
-alış geçmişi 1 yerine 2 kayıt
+10 adet @10 stokta, 10 adet @20 alındı → ortalama 15 ✅
+aynı belge no ile tekrar → stok 20 ✅, ortalama 17.5 ❌
 ```
 
-Çift tıklama veya belge no çakışması durumunda maliyet kayar. Düzeltme: stok
-hareketinin reddedildiğini ayırt edip (`belgeNo` idempotency isabeti) maliyet
-yazımını da atlamak — `stokHareketiUygula`'nın "zaten uygulandı" bilgisini
-döndürmesi gerekir. Ayrı bir iş olarak ele alınmalı.
+**Çözüm — açık bir dönüş sözleşmesi:**
+
+```ts
+export type StokHareketiSonucu =
+  | { durum: "uygulandi";          db: any }
+  | { durum: "zaten-uygulandi";    db: any }
+  | { durum: "engellendi";         db: any }
+  | { durum: "parca-yok";          db: any };
+```
+
+`db` her durumda dolu (engellendiğinde değişmemiş db) — eski `null` dönüşü yok.
+Geriye dönük uyumluluk için `stokHareketiDb()` ve `stokHareketiUygulandiMi()`
+yardımcıları eklendi.
+
+Maliyet/geçmiş yazan üç yer artık sıralamayı doğru yapıyor ve `zaten-uygulandi`
+durumunda **tamamen atlıyor**:
+
+| Dosya | Önce | Sonra |
+|---|---|---|
+| `AlisSayfasi.tsx` | maliyet → stok | stok → (kabul) → maliyet, `zaten-uygulandi` → `continue` |
+| `SatinAlmaSiparisiSayfasi.tsx` | maliyet → stok | stok → (kabul) → maliyet, `zaten-uygulandi` → `return` |
+| `Stok.tsx` (stok giriş modalı) | maliyet → stok, `\|\| {...}` ile sessiz geri dönüş | stok → (kabul) → maliyet + kullanıcıya uyarı |
+
+Diğer 9 çağrı noktası (`SatisSayfasi` ×4, `IadeSayfasi` ×3, `BelgelerSayfasi` ×2,
+`MusteriSiparisiSayfasi`, `RezervSayfasi`) yalnızca `.db` alacak şekilde güncellendi;
+stok dışında yan veri yazmadıkları için `zaten-uygulandi` kontrolü gerekmiyor.
+
+**Testler:** `stok-hareketi-sozlesmesi.test.ts` (8 test — dört durum + yardımcılar +
+idempotency anahtarı), `alis-zinciri.test.ts` (10 test — çift kayıtta maliyet 15'te
+kalıyor, farklı miktarda gerçekten uygulanıyor).
 
 ## Sıradaki adımlar (öneri)
 
-1. **Bilinen açığı kapat**: alış idempotency'sinde maliyet/geçmiş de atlanmalı
-   (`stokHareketiUygula`'ya "zaten uygulandı" sonucu ekle).
-2. `src/lib/finans-islem.ts` (`finansIslemDogrula`, `finansIslemiUygula`) için test —
+1. `src/lib/finans-islem.ts` (`finansIslemDogrula`, `finansIslemiUygula`) için test —
    para hareketi, en kritik ikinci motor.
 3. `src/lib/fiyatlandirma.ts` (kampanya, müşteri özel fiyat, iskonto sırası) testi.
 4. `src/lib/audit-log.ts` hash zinciri testi (kayıt değiştirilirse zincir kopmalı).

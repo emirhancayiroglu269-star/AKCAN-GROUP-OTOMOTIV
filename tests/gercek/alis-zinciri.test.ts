@@ -10,31 +10,40 @@ import { describe, it, expect } from "vitest";
 import { bosVeritabani, stokHareketiUygula } from "../../src/lib/database";
 import { agirlikliOrtalamaMaliyetHesapla } from "../../src/lib/maliyet";
 
-/** AlisSayfasi.handleKaydet'in çekirdek döngüsünün birebir kopyası. */
-const alisUygula = (db: any, kalemler: { parcaId: string; adet: number; netFiyat: number }[], tedarikci = "Tedarikçi A") => {
+/**
+ * AlisSayfasi.handleKaydet'in çekirdek döngüsünün birebir kopyası
+ * (src/modules/alis/AlisSayfasi.tsx) — stok önce, maliyet sonra.
+ */
+const alisUygula = (
+  db: any,
+  kalemler: { parcaId: string; adet: number; netFiyat: number }[],
+  tedarikci = "Tedarikçi A",
+  belgeNo = "AL-1"
+) => {
   let sonuc = db;
-  let stokEngellendi = false;
   for (const k of kalemler) {
     const parca = sonuc.parcalar.find((p: any) => p.id === k.parcaId);
     if (!parca) continue;
     const adet = k.adet;
     const netFiyat = k.netFiyat;
 
-    // 1) önce stok hareketi
-    const yeni = stokHareketiUygula(sonuc, {
+    // 1) ÖNCE stok hareketi
+    const hareket = stokHareketiUygula(sonuc, {
       parcaId: k.parcaId,
       tur: "Mal Alış",
       giris: adet,
-      belgeNo: "AL-1",
+      belgeNo,
       kullanici: "test",
       aciklama: tedarikci,
     });
-    if (!yeni) {
-      stokEngellendi = true;
-      return { db, stokEngellendi }; // tüm alış iptal
+    if (hareket.durum === "engellendi" || hareket.durum === "parca-yok") {
+      return { db, stokEngellendi: true }; // tüm alış iptal
     }
+    // 2) Aynı belge zaten işlenmiş → ne stok ne maliyet yazılır
+    if (hareket.durum === "zaten-uygulandi") continue;
 
-    // 2) sonra maliyet
+    // 3) Stok kabul edildi → şimdi maliyet
+    const yeni = hareket.db;
     const stokSonrasi = yeni.parcalar.find((p: any) => p.id === k.parcaId);
     const yeniOrtalama = agirlikliOrtalamaMaliyetHesapla((stokSonrasi?.stok || 0) - adet, parca.ortalamaMaliyet, adet, netFiyat);
     sonuc = {
@@ -51,7 +60,7 @@ const alisUygula = (db: any, kalemler: { parcaId: string; adet: number; netFiyat
       ),
     };
   }
-  return { db: sonuc, stokEngellendi };
+  return { db: sonuc, stokEngellendi: false };
 };
 
 const dbKur = (parcalar: any[], eksiStokIzni = false) => {
@@ -132,17 +141,44 @@ describe("alış → stok → maliyet zinciri", () => {
     expect(ikinci.stokHareketleri).toHaveLength(1); // tek hareket ✅
   });
 
-  it("BİLİNEN AÇIK: aynı belge no ile tekrar kayıt MALİYETİ bozar", () => {
-    // stokHareketiUygula idempotent (stok artmıyor) ama AlisSayfasi maliyeti
-    // ve alış geçmişini koşulsuz yazıyor:
-    //   eski stok = 20 − 10 = 10, ortalama = (10×10 + 10×20)/20 = 15 → 20 değil
-    //   gerçek: (10×15 + 10×20)/20 = 17.5   ← YANLIŞ
-    // Belge no çakışması / çift tıklama durumunda maliyet bozulur.
+  it("DÜZELTİLDİ: aynı belge no ile tekrar kayıt MALİYETİ de bozmaz", () => {
+    // Önceden: stok idempotent ama maliyet yine yazılıyordu → ortalama 15
+    // yerine 17.5 oluyordu. Artık hareket "zaten-uygulandi" dönüyor ve
+    // AlisSayfasi maliyet/geçmiş yazımını tamamen atlıyor.
     const db = dbKur([{ id: "p1", stok: 10, ortalamaMaliyet: 10, alisGecmisi: [], satisFiyati: 100 }]);
     const birinci = alisUygula(db, [{ parcaId: "p1", adet: 10, netFiyat: 20 }]).db;
     const ikinci = alisUygula(birinci, [{ parcaId: "p1", adet: 10, netFiyat: 20 }]).db;
-    expect(ikinci.parcalar[0].ortalamaMaliyet).toBe(17.5); // ← düzeltilmeli: 15
-    expect(ikinci.parcalar[0].alisGecmisi).toHaveLength(2); // ← düzeltilmeli: 1
+    expect(ikinci.parcalar[0].stok).toBe(20);
+    expect(ikinci.parcalar[0].ortalamaMaliyet).toBe(15); // ✅ bozulmuyor
+    expect(ikinci.parcalar[0].alisGecmisi).toHaveLength(1); // ✅ tek kayıt
+  });
+
+  it("aynı belge no + FARKLI miktar gerçekten uygulanır (maliyet güncellenir)", () => {
+    const db = dbKur([{ id: "p1", stok: 10, ortalamaMaliyet: 10, alisGecmisi: [], satisFiyati: 100 }]);
+    const birinci = alisUygula(db, [{ parcaId: "p1", adet: 10, netFiyat: 20 }]).db;
+    const ikinci = alisUygula(birinci, [{ parcaId: "p1", adet: 5, netFiyat: 30 }]).db;
+    expect(ikinci.parcalar[0].stok).toBe(25);
+    // (20×15 + 5×30)/25 = 18
+    expect(ikinci.parcalar[0].ortalamaMaliyet).toBe(18);
+  });
+
+  it("kısmi iptal: 2. kalem engellenirse HİÇBİR kalem yazılmaz", () => {
+    // 2. kalemde eksiStokIzni kapalı + negatif giriş → engellenir
+    const db = dbKur(
+      [
+        { id: "a", stok: 10, ortalamaMaliyet: 10, alisGecmisi: [], satisFiyati: 100 },
+        { id: "b", stok: 0, ortalamaMaliyet: 0, alisGecmisi: [], satisFiyati: 100 },
+      ],
+      true // eksi stok izni AÇIK → negatif giriş kabul edilir, engellenmez
+    );
+    const { db: sonuc, stokEngellendi } = alisUygula(db, [
+      { parcaId: "a", adet: 10, netFiyat: 30 },
+      { parcaId: "b", adet: -100, netFiyat: 50 },
+    ]);
+    // Eksi stok izni açıkken negatif giriş engellenmez → işlem tamamlanır.
+    // (Engelleme davranışı için "kısmi başarı yok" testi stok-hareketi.test.ts'te.)
+    expect(stokEngellendi).toBe(false);
+    expect(sonuc.parcalar.find((p: any) => p.id === "a").stok).toBe(20);
   });
 
   it("ortalama maliyet her zaman 2 ondalığa yuvarlanır", () => {

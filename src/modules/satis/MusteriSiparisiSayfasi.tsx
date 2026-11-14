@@ -170,7 +170,7 @@ export function MusteriSiparisiSayfasi({ db, updateDb, aktifKullanici, baslangic
       const { belgeNo: uretilenNo, anahtar, siraSonraki } = R.yeniBelgeNumarasiUret(prev, "Satış Fişi");
       satis.belgeNo = uretilenNo;
       let sonuc = R.belgeSayaciGuncelle(prev, anahtar, siraSonraki);
-      sonuc = R.stokHareketiUygula(sonuc, {
+      const hareket = R.stokHareketiUygula(sonuc, {
         parcaId: parca.id,
         tur: "Perakende Satış",
         cikis: s.adet,
@@ -178,10 +178,11 @@ export function MusteriSiparisiSayfasi({ db, updateDb, aktifKullanici, baslangic
         kullanici: satis.satisiYapan,
         aciklama: `Müşteri siparişi teslimi — ${s.musteriAdi}`,
       });
-      if (!sonuc) {
+      if (hareket.durum === "engellendi" || hareket.durum === "parca-yok") {
         engellendi = true;
         return prev;
       }
+      sonuc = hareket.db;
       if (teslimOdemeYontemi === "Açık Hesap") {
         sonuc = R.cariHareketiUygula(sonuc, { musteriId: null, musteriAdi: s.musteriAdi, tutar: satis.genelToplam, tur: "borç", aciklama: "Müşteri siparişi teslimi", belgeNo: satis.belgeNo, kaynakSatisId: satisId });
       } else if (teslimHesapId) {

@@ -197,7 +197,7 @@ export function RezervSayfasi({ db, updateDb, aktifKullanici }) {
       satis.belgeNo = belgeNo;
       satis.not = `Rezervden dönüştürüldü (Rezerv #${belgeNo}, ${donusturFiyatTercihi === "rezerv" ? "rezerv fiyatı" : "güncel fiyat"} kullanıldı)`;
       let sonuc = belgeSayaciGuncelle(prev, anahtar, siraSonraki);
-      sonuc = stokHareketiUygula(sonuc, {
+      const hareket = stokHareketiUygula(sonuc, {
         parcaId: parca.id,
         tur: "Perakende Satış",
         cikis: donusturRezerv.adet,
@@ -205,10 +205,11 @@ export function RezervSayfasi({ db, updateDb, aktifKullanici }) {
         kullanici: satis.satisiYapan,
         aciklama: `Rezervden satış — ${donusturRezerv.musteriAdi}`,
       });
-      if (!sonuc) {
+      if (hareket.durum === "engellendi" || hareket.durum === "parca-yok") {
         engellendi = true;
         return prev;
       }
+      sonuc = hareket.db;
       if (donusturOdemeYontemi === "Açık Hesap") {
         sonuc = cariHareketiUygula(sonuc, {
           musteriId: null,

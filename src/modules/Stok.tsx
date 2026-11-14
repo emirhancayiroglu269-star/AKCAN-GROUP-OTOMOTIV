@@ -262,7 +262,7 @@ export function StokSayfasi({ db, updateDb, aktifKullanici, yeniFormSinyali }) {
             giris: baslangicStok,
             kullanici: R.sonKullaniciAdi(),
             aciklama: "Ürün kartı oluşturulurken girilen başlangıç stoğu",
-          }) || prev
+          }).db
         );
       }
       R.bildirimGoster("Ürün kartı oluşturuldu.", "basari");
@@ -627,28 +627,40 @@ export function StokSayfasi({ db, updateDb, aktifKullanici, yeniFormSinyali }) {
     updateDb((prev) => {
       const parca = prev.parcalar.find((p) => p.id === girisModalId);
       if (!parca) return prev;
+      // ÖNEMLİ SIRA: stok hareketi KABUL EDİLMEDEN ortalama maliyet ve alış
+      // geçmişi yazılmaz. Aksi halde hareket engellendiğinde (veya aynı belge
+      // no ile zaten uygulanmışsa) stok artmadan maliyet artıyordu.
+      const hareket = R.stokHareketiUygula(prev, {
+        parcaId: girisModalId,
+        tur: "Mal Alış",
+        giris: adet,
+        belgeNo: girisBelgeNo.trim(),
+        kullanici: girisKullanici.trim(),
+        aciklama: `Birim fiyat: ${R.tl(fiyat)}`,
+      });
+      if (hareket.durum === "zaten-uygulandi") {
+        R.bildirimGoster("Bu belge numarasıyla bu ürün için stok girişi zaten yapılmış.", "uyari");
+        return prev;
+      }
+      if (hareket.durum !== "uygulandi") {
+        R.bildirimGoster("Stok girişi uygulanamadı.", "hata");
+        return prev;
+      }
+      const yeni = hareket.db;
       const yeniOrtalama = R.agirlikliOrtalamaMaliyetHesapla(parca.stok, parca.ortalamaMaliyet, adet, fiyat);
-      const guncellenmisParcalar = prev.parcalar.map((p) =>
-        p.id === girisModalId
-          ? {
-              ...p,
-              sonAlisFiyati: fiyat,
-              ortalamaMaliyet: Math.round(yeniOrtalama * 100) / 100,
-              alisGecmisi: [{ id: R.yeniId("g"), tarih: R.zamanDamgasi(), adet, birimFiyat: fiyat }, ...(p.alisGecmisi || [])],
-            }
-          : p
-      );
-      return R.stokHareketiUygula(
-        { ...prev, parcalar: guncellenmisParcalar },
-        {
-          parcaId: girisModalId,
-          tur: "Mal Alış",
-          giris: adet,
-          belgeNo: girisBelgeNo.trim(),
-          kullanici: girisKullanici.trim(),
-          aciklama: `Birim fiyat: ${R.tl(fiyat)}`,
-        }
-      ) || { ...prev, parcalar: guncellenmisParcalar };
+      return {
+        ...yeni,
+        parcalar: yeni.parcalar.map((p) =>
+          p.id === girisModalId
+            ? {
+                ...p,
+                sonAlisFiyati: fiyat,
+                ortalamaMaliyet: Math.round(yeniOrtalama * 100) / 100,
+                alisGecmisi: [{ id: R.yeniId("g"), tarih: R.zamanDamgasi(), adet, birimFiyat: fiyat }, ...(p.alisGecmisi || [])],
+              }
+            : p
+        ),
+      };
     });
     R.sonKullaniciAdiKaydet(girisKullanici);
     R.bildirimGoster("Stok girişi işlendi, ortalama maliyet güncellendi.", "basari");
@@ -685,7 +697,7 @@ export function StokSayfasi({ db, updateDb, aktifKullanici, yeniFormSinyali }) {
     const parca = db.parcalar.find((p) => p.id === duzeltmeModalId);
     let engellendi = false;
     updateDb((prev) => {
-      const sonuc = R.stokHareketiUygula(prev, {
+      const hareket = R.stokHareketiUygula(prev, {
         parcaId: duzeltmeModalId,
         tur: duzeltmeTur,
         giris: duzeltmeYon === "giris" ? adet : 0,
@@ -694,10 +706,11 @@ export function StokSayfasi({ db, updateDb, aktifKullanici, yeniFormSinyali }) {
         kullanici: duzeltmeKullanici.trim(),
         aciklama: duzeltmeAciklama.trim(),
       });
-      if (!sonuc) {
+      if (hareket.durum === "engellendi" || hareket.durum === "parca-yok") {
         engellendi = true;
         return prev;
       }
+      const sonuc = hareket.db;
       return R.islemKaydet(sonuc, {
         kullaniciAdi: aktifKullanici?.adSoyad || duzeltmeKullanici.trim(),
         islemTuru: `Stok düzeltildi (${duzeltmeTur})`,
@@ -3985,7 +3998,7 @@ export function SayimSayfasi({ db, updateDb, aktifKullanici, baslangicKategori, 
       let sonuc = prev;
       for (const satir of ozet.satirlar) {
         if (satir.fark === null || satir.fark === 0) continue;
-        const yeni = R.stokHareketiUygula(sonuc, {
+        const hareket = R.stokHareketiUygula(sonuc, {
           parcaId: satir.p.id,
           tur: satir.fark < 0 ? "Sayım Eksiği" : "Sayım Fazlası",
           giris: satir.fark > 0 ? satir.fark : 0,
@@ -3994,11 +4007,11 @@ export function SayimSayfasi({ db, updateDb, aktifKullanici, baslangicKategori, 
           kullanici: baslatan.trim(),
           aciklama: `Stok sayımı (${aktifSayim.kapsamTuru === "tumu" ? "Tüm Stok" : aktifSayim.kapsamDeger})`,
         });
-        if (!yeni) {
+        if (hareket.durum === "engellendi" || hareket.durum === "parca-yok") {
           stokEngellendi = true;
           return prev;
         }
-        sonuc = yeni;
+        sonuc = hareket.db;
       }
       return {
         ...sonuc,

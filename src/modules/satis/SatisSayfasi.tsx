@@ -515,7 +515,7 @@ export function SatisSayfasi({ db, updateDb, sepet, setSepet, aktifKullanici, mu
       for (const s of satirlar) {
         if (s.parca.urunTipi === "Set") {
           for (const bilesen of R.setBilesenDetaylari(sonuc, s.parca)) {
-            const yeni = R.stokHareketiUygula(sonuc, {
+            const hareket = R.stokHareketiUygula(sonuc, {
               parcaId: bilesen.parcaId,
               tur: "Perakende Satış",
               cikis: bilesen.adet * s.adet,
@@ -523,14 +523,14 @@ export function SatisSayfasi({ db, updateDb, sepet, setSepet, aktifKullanici, mu
               kullanici: satisiYapan.trim(),
               aciklama: `${musteriAdiKaydedilecek} — Set: ${s.parca.ad}`,
             });
-            if (!yeni) {
+            if (hareket.durum === "engellendi" || hareket.durum === "parca-yok") {
               stokEngellendi = true;
               return prev;
             }
-            sonuc = yeni;
+            sonuc = hareket.db;
           }
         } else {
-          const yeni = R.stokHareketiUygula(sonuc, {
+          const hareket = R.stokHareketiUygula(sonuc, {
             parcaId: s.parca.id,
             tur: "Perakende Satış",
             cikis: s.adet,
@@ -538,11 +538,11 @@ export function SatisSayfasi({ db, updateDb, sepet, setSepet, aktifKullanici, mu
             kullanici: satisiYapan.trim(),
             aciklama: musteriAdiKaydedilecek,
           });
-          if (!yeni) {
+          if (hareket.durum === "engellendi" || hareket.durum === "parca-yok") {
             stokEngellendi = true;
             return prev;
           }
-          sonuc = yeni;
+          sonuc = hareket.db;
         }
       }
 
@@ -709,15 +709,14 @@ export function SatisSayfasi({ db, updateDb, sepet, setSepet, aktifKullanici, mu
         if (!parca) return;
         if (parca.urunTipi === "Set") {
           for (const bilesen of R.setBilesenDetaylari(sonuc, parca)) {
-            sonuc =
-              R.stokHareketiUygula(sonuc, {
-                parcaId: bilesen.parcaId,
-                tur: "Satış İadesi",
-                giris: bilesen.adet * k.adet,
-                belgeNo,
-                kullanici: satis.satisiYapan || "",
-                aciklama: `İptal: ${belgeNo} — Set: ${parca.ad}`,
-              }) || sonuc;
+            sonuc = R.stokHareketiUygula(sonuc, {
+              parcaId: bilesen.parcaId,
+              tur: "Satış İadesi",
+              giris: bilesen.adet * k.adet,
+              belgeNo,
+              kullanici: satis.satisiYapan || "",
+              aciklama: `İptal: ${belgeNo} — Set: ${parca.ad}`,
+            }).db;
           }
         } else {
           sonuc =
@@ -728,7 +727,7 @@ export function SatisSayfasi({ db, updateDb, sepet, setSepet, aktifKullanici, mu
               belgeNo,
               kullanici: satis.satisiYapan || "",
               aciklama: `İptal: ${belgeNo} (${iptalNedeniMetin.trim()})`,
-            }) || sonuc;
+            }).db;
         }
       });
 
