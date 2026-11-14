@@ -219,15 +219,15 @@ Müşteri iade edilen satıştan geliyor:
 
 **9 test** bu kuralı kilitliyor.
 
-### 10. Stok.tsx bölündü — 5.007 satırdan 20 dosyaya
+### 10. Stok.tsx bölündü — 5.007 satırdan 21 dosyaya
 
 **Sorun:** `src/modules/Stok.tsx` tek başına **5.007 satır** ve **6 sayfa bileşeni**
-barındırıyordu. Tek dosyada 170+ state, ~60 handler ve ~20 modal — hiçbir parçası
+barındırıyordu. Tek dosyada 170+ state, ~50 handler ve ~20 modal — hiçbir parçası
 tek başına anlaşılamıyordu.
 
-**Sonuç:** 5.007 → **1.521 satır** (%70 küçülme), 19 yeni dosya.
+**Sonuç:** 5.007 → **981 satır** (%80 küçülme), 20 yeni dosya.
 
-### Aşama 1 — bağımsız sayfalar (önceki adım)
+### Aşama 1 — bağımsız sayfalar
 
 | Dosya | Satır | İçerik |
 |---|---:|---|
@@ -236,7 +236,7 @@ tek başına anlaşılamıyordu.
 | `TopluFiyatSayfasi.tsx` | 368 | Toplu fiyat güncelleme |
 | `BarkodBulunamadiModal.tsx` | 113 | Barkod bulunamadı modalı |
 
-### Aşama 2 — `StokSayfasi`'nın JSX'i (önceki adım)
+### Aşama 2 — `StokSayfasi`'nın JSX'i
 
 | Dosya | Satır | İçerik |
 |---|---:|---|
@@ -247,46 +247,48 @@ tek başına anlaşılamıyordu.
 
 ### Aşama 3 — her modal kendi state'ini taşıyor
 
-`StokModallari.tsx` artık **955 satırdan 102 satıra** indi: yalnızca "hangi modal
-açık?" sorusunu cevaplayan ince bir kabuk. Prop sayısı **81 → 27**.
+`StokModallari.tsx` **955 → 102 satır**: yalnızca "hangi modal açık?" sorusunu
+cevaplayan ince bir kabuk. Prop sayısı **81 → 27**.
 
 | Dosya | Satır | Kendi state'i / iş kuralı |
 |---|---:|---|
-| `StokGirisiModal.tsx` | 210 | adet, paket, fiyat, belge no, kullanıcı · **ağırlıklı ortalama maliyet + stok hareketi sırası** |
-| `StokDuzeltmeModal.tsx` | 178 | yön, tür, adet, belge, açıklama · **yetki kontrolü, zorunlu açıklama, eksi stok guard'ı** |
-| `BarkodYonetimiModal.tsx` | 155 | yeni barkod, hata · **birincil barkod senkronu, barkod tekilliği** |
-| `KodYonetimiModal.tsx` | 149 | yeni kod tipi/değeri, hata · **OEM/muadil kod normalizasyonu ve mükerrer kontrolü** |
-| `UyumluAraclarModal.tsx` | 148 | yeni durum, arama metni · **araç arama, uyumluluk ekleme/silme/durum** |
-| `RafTasimaModal.tsx` | 142 | kaynak, hedef, adet, kullanıcı · **raf transferi doğrulaması** |
-| `StokHareketModal.tsx` | 83 | — (salt okuma) |
-| `MukerrerUyariModal.tsx` | 81 | — (kararı `kaydet` akışına devreder) |
-| `TedarikciKarsilastirmaModal.tsx` | 74 | — (salt okuma) |
-| `AlisGecmisiModal.tsx` | 40 | — (salt okuma) |
-| `FiyatGecmisiModal.tsx` | 40 | — (salt okuma) |
+| `StokGirisiModal.tsx` | 210 | adet, paket, fiyat, belge · **ağırlıklı ortalama maliyet + stok hareketi sırası** |
+| `StokDuzeltmeModal.tsx` | 178 | yön, tür, açıklama · **yetki, zorunlu açıklama, eksi stok guard'ı** |
+| `BarkodYonetimiModal.tsx` | 155 | barkod, hata · **birincil barkod senkronu, tekillik** |
+| `KodYonetimiModal.tsx` | 149 | kod tipi/değeri, hata · **OEM normalizasyonu, mükerrer kontrolü** |
+| `UyumluAraclarModal.tsx` | 148 | durum, arama · **araç arama + uyumluluk yönetimi** |
+| `RafTasimaModal.tsx` | 142 | kaynak, hedef, adet · **transfer doğrulaması** |
+| `StokHareketModal` · `MukerrerUyariModal` · `TedarikciKarsilastirmaModal` · `AlisGecmisiModal` · `FiyatGecmisiModal` | 40–83 | salt okuma / kararı dışarı devreder |
 
-**Kazanç yalnızca satır sayısı değil:** stok girişinde "hareket kabul edilmeden
-maliyet yazılmaz" kuralı artık `StokGirisiModal`'ın içinde, kullanıldığı yerin 20
-satır üstünde duruyor. Önceden aynı dosyada 1.500 satır ötedeydi.
+### Aşama 4 — handler'lar hook'a taşındı
 
-**Yaklaşım:** Bölme sırasında **tek satır iş mantığı değişmedi**. Sadece:
+`useStokIslemleri.tsx` (**543 satır**) `StokSayfasi`'nın iş mantığını taşır;
+sayfa 1.521 → **981 satır**. Hook, sayfanın state'lerini setter'larıyla dışarıdan
+alır ve 12 handler döner:
 
-1. Bağımsız sayfalar kendi dosyalarına taşındı — `App.tsx` değişmesin diye
-   `Stok.tsx` bunları yeniden dışa aktarıyor.
-2. `StokSayfasi`'nın JSX'i parçalara ayrıldı. Hangi modalın açık olduğunu bilen
-   `*Id` state'leri hâlâ `StokSayfasi`'nda — böylece iki modal aynı anda açılamıyor
-   ve "hepsini kapat" tek yerden yönetiliyor.
-3. Her modal kendi form state'ini (`adet`, `fiyat`, `hata` …) ve o formun iş
-   kurallarını taşıyor. `useEffect(..., [parca?.id])` ile ürün değişince form sıfırlanıyor
-   — önceki davranış birebir korundu.
-4. Her adımda `tsc --noEmit` + `npm run build` + `npm test` + eski smoke testler
-   çalıştırıldı: **0 tip hatası, 361 test, 118 smoke geçti.**
+| Handler | İş kuralı |
+|---|---|
+| `kaydet` | zorunlu alan, KDV 0–100, negatif fiyat, **mükerrer/benzer/fiyat uyarısı**, fiyat değiştirme yetkisi, hedef kâr ayarı |
+| `sil` | **geçmişi olan ürün silinmez → Pasif yapılır**; yetim kod/hareket kayıtları temizlenir |
+| `fotografEkle` · `dokumanEkle` · `topluFotoYukle` | sıkıştırma, tür ayrımı, toplu eşleştirme |
+| `fotografSil` · `fotografAnaYap` · `fotografSiraDegistir` | galeri sırası |
+| `aktifPasifDegistir` | — |
+| `girisModaliAc` · `duzeltmeModaliAc` · `rafModaliAc` | modalı açar, formu ilk değerlerle kurar |
 
-**Neden Context/Provider'a geçilmedi:** artık gerek kalmadı. Prop sayısı 27'ye
-düştüğü için Context ek bir katman olurdu, fayda sağlamazdı.
+**Neden bu sınır:** modal içi form state'i (`adet`, `fiyat`, `hata`) hook'ta
+tutulmuyor — her modal kendi state'ini taşıyor. Hook yalnızca "hangi ürün için
+açıldı" bilgisini ve kaydetme akışını bilir. Böylece bir modala dokunmak
+sayfanın state'ini, sayfaya dokunmak modalın formunu etkilemiyor.
 
-**Sıradaki adım:** `Stok.tsx` (1.521 satır) hâlâ `StokSayfasi` (state + handler'lar)
-ve `HizliAramaSayfasi`'nı birlikte tutuyor. `StokSayfasi`'nın ~50 handler'ı
-`useStokIslemleri()` hook'una taşınabilir; o zaman iki dosya daha doğar.
+**Neden Context/Provider'a geçilmedi:** prop sayısı 27'ye düştüğü için Context
+ek bir katman olurdu, fayda sağlamazdı.
+
+**Yaklaşım:** Bölme sırasında **tek satır iş mantığı değişmedi**. Her adımda
+`tsc --noEmit` + `npm run build` + `npm test` + eski smoke testler çalıştırıldı:
+**0 tip hatası, 361 test, 118 smoke geçti.**
+
+**Sıradaki adım:** `Stok.tsx` (981 satır) hâlâ `StokSayfasi` (~60 state) ve
+`HizliAramaSayfasi`'nı birlikte tutuyor. Sayfaları iki dosyaya ayırmak son adım.
 
 ### `tests/gercek/audit-log.test.ts` — 101 test
 `src/lib/audit-log.ts` (denetim izi hash zinciri)
