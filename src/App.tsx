@@ -62,6 +62,20 @@ export default function App() {
     return () => { iptal = true; };
   }, []);
 
+  // Şifre migration: düz metin şifreleri PBKDF2 hash'e çevir (idempotent)
+  R.useEffect(() => {
+    if (!loaded) return;
+    let iptal = false;
+    (async () => {
+      const { kullanicilar, degisen } = await R.kullanicilariHashle(db.kullanicilar || []);
+      if (degisen > 0 && !iptal) {
+        console.log(`[migration] ${degisen} kullanıcı şifresi hash'e dönüştürüldü`);
+        setDb((prev) => ({ ...prev, kullanicilar }));
+      }
+    })();
+    return () => { iptal = true; };
+  }, [loaded, db.kullanicilar]);
+
   // Merkezi kurulum kontrolü: başka PC/telefon bu şirketi daha önce kurduysa
   // bu cihazda localStorage boş olsa bile İlk Kurulum ekranı gösterilmez.
   R.useEffect(() => {
