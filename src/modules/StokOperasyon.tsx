@@ -1353,9 +1353,11 @@ export function YedekGuvenlikSayfasi({ db, updateDb, aktifKullanici, yedekIndirV
     e.target.value = "";
   };
 
-  const sifreDegistir = () => {
+  const sifreDegistir = async () => {
     setSifreBasarili(false);
-    if (sifreForm.eski !== aktifKullanici.sifre) {
+    // Mevcut şifre hash ile doğrula (eski düz-metin kayıtlar da desteklenir)
+    const eskiDogru = await R.sifreDogruMu(aktifKullanici, sifreForm.eski);
+    if (!eskiDogru) {
       setSifreHata("Mevcut şifre hatalı.");
       return;
     }
@@ -1367,6 +1369,8 @@ export function YedekGuvenlikSayfasi({ db, updateDb, aktifKullanici, yedekIndirV
       setSifreHata("Yeni şifreler eşleşmiyor.");
       return;
     }
+    // Yeni şifreyi hash'le
+    const hash = await R.sifreHashle(sifreForm.yeni);
     updateDb((prev) => {
       const sonuc = R.islemKaydet(prev, {
         kullaniciAdi: aktifKullanici.adSoyad,
@@ -1375,7 +1379,12 @@ export function YedekGuvenlikSayfasi({ db, updateDb, aktifKullanici, yedekIndirV
         eskiDeger: "—",
         yeniDeger: "—",
       });
-      return { ...sonuc, kullanicilar: sonuc.kullanicilar.map((k) => (k.id === aktifKullanici.id ? { ...k, sifre: sifreForm.yeni } : k)) };
+      return {
+        ...sonuc,
+        kullanicilar: sonuc.kullanicilar.map((k) =>
+          k.id === aktifKullanici.id ? { ...k, ...hash } : k
+        ),
+      };
     });
     setSifreForm({ eski: "", yeni: "", tekrar: "" });
     setSifreHata("");

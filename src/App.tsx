@@ -361,13 +361,12 @@ export default function App() {
     }
 
     // Sunucu geçici olarak cevap vermese bile mevcut kullanıcıyla giriş mümkün.
-    const bulunan = db.kullanicilar.find(
+    const aday = db.kullanicilar.find(
       (k) =>
         k.aktif !== false &&
-        String(k.kullaniciAdi || "").trim().toLocaleLowerCase("tr-TR") === temizAd.toLocaleLowerCase("tr-TR") &&
-        String(k.sifre || "") === temizSifre
+        String(k.kullaniciAdi || "").trim().toLocaleLowerCase("tr-TR") === temizAd.toLocaleLowerCase("tr-TR")
     );
-    if (!bulunan) {
+    if (!aday || !(await R.sifreDogruMu(aday, temizSifre))) {
       const sonuc = R.girisBasarisiz(temizAd);
       try {
         updateDb((prev) => ({ ...prev, girisGecmisi: [{ id: R.yeniId("gg"), tarih: R.zamanDamgasi(), kullaniciAdi: temizAd, basarili: false }, ...(prev.girisGecmisi || [])].slice(0, 200) }));
@@ -377,9 +376,9 @@ export default function App() {
     }
 
     R.girisBasarili(temizAd);
-    updateDb((prev) => ({ ...prev, girisGecmisi: [{ id: R.yeniId("gg"), tarih: R.zamanDamgasi(), kullaniciAdi: bulunan.kullaniciAdi, basarili: true }, ...(prev.girisGecmisi || [])].slice(0, 200) }));
-    setOturumKullaniciId(bulunan.id);
-    localStorage.setItem("akcan-oturum-kullanici", bulunan.id);
+    updateDb((prev) => ({ ...prev, girisGecmisi: [{ id: R.yeniId("gg"), tarih: R.zamanDamgasi(), kullaniciAdi: aday.kullaniciAdi, basarili: true }, ...(prev.girisGecmisi || [])].slice(0, 200) }));
+    setOturumKullaniciId(aday.id);
+    localStorage.setItem("akcan-oturum-kullanici", aday.id);
     R.bildirimGoster("Merkezi giriş geçici olarak kullanılamadı; yerel oturum açıldı. Bağlantı gelince veri senkronize edilecek.", "uyari");
     return true;
   };

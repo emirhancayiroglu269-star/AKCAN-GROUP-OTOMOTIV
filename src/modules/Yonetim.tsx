@@ -347,7 +347,7 @@ export function KullaniciSayfasi({ db, updateDb, aktifKullanici, setSekme }) {
     setForm(R.bosKullaniciForm);
   };
 
-  const kaydet = () => {
+  const kaydet = async () => {
     if (!form.adSoyad.trim() || !form.kullaniciAdi.trim()) {
       R.bildirimGoster("Ad Soyad ve Kullanıcı Adı zorunludur.", "hata");
       return;
@@ -366,7 +366,29 @@ export function KullaniciSayfasi({ db, updateDb, aktifKullanici, setSekme }) {
       return;
     }
     const mevcut = duzenlenenId !== "yeni" ? db.kullanicilar.find((k) => k.id === duzenlenenId) : null;
-    const kayit = { adSoyad: form.adSoyad.trim(), kullaniciAdi: form.kullaniciAdi.trim(), ...(form.sifre ? { sifre: form.sifre } : (mevcut ? { sifre: mevcut.sifre } : {})), rolId: form.rolId, aktif: form.aktif };
+    // Tip genişletme: hash alanları opsiyonel olarak eklenebilir
+    type KayitTipi = {
+      adSoyad: string;
+      kullaniciAdi: string;
+      rolId: string;
+      aktif: boolean;
+      sifreHash?: string;
+      sifreTuzu?: string;
+      sifreAlgoritmasi?: string;
+      sifreSurumu?: number;
+    };
+    let kayit: KayitTipi = { adSoyad: form.adSoyad.trim(), kullaniciAdi: form.kullaniciAdi.trim(), rolId: form.rolId, aktif: form.aktif };
+    if (form.sifre) {
+      // Şifre girildiyse hash'le
+      const hash = await R.sifreHashle(form.sifre);
+      kayit = { ...kayit, ...hash };
+    } else if (duzenlenenId !== "yeni" && mevcut) {
+      // Şifre değişmediyse mevcut hash'i koru
+      if (mevcut.sifreHash) kayit.sifreHash = mevcut.sifreHash;
+      if (mevcut.sifreTuzu) kayit.sifreTuzu = mevcut.sifreTuzu;
+      if (mevcut.sifreAlgoritmasi) kayit.sifreAlgoritmasi = mevcut.sifreAlgoritmasi;
+      if (mevcut.sifreSurumu) kayit.sifreSurumu = mevcut.sifreSurumu;
+    }
     if (duzenlenenId === "yeni") {
       updateDb((prev) => ({ ...prev, kullanicilar: [{ id: R.yeniId("u"), ...kayit, sonGiris: null }, ...prev.kullanicilar] }));
       R.bildirimGoster("Kullanıcı oluşturuldu.", "basari");

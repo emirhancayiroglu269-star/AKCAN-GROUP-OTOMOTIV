@@ -1,4 +1,5 @@
 import { yetkiVarMi } from "./constants";
+import { sifreDogruMu } from "./sifre-hash";
 
 // Kullanıcı sistemi kurulduktan sonra yönetici onayı artık gerçek bir
 // kullanıcı adı + şifre doğrulamasıdır: "kullaniciYonetebilir" yetkisine
@@ -6,7 +7,9 @@ import { yetkiVarMi } from "./constants";
 // hiç kullanıcı tanımlanmadıysa (geçiş dönemi / ilk kurulum), eski basit PIN
 // mekanizmasına geri döner — böylece kullanıcı sistemi kurulmadan önce de
 // uygulama kilitlenmez.
-export const yoneticiOnayiAl = (db: any, mesaj) => {
+// Şifre doğrulaması artık hash ile yapılır (PBKDF2-SHA256). Eski düz-metin
+// kayıtları için geriye dönük uyumluluk vardır (kullanıcı kilitlenmez).
+export const yoneticiOnayiAl = async (db: any, mesaj: string): Promise<boolean> => {
   const yoneticiler = (db.kullanicilar || []).filter((k) => k.aktif !== false && yetkiVarMi(db, k, "kullaniciYonetebilir"));
   if (yoneticiler.length === 0) {
     const kayitliPin = localStorage.getItem("akcan-yonetici-pin");
@@ -26,5 +29,13 @@ export const yoneticiOnayiAl = (db: any, mesaj) => {
   if (!kadi) return false;
   const sifre = window.prompt("Şifre:");
   if (sifre === null) return false;
-  return yoneticiler.some((k) => k.kullaniciAdi.toLowerCase() === kadi.trim().toLowerCase() && k.sifre === sifre);
+  // Hash ile doğrulama (eski düz-metin kayıtları da desteklenir)
+  for (const k of yoneticiler) {
+    const eslesme = await sifreDogruMu(k, sifre);
+    if (eslesme && k.kullaniciAdi.toLowerCase() === kadi.trim().toLowerCase()) {
+      return true;
+    }
+  }
+  return false;
 };
+
